@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.firecrawl/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+.factory/runs/
+.factory/checkpoints.sqlite*
+dist/

@@ -1,0 +1,35 @@
+version: 1
+workflow: simple-sdlc
+
+agents:
+  planner:
+    provider: codex
+    reasoning_level: high
+    permission_mode: auto
+  builder:
+    provider: codex
+    reasoning_level: high
+    permission_mode: accept-edits
+  reviewer:
+    provider: codex
+    reasoning_level: high
+    permission_mode: auto
+
+quality:
+  commands:
+    - name: tests
+      argv: ["uv", "run", "pytest", "-q"]
+      timeout_seconds: 120
+
+limits:
+  max_test_repairs: 2
+  max_review_revisions: 1
+  total_run_timeout_seconds: 1800
+
+safety:
+  protected_paths:
+    - .factory/factory.yaml
+    - .bb/
+    - .github/workflows/
+  auto_commit: false
+  allow_push: false

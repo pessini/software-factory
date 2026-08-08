@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A visual, plain-language map of the BB LangGraph Software Factory.">
+  <title>Architecture — BB LangGraph Software Factory</title>
+  <style>
+    :root {
+      --paper: #f3f1eb;
+      --surface: #fbfaf6;
+      --ink: #161817;
+      --muted: #626560;
+      --rule: #c9c7bf;
+      --rule-dark: #8d8f89;
+      --blue: #164e63;
+      --blue-soft: #d9e5e7;
+      --amber: #8a4e11;
+      --amber-soft: #eee0cc;
+      --green: #315f46;
+      --green-soft: #dce6dd;
+      --red: #8a3232;
+      --red-soft: #ead8d5;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --serif: Iowan Old Style, Baskerville, "Times New Roman", serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    a { color: inherit; text-underline-offset: 3px; }
+    code { font-family: var(--mono); font-size: 0.9em; }
+
+    .page {
+      width: min(1240px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    .masthead {
+      border-bottom: 1px solid var(--ink);
+      padding: 22px 0 16px;
+    }
+
+    .masthead-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 24px;
+    }
+
+    .product-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .document-label {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.65fr);
+      gap: 72px;
+      padding: 72px 0 74px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .kicker {
+      margin: 0 0 16px;
+      color: var(--blue);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      max-width: 850px;
+      margin-bottom: 24px;
+      font-family: var(--serif);
+      font-size: clamp(48px, 7vw, 88px);
+      font-weight: 400;
+      letter-spacing: -0.045em;
+      line-height: 0.98;
+    }
+
+    .intro-copy {
+      max-width: 760px;
+      margin-bottom: 0;
+      color: #424541;
+      font-size: clamp(18px, 2vw, 23px);
+      line-height: 1.5;
+    }
+
+    .facts {
+      align-self: end;
+      border-top: 1px solid var(--ink);
+    }
+
+    .fact {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 14px;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--rule);
+      font-size: 13px;
+    }
+
+    .fact dt { color: var(--muted); }
+    .fact dd { margin: 0; font-weight: 600; }
+
+    .contents {
+      display: flex;
+      gap: 28px;
+      padding: 17px 0;
+      border-bottom: 1px solid var(--rule);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow-x: auto;
+    }
+
+    .contents a { white-space: nowrap; text-decoration: none; }
+    .contents a:hover { color: var(--ink); text-decoration: underline; }
+
+    section {
+      padding: 76px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .section-heading {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 30px;
+      margin-bottom: 42px;
+    }
+
+    .section-number {
+      padding-top: 7px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-family: var(--serif);
+      font-size: clamp(32px, 4vw, 52px);
+      font-weight: 400;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+    }
+
+    .section-intro {
+      max-width: 760px;
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .diagram-frame {
+      border: 1px solid var(--ink);
+      background: var(--surface);
+    }
+
+    .diagram-caption {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--ink);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .system-map { padding: 34px; }
+
+    .map-row {
+      display: grid;
+      grid-template-columns: 1fr 40px 1fr 40px 1.5fr;
+      align-items: stretch;
+    }
+
+    .map-box {
+      min-height: 110px;
+      padding: 18px;
+      border: 1px solid var(--rule-dark);
+      background: var(--paper);
+    }
+
+    .map-box.dark {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: white;
+    }
+
+    .map-box-title {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .map-box-note {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .map-box.dark .map-box-note { color: rgba(255,255,255,0.75); }
+
+    .arrow {
+      display: grid;
+      place-items: center;
+      color: var(--rule-dark);
+      font-family: var(--mono);
+      font-size: 21px;
+    }
+
+    .map-down {
+      height: 44px;
+      display: grid;
+      grid-template-columns: 1fr 40px 1fr 40px 1.5fr;
+    }
+
+    .map-down span {
+      grid-column: 5;
+      display: grid;
+      place-items: center;
+      color: var(--rule-dark);
+      font-family: var(--mono);
+      font-size: 20px;
+    }
+
+    .workers {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--rule-dark);
+    }
+
+    .worker {
+      min-height: 134px;
+      padding: 18px;
+      background: white;
+    }
+
+    .worker + .worker { border-left: 1px solid var(--rule); }
+
+    .worker-owner {
+      display: inline-block;
+      margin-bottom: 23px;
+      padding-bottom: 4px;
+      border-bottom: 2px solid var(--blue);
+      color: var(--blue);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .worker:nth-child(3) .worker-owner { border-color: var(--green); color: var(--green); }
+    .worker strong { display: block; margin-bottom: 6px; font-size: 17px; }
+    .worker p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .shared-base {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr 1fr;
+      margin-top: 18px;
+      border-top: 1px solid var(--ink);
+    }
+
+    .base-item { padding: 15px 16px 4px 0; }
+    .base-item + .base-item { padding-left: 16px; border-left: 1px solid var(--rule); }
+    .base-item b { display: block; font-size: 14px; }
+    .base-item span { color: var(--muted); font-size: 12px; }
+
+    .plain-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 28px;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .summary-item { padding: 18px 22px 18px 0; }
+    .summary-item + .summary-item { padding-left: 22px; border-left: 1px solid var(--rule); }
+    .summary-item b { display: block; margin-bottom: 5px; font-size: 14px; }
+    .summary-item p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .flow-wrap { overflow-x: auto; }
+
+    .flow {
+      min-width: 980px;
+      padding: 36px 30px 30px;
+    }
+
+    .main-flow {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0;
+    }
+
+    .flow-step {
+      position: relative;
+      min-height: 126px;
+      padding: 16px 20px 16px 15px;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      background: white;
+    }
+
+    .flow-step:first-child { border-left: 1px solid var(--ink); }
+    .flow-step:last-child { border-right: 1px solid var(--ink); }
+
+    .flow-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 48px;
+      right: -8px;
+      z-index: 2;
+      width: 14px;
+      height: 14px;
+      border-top: 1px solid var(--ink);
+      border-right: 1px solid var(--ink);
+      background: white;
+      transform: rotate(45deg);
+    }
+
+    .flow-step .index {
+      display: block;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .flow-step strong { display: block; margin-bottom: 5px; font-size: 16px; }
+    .flow-step small { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .flow-step.agent .index { color: var(--blue); }
+    .flow-step.python .index { color: var(--green); }
+
+    .branch-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0;
+      margin-top: 26px;
+    }
+
+    .branch {
+      position: relative;
+      min-height: 108px;
+      padding: 14px;
+      border: 1px solid var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .branch.repair { grid-column: 4; }
+    .branch.revise { grid-column: 5; }
+    .branch.stop { grid-column: 6; border-color: var(--red); background: var(--red-soft); }
+
+    .branch::before {
+      content: "↓";
+      position: absolute;
+      top: -27px;
+      left: calc(50% - 6px);
+      color: var(--amber);
+      font-family: var(--mono);
+    }
+
+    .branch strong { display: block; margin-bottom: 5px; font-size: 14px; }
+    .branch small { display: block; color: #6e4b29; font-size: 12px; }
+    .branch.stop small { color: #673a38; }
+
+    .return-line {
+      grid-column: 4 / 6;
+      min-height: 48px;
+      margin: 12px 50% 0 14px;
+      border-left: 1px solid var(--amber);
+      border-bottom: 1px solid var(--amber);
+      color: var(--amber);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .return-line span {
+      position: relative;
+      left: 10px;
+      top: 29px;
+      padding: 0 5px;
+      background: var(--surface);
+    }
+
+    .graph-key {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+      margin-top: 28px;
+    }
+
+    .key-item { border-top: 2px solid var(--blue); padding-top: 12px; }
+    .key-item:nth-child(2) { border-color: var(--green); }
+    .key-item:nth-child(3) { border-color: var(--amber); }
+    .key-item b { font-size: 14px; }
+    .key-item p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+
+    .worktree-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(270px, 0.6fr);
+      gap: 46px;
+    }
+
+    .worktree-board {
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+
+    .worktree-row {
+      display: grid;
+      grid-template-columns: 152px 1fr 130px;
+      min-height: 102px;
+      align-items: stretch;
+    }
+
+    .worktree-row + .worktree-row { border-top: 1px solid var(--rule); }
+    .actor { display: flex; align-items: center; padding: 16px 18px 16px 0; font-weight: 700; }
+    .permission { padding: 16px 22px; border-left: 1px solid var(--rule); }
+    .permission b { display: block; margin-bottom: 5px; }
+    .permission p { margin: 0; color: var(--muted); font-size: 13px; }
+    .access { display: grid; place-items: center; border-left: 1px solid var(--rule); font-family: var(--mono); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .access.read { color: var(--blue); background: var(--blue-soft); }
+    .access.write { color: var(--amber); background: var(--amber-soft); }
+    .access.exec { color: var(--green); background: var(--green-soft); }
+
+    .worktree-notes { border-top: 1px solid var(--ink); }
+    .note-block { padding: 17px 0; border-bottom: 1px solid var(--rule); }
+    .note-block h3 { margin: 0 0 7px; font-size: 15px; }
+    .note-block p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .truth-strip {
+      margin-top: 28px;
+      padding: 16px 18px;
+      border-left: 5px solid var(--ink);
+      background: var(--surface);
+      font-size: 14px;
+    }
+
+    .memory-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+    }
+
+    .memory-column { padding: 28px; background: var(--surface); }
+    .memory-label { color: var(--muted); font-family: var(--mono); font-size: 11px; text-transform: uppercase; }
+    .memory-column h3 { margin: 20px 0 10px; font-family: var(--serif); font-size: 27px; font-weight: 400; }
+    .memory-column > p { color: var(--muted); }
+    .memory-column ul { margin: 20px 0 0; padding: 0; list-style: none; }
+    .memory-column li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 9px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+    .memory-column li::before { content: "—"; color: var(--rule-dark); }
+
+    .safety-table {
+      width: 100%;
+      margin-top: 28px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .safety-table th, .safety-table td { padding: 13px 14px; border-top: 1px solid var(--rule); text-align: left; vertical-align: top; }
+    .safety-table th { width: 25%; font-weight: 700; }
+    .safety-table td { color: var(--muted); }
+
+    .code-layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.65fr) minmax(0, 1.35fr);
+      gap: 52px;
+    }
+
+    .file-tree {
+      margin: 0;
+      padding: 24px;
+      border: 1px solid var(--ink);
+      background: #1c201e;
+      color: #eef0eb;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.85;
+      white-space: pre-wrap;
+    }
+
+    .layers { border-top: 1px solid var(--ink); }
+
+    .layer {
+      display: grid;
+      grid-template-columns: 42px 170px 1fr;
+      gap: 18px;
+      padding: 19px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .layer-number { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+    .layer-name { font-weight: 700; }
+    .layer-copy p { margin: 0 0 6px; color: var(--muted); font-size: 13px; }
+    .layer-copy code { color: var(--blue); font-size: 11px; }
+
+    .final-line {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 30px;
+      padding: 54px 0 68px;
+    }
+
+    .final-line p {
+      max-width: 900px;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(24px, 3vw, 38px);
+      line-height: 1.25;
+    }
+
+    footer {
+      padding: 18px 0 34px;
+      border-top: 1px solid var(--ink);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    @media (max-width: 900px) {
+      .intro, .worktree-layout, .code-layout { grid-template-columns: 1fr; gap: 38px; }
+      .intro { padding: 54px 0; }
+      .facts { max-width: 520px; }
+      .section-heading, .final-line { grid-template-columns: 110px 1fr; }
+      .map-row { grid-template-columns: 1fr 30px 1fr; }
+      .map-row .arrow:nth-of-type(2), .map-row .map-box:last-child { display: none; }
+      .map-down { display: none; }
+      .workers { margin-top: 26px; grid-template-columns: repeat(2, 1fr); }
+      .worker:nth-child(3) { border-left: 0; border-top: 1px solid var(--rule); }
+      .worker:nth-child(4) { border-top: 1px solid var(--rule); }
+      .plain-summary, .graph-key { grid-template-columns: 1fr; }
+      .summary-item + .summary-item { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
+    }
+
+    @media (max-width: 640px) {
+      .page { width: min(100% - 28px, 1240px); }
+      .masthead-row { align-items: flex-start; flex-direction: column; gap: 4px; }
+      .intro { padding: 44px 0; }
+      .section-heading, .final-line { grid-template-columns: 1fr; gap: 12px; }
+      section { padding: 54px 0; }
+      .system-map { padding: 16px; }
+      .map-row { grid-template-columns: 1fr; gap: 12px; }
+      .map-row .map-box:last-child { display: block; }
+      .map-row .arrow { height: 22px; transform: rotate(90deg); }
+      .workers, .shared-base, .memory-grid { grid-template-columns: 1fr; }
+      .worker + .worker { border-left: 0; border-top: 1px solid var(--rule); }
+      .base-item + .base-item { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
+      .worktree-row { grid-template-columns: 100px 1fr; }
+      .access { grid-column: 1 / -1; min-height: 34px; border-top: 1px solid var(--rule); border-left: 0; }
+      .layer { grid-template-columns: 34px 1fr; }
+      .layer-copy { grid-column: 2; }
+      .safety-table th, .safety-table td { display: block; width: 100%; }
+      .safety-table td { padding-top: 0; border-top: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="page masthead-row">
+      <div class="product-name">BB LangGraph Software Factory</div>
+      <div class="document-label">System map / plain-language edition</div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="intro">
+      <div>
+        <p class="kicker">Project architecture</p>
+        <h1>How one request becomes reviewed code.</h1>
+        <p class="intro-copy">The project is a controlled workflow for software changes. BB shows the people doing the work. LangGraph controls the order. Python applies the rules. Git holds the actual files.</p>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Input</dt><dd>One bounded change request</dd></div>
+        <div class="fact"><dt>Output</dt><dd>Checked files and a final report</dd></div>
+        <div class="fact"><dt>Workers</dt><dd>Planner, Builder, Reviewer</dd></div>
+        <div class="fact"><dt>Control</dt><dd>LangGraph + deterministic Python</dd></div>
+        <div class="fact"><dt>Boundary</dt><dd>No commit, push, merge, or deploy</dd></div>
+      </dl>
+    </div>
+
+    <nav class="contents" aria-label="Document sections">
+      <a href="#system">01 / System</a>
+      <a href="#graph">02 / LangGraph</a>
+      <a href="#worktree">03 / Worktree</a>
+      <a href="#memory">04 / Memory &amp; safety</a>
+      <a href="#code">05 / Code map</a>
+    </nav>
+
+    <section id="system">
+      <div class="section-heading">
+        <div class="section-number">01 / System</div>
+        <div>
+          <h2>The whole system on one page</h2>
+          <p class="section-intro">A request enters through BB. The factory engine starts a LangGraph run. Each node either asks a specialist to think, lets Python perform a fixed check, or writes a record.</p>
+        </div>
+      </div>
+
+      <figure class="diagram-frame">
+        <figcaption class="diagram-caption"><span>Figure 01 — system boundary</span><span>Arrows show control</span></figcaption>
+        <div class="system-map">
+          <div class="map-row">
+            <div class="map-box"><span class="map-box-title">Request in BB</span><span class="map-box-note">A person describes the change and the result they expect.</span></div>
+            <div class="arrow" aria-hidden="true">→</div>
+            <div class="map-box"><span class="map-box-title">ACP agent</span><span class="map-box-note">The entry point that shows progress in the parent BB thread.</span></div>
+            <div class="arrow" aria-hidden="true">→</div>
+            <div class="map-box dark"><span class="map-box-title">Factory engine + LangGraph</span><span class="map-box-note">Creates the run, keeps its state, and selects the next allowed node.</span></div>
+          </div>
+          <div class="map-down" aria-hidden="true"><span>↓</span></div>
+          <div class="workers">
+            <div class="worker"><span class="worker-owner">BB thread</span><strong>Planner</strong><p>Reads the request and defines what “done” means.</p></div>
+            <div class="worker"><span class="worker-owner">BB thread</span><strong>Builder</strong><p>Changes allowed files and reports the exact file list.</p></div>
+            <div class="worker"><span class="worker-owner">Python process</span><strong>Quality checks</strong><p>Runs only commands already trusted in configuration.</p></div>
+            <div class="worker"><span class="worker-owner">BB thread</span><strong>Reviewer</strong><p>Checks the finished change without editing it.</p></div>
+          </div>
+          <div class="shared-base">
+            <div class="base-item"><b>Git worktree</b><span>The one shared working copy of the target project</span></div>
+            <div class="base-item"><b>Run artifacts</b><span>Plans, logs, reviews, and reports</span></div>
+            <div class="base-item"><b>SQLite memory</b><span>Checkpoints, status, events, and thread links</span></div>
+          </div>
+        </div>
+      </figure>
+
+      <div class="plain-summary">
+        <div class="summary-item"><b>BB makes work visible</b><p>The parent task and three specialist threads can be inspected separately.</p></div>
+        <div class="summary-item"><b>LangGraph controls sequence</b><p>Agents do not choose the route. Fixed Python rules choose it from saved state.</p></div>
+        <div class="summary-item"><b>Git is the source of truth</b><p>The factory checks real file changes, not only what a Builder claims it changed.</p></div>
+      </div>
+    </section>
+
+    <section id="graph">
+      <div class="section-heading">
+        <div class="section-number">02 / LangGraph</div>
+        <div>
+          <h2>Nodes are jobs. Edges are decisions.</h2>
+          <p class="section-intro">The graph is not an AI agent. It is a fixed route through small Python functions. State passes from one node to the next, and checkpoints remember the last completed point.</p>
+        </div>
+      </div>
+
+      <figure class="diagram-frame flow-wrap">
+        <figcaption class="diagram-caption"><span>Figure 02 — workflow topology</span><span>Main route + bounded loops</span></figcaption>
+        <div class="flow">
+          <div class="main-flow">
+            <div class="flow-step python"><span class="index">01 / PYTHON</span><strong>Bootstrap</strong><small>Repository root?<br>Worktree clean?</small></div>
+            <div class="flow-step agent"><span class="index">02 / PLANNER</span><strong>Plan</strong><small>Criteria, steps,<br>risks</small></div>
+            <div class="flow-step agent"><span class="index">03 / BUILDER</span><strong>Build</strong><small>Edit files,<br>report diff</small></div>
+            <div class="flow-step python"><span class="index">04 / PYTHON</span><strong>Test</strong><small>Run trusted<br>commands</small></div>
+            <div class="flow-step agent"><span class="index">05 / REVIEWER</span><strong>Review</strong><small>Approve or<br>request revision</small></div>
+            <div class="flow-step python"><span class="index">06 / PYTHON</span><strong>Finalize</strong><small>Accept and<br>write report</small></div>
+          </div>
+          <div class="branch-grid">
+            <div class="branch repair"><strong>Repair</strong><small>Failed test → same Builder → Test again. Default maximum: 2.</small></div>
+            <div class="branch revise"><strong>Revise</strong><small>Rejected review → same Builder → Test and Review again. Default maximum: 1.</small></div>
+            <div class="branch stop"><strong>Safe stop</strong><small>Error, blocked step, cancellation, timeout, or retry limit reached.</small></div>
+            <div class="return-line"><span>return to checked route</span></div>
+          </div>
+        </div>
+      </figure>
+
+      <div class="graph-key">
+        <div class="key-item"><b>State = the run’s shared note</b><p>It contains the request, file paths, counters, test result, review result, status, and current error.</p></div>
+        <div class="key-item"><b>Checkpoint = a saved place</b><p>LangGraph stores progress in SQLite. <code>resume</code> continues the same graph thread.</p></div>
+        <div class="key-item"><b>Conditional edge = a rule</b><p>For example: if tests pass, go to Review; otherwise use Repair only while its budget remains.</p></div>
+      </div>
+    </section>
+
+    <section id="worktree">
+      <div class="section-heading">
+        <div class="section-number">03 / Worktree</div>
+        <div>
+          <h2>One shared workbench, with strict permissions</h2>
+          <p class="section-intro">A Git worktree is one working copy of the target repository. Every specialist sees the same files, but only the Builder is allowed to change ordinary project files.</p>
+        </div>
+      </div>
+
+      <div class="worktree-layout">
+        <div class="worktree-board">
+          <div class="worktree-row"><div class="actor">Planner</div><div class="permission"><b>Reads the clean starting point</b><p>The factory takes a Git snapshot. Any edit is restored, including changes to the index.</p></div><div class="access read">Read only</div></div>
+          <div class="worktree-row"><div class="actor">Builder</div><div class="permission"><b>Changes allowed project files</b><p>Protected paths are restored. The reported list must exactly match the real Git diff.</p></div><div class="access write">May write</div></div>
+          <div class="worktree-row"><div class="actor">Tests</div><div class="permission"><b>Run fixed quality commands</b><p>Commands come from <code>.factory/factory.yaml</code>, never from an agent message.</p></div><div class="access exec">Execute</div></div>
+          <div class="worktree-row"><div class="actor">Reviewer</div><div class="permission"><b>Inspects the verified change</b><p>The same read-only snapshot rule prevents review from quietly changing the result.</p></div><div class="access read">Read only</div></div>
+        </div>
+        <aside class="worktree-notes">
+          <div class="note-block"><h3>Starts clean</h3><p>Bootstrap refuses to begin if the repository already has changed or untracked files.</p></div>
+          <div class="note-block"><h3>Protected paths</h3><p>Policy can protect files such as <code>.factory/factory.yaml</code>, <code>.bb/</code>, and deployment workflows.</p></div>
+          <div class="note-block"><h3>Ends inspectable</h3><p>The factory leaves the resulting worktree in place. It does not commit or publish it.</p></div>
+        </aside>
+      </div>
+      <div class="truth-strip"><strong>Important distinction:</strong> the factory coordinates work inside a target project’s worktree. It does not create a separate copy for each specialist; the permission policy makes one shared copy safe.</div>
+    </section>
+
+    <section id="memory">
+      <div class="section-heading">
+        <div class="section-number">04 / Memory</div>
+        <div>
+          <h2>Human records beside machine memory</h2>
+          <p class="section-intro">The run produces readable files for inspection and durable database records for recovery. Both use the same run ID.</p>
+        </div>
+      </div>
+
+      <div class="memory-grid">
+        <article class="memory-column">
+          <span class="memory-label">Inside the target worktree</span>
+          <h3><code>.factory/runs/&lt;run-id&gt;/</code></h3>
+          <p>Evidence a person can open and understand.</p>
+          <ul><li>Original request and validated plan</li><li>Builder’s structured reports</li><li>Changed-file list from Git</li><li>Test logs and review attempts</li><li>Final report and run summary</li></ul>
+        </article>
+        <article class="memory-column">
+          <span class="memory-label">Inside BB thread storage</span>
+          <h3><code>factory/checkpoints.sqlite</code></h3>
+          <p>Durable state the workflow uses to recover.</p>
+          <ul><li>LangGraph checkpoints</li><li>Run status and ordered events</li><li>Planner, Builder, and Reviewer thread IDs</li><li>Spawn-intent ledger for crash recovery</li><li>Active child thread or test process</li></ul>
+        </article>
+      </div>
+
+      <table class="safety-table">
+        <tbody>
+          <tr><th>Agent output</th><td>Must match strict Pydantic JSON contracts. One correction attempt is allowed in the same thread.</td></tr>
+          <tr><th>Retry loops</th><td>Repair and revision limits are configuration values, so the graph cannot loop forever.</td></tr>
+          <tr><th>Cancellation</th><td>Status is saved first; then the active BB child or whole test process group is stopped.</td></tr>
+          <tr><th>Publishing boundary</th><td>No agent-proposed command is executed. Agent-created commits and ref changes are restored, full agent permissions are rejected, and direct shell or Git quality commands are invalid. Operator-reviewed quality programs remain a verification-only trust boundary.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="code">
+      <div class="section-heading">
+        <div class="section-number">05 / Code map</div>
+        <div>
+          <h2>The repository follows the same separation</h2>
+          <p class="section-intro">The code is split by responsibility: entry points, control, node work, safety, and storage. The center of the system is small: <code>engine.py</code> runs the graph defined in <code>graph.py</code>.</p>
+        </div>
+      </div>
+
+      <div class="code-layout">
+        <pre class="file-tree" aria-label="Simplified repository tree">software-engineering-harness/
+├── src/software_factory/
+│   ├── acp_agent.py
+│   ├── cli.py
+│   ├── engine.py
+│   ├── graph.py
+│   ├── workflow_nodes.py
+│   ├── runtime.py
+│   ├── bb/
+│   ├── contracts/
+│   ├── git.py
+│   ├── worktree_policy.py
+│   ├── persistence.py
+│   └── artifacts.py
+├── tests/
+├── examples/demo-target/
+└── docs/</pre>
+
+        <div class="layers">
+          <div class="layer"><div class="layer-number">01</div><div class="layer-name">Entry points</div><div class="layer-copy"><p>Receive work from BB or the command line and show progress.</p><code>acp_agent.py · cli.py</code></div></div>
+          <div class="layer"><div class="layer-number">02</div><div class="layer-name">Control</div><div class="layer-copy"><p>Create, resume, time out, or cancel runs; define the nodes and routing rules.</p><code>engine.py · graph.py · state.py</code></div></div>
+          <div class="layer"><div class="layer-number">03</div><div class="layer-name">Node work</div><div class="layer-copy"><p>Implement every phase, talk to BB specialists, validate responses, and run checks.</p><code>workflow_nodes.py · runtime.py · bb/ · prompts.py</code></div></div>
+          <div class="layer"><div class="layer-number">04</div><div class="layer-name">Safety seam</div><div class="layer-copy"><p>Compare real Git changes, restore forbidden edits, and enforce exact handoff shapes.</p><code>git.py · worktree_policy.py · contracts/ · config.py</code></div></div>
+          <div class="layer"><div class="layer-number">05</div><div class="layer-name">Memory</div><div class="layer-copy"><p>Store checkpoints, thread links, events, artifacts, logs, and final reports.</p><code>persistence.py · artifacts.py · events.py · reporting.py</code></div></div>
+          <div class="layer"><div class="layer-number">06</div><div class="layer-name">Verification</div><div class="layer-copy"><p>Cover clean success, retries, routing limits, rollback, cancellation, and crash recovery.</p><code>tests/unit/ · tests/integration/</code></div></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="final-line">
+      <div class="section-number">In one line</div>
+      <p>BB shows the team. LangGraph controls the route. Python enforces the rules. Git holds the work. SQLite remembers the run.</p>
+    </div>
+  </main>
+
+  <footer>
+    <div class="page">Architecture read from the current implementation in <code>src/software_factory</code>. Operational setup remains in <code>docs/macos-runbook.md</code>.</div>
+  </footer>
+</body>
+</html>
