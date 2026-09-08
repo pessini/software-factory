@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
+from software_factory.artifacts import ArtifactIntegrityError
 from software_factory.contracts import BuildEnvelope, PlanEnvelope, ReviewEnvelope
-from software_factory.git import changed_files, repository_root
+from software_factory.git import capture_snapshot, changed_files, repository_root
 from software_factory.prompts import (
     builder_prompt,
     planner_prompt,
@@ -15,7 +16,7 @@ from software_factory.prompts import (
 from software_factory.reporting import final_report, plan_markdown, review_findings, run_summary
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
 from software_factory.state import FactoryState
-from software_factory.worktree_policy import WorktreePolicy
+from software_factory.worktree_policy import WorktreePolicyError
 
 
 class WorkflowNodes:
@@ -23,9 +24,7 @@ class WorkflowNodes:
 
     def __init__(self, runtime: FactoryRuntime) -> None:
         self.runtime = runtime
-        self.worktree = WorktreePolicy(
-            runtime.workspace, runtime.config.safety.protected_paths
-        )
+        self.worktree = runtime.worktree
 
     async def bootstrap(self, state: FactoryState) -> FactoryState:
         runtime = self.runtime
@@ -37,6 +36,25 @@ class WorkflowNodes:
             baseline = await changed_files(runtime.workspace)
             if baseline:
                 raise ValueError(f"worktree must be clean before a run: {', '.join(baseline)}")
+            snapshot = await capture_snapshot(runtime.workspace)
+            runtime.artifacts.write_json(
+                "protection.json",
+                {
+                    "version": 2,
+                    "starting_head": snapshot.head,
+                    "starting_head_ref": snapshot.head_ref,
+                    "starting_refs": snapshot.refs,
+                    "workspace": str(runtime.workspace),
+                    "starting_files": sorted(snapshot.worktree),
+                    "repository_state": await self.worktree.repository_baseline(),
+                    "allowed_changes": "Builder: non-ignored application and test files; no Git index or reference changes",
+                    "protected_paths": self.worktree.protected_paths,
+                    "read_only_scope": "all tracked, untracked and ignored files",
+                    "violation_action": "stop and preserve the workspace for inspection",
+                },
+            )
+            runtime.artifacts.write_json("config.json", runtime.config)
+            await runtime.bb.check_protection(runtime.artifacts.root)
             runtime.artifacts.write_text("request.md", state["request"].rstrip() + "\n")
             await runtime.store.set_status(runtime.run_id, "running")
             await runtime.emit("bootstrap", "completed", "repository and policy validated")
@@ -49,14 +67,14 @@ class WorkflowNodes:
         runtime = self.runtime
         await runtime.emit("plan", "started", "Planner analyzing request")
         try:
-            async with self.worktree.read_only("Planner"):
+            async with self.worktree.read_only("Planner") as check_workspace:
                 thread_id, output = await runtime.get_or_spawn(
                     "planner",
                     planner_prompt(runtime.run_id, state["request"], runtime.workspace),
                     runtime.config.agents.planner,
                 )
                 envelope = await runtime.parse_with_correction(
-                    "planner", thread_id, output, PlanEnvelope
+                    "planner", thread_id, output, PlanEnvelope, check_workspace=check_workspace
                 )
                 if envelope.status == "blocked" or not envelope.acceptance_criteria:
                     raise ValueError(envelope.summary or "Planner blocked")
@@ -65,8 +83,8 @@ class WorkflowNodes:
             await runtime.emit("plan", "completed", "plan and acceptance criteria validated")
             return {
                 "planner_thread_id": thread_id,
-                "plan_json_path": str(json_path.relative_to(runtime.workspace)),
-                "plan_markdown_path": str(markdown_path.relative_to(runtime.workspace)),
+                "plan_json_path": str(json_path),
+                "plan_markdown_path": str(markdown_path),
                 "error": None,
             }
         except FactoryCancelled as exc:
@@ -88,7 +106,7 @@ class WorkflowNodes:
             await runtime.emit("build", "completed", f"Builder changed {len(actual)} file(s)")
             return {
                 "builder_thread_id": thread_id,
-                "build_report_path": str(report.relative_to(runtime.workspace)),
+                "build_report_path": str(report),
                 "changed_files": actual,
                 "error": None,
             }
@@ -114,12 +132,12 @@ class WorkflowNodes:
                 "completed" if passed else "failed",
                 "quality commands passed" if passed else "quality commands failed",
                 attempt=attempt,
-                metadata={"result_path": str(path.relative_to(runtime.workspace))},
+                metadata={"result_path": str(path)},
             )
             return {
                 "test_attempt_count": attempt,
                 "test_passed": passed,
-                "test_result_path": str(path.relative_to(runtime.workspace)),
+                "test_result_path": str(path),
                 "error": None if passed else "configured quality commands failed",
             }
         except FactoryCancelled as exc:
@@ -143,8 +161,9 @@ class WorkflowNodes:
             attempt=repair_count,
         )
         try:
-            result_path = runtime.workspace / state["test_result_path"]
-            result = json.loads(result_path.read_text(encoding="utf-8"))
+            result = json.loads(
+                runtime.artifacts.read_text(f"tests/attempt-{state['test_attempt_count']:02d}.json")
+            )
             logs = [item["log_path"] for item in result["commands"]]
             thread_id, envelope, actual = await self._builder_handoff(
                 repair_prompt(runtime.run_id, state["test_attempt_count"], logs),
@@ -174,7 +193,7 @@ class WorkflowNodes:
             "review", "started", "Reviewer assessing verified changes", attempt=attempt
         )
         try:
-            async with self.worktree.read_only("Reviewer"):
+            async with self.worktree.read_only("Reviewer") as check_workspace:
                 prompt = reviewer_prompt(
                     runtime.run_id,
                     state["request"],
@@ -190,7 +209,7 @@ class WorkflowNodes:
                     tell_existing=existing is not None,
                 )
                 envelope = await runtime.parse_with_correction(
-                    "reviewer", thread_id, output, ReviewEnvelope
+                    "reviewer", thread_id, output, ReviewEnvelope, check_workspace=check_workspace
                 )
             path = runtime.artifacts.write_json(f"review/attempt-{attempt:02d}.json", envelope)
             await runtime.emit(
@@ -203,7 +222,7 @@ class WorkflowNodes:
                 "reviewer_thread_id": thread_id,
                 "review_attempt_count": attempt,
                 "review_approved": envelope.approved,
-                "review_path": str(path.relative_to(runtime.workspace)),
+                "review_path": str(path),
                 "error": None if envelope.approved else review_findings(envelope),
             }
         except FactoryCancelled as exc:
@@ -220,7 +239,9 @@ class WorkflowNodes:
         )
         try:
             review = ReviewEnvelope.model_validate_json(
-                (runtime.workspace / state["review_path"]).read_text(encoding="utf-8")
+                runtime.artifacts.read_text(
+                    f"review/attempt-{state['review_attempt_count']:02d}.json"
+                )
             )
             thread_id, envelope, actual = await self._builder_handoff(
                 revision_prompt(runtime.run_id, review.blocking_findings),
@@ -244,6 +265,10 @@ class WorkflowNodes:
 
     async def finalize(self, state: FactoryState) -> FactoryState:
         runtime = self.runtime
+        try:
+            await runtime.verify_repository()
+        except (ArtifactIntegrityError, WorktreePolicyError) as exc:
+            return await self.failed({**state, "status": "blocked", "error": str(exc)})
         report = final_report(state, "ACCEPTED")
         path = runtime.artifacts.write_text("final-report.md", report)
         runtime.artifacts.write_json("run-summary.json", run_summary(state, "accepted"))
@@ -256,7 +281,7 @@ class WorkflowNodes:
         await runtime.emit("finalize", "completed", "factory run accepted")
         return {
             "status": "accepted",
-            "final_report_path": str(path.relative_to(runtime.workspace)),
+            "final_report_path": str(path),
             "error": None,
         }
 
@@ -273,15 +298,20 @@ class WorkflowNodes:
             outcome = "FAILED"
             status = "failed"
         report = final_report(state, outcome)
-        path = runtime.artifacts.write_text("final-report.md", report)
-        runtime.artifacts.write_json("run-summary.json", run_summary(state, status))
+        path = None
+        try:
+            path = runtime.artifacts.write_text("final-report.md", report)
+            runtime.artifacts.write_json("run-summary.json", run_summary(state, status))
+        except ArtifactIntegrityError:
+            # Preserve damaged evidence. The controller event log records the failure.
+            pass
         await runtime.store.set_status(runtime.run_id, status, state.get("error"))
         await runtime.emit(
             "failed",
             "cancelled" if status == "cancelled" else "failed",
             state.get("error") or outcome,
         )
-        return {"status": status, "final_report_path": str(path.relative_to(runtime.workspace))}
+        return {"status": status, "final_report_path": str(path) if path else ""}
 
     async def _cancelled(self, node: str, exc: Exception) -> FactoryState:
         runtime = self.runtime
@@ -293,7 +323,7 @@ class WorkflowNodes:
         self, prompt: str, *, tell_existing: bool = False
     ) -> tuple[str, BuildEnvelope, list[str]]:
         runtime = self.runtime
-        async with self.worktree.protect_builder_changes():
+        async with self.worktree.protect_builder_changes() as check_workspace:
             thread_id, output = await runtime.get_or_spawn(
                 "builder",
                 prompt,
@@ -301,7 +331,7 @@ class WorkflowNodes:
                 tell_existing=tell_existing,
             )
             envelope = await runtime.parse_with_correction(
-                "builder", thread_id, output, BuildEnvelope
+                "builder", thread_id, output, BuildEnvelope, check_workspace=check_workspace
             )
             if envelope.status == "blocked":
                 detail = "; ".join(envelope.blockers) or envelope.summary

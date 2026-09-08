@@ -35,6 +35,13 @@ def run_doctor(workspace: Path, context: BBContext | None) -> list[Check]:
     )
     git_marker = workspace / ".git"
     checks.append(Check("Workspace", git_marker.exists(), str(workspace)))
+    checks.append(
+        Check(
+            "Child isolation",
+            False,
+            "Live BB execution is disabled until an adapter enforces read-only roles and controller storage protection",
+        )
+    )
     try:
         config = load_config(workspace)
         detail = f"v{config.version}, {len(config.quality.commands)} quality command(s)"

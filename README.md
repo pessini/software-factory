@@ -5,6 +5,11 @@ workflow to [BB](https://github.com/get-bb/bb). LangGraph owns routing and durab
 state; BB owns visible Planner, Builder, and Reviewer threads; Python owns all
 quality gates.
 
+Live BB execution is currently disabled because the adapter cannot enforce
+read-only roles and controller storage protection. The workflow is available for
+automated tests. See [the protection policy](docs/repository-protection.md) for the
+remaining requirement in issue #2.
+
 The MVP provides:
 
 - an ACP agent registered as **Software Factory** in BB;
@@ -14,7 +19,7 @@ The MVP provides:
 - a SQLite LangGraph checkpointer plus a durable spawn-intent ledger and
   deterministic BB-thread reconciliation that prevent duplicate children after
   process crashes;
-- strict Pydantic handoffs, protected-path enforcement, read-only-role rollback,
+- strict Pydantic handoffs, file and Git change detection, versioned evidence,
   trusted `argv` quality commands, bounded loops, and process-tree cancellation;
 - inspect, resume, cancel, repository-check, config-generation, and graph CLI
   operations with versioned run events and atomic artifacts.
@@ -53,6 +58,6 @@ software-factory cancel <run-id>
 ```
 
 The workflow never commits, pushes, merges, deploys, or runs an LLM-proposed
-command. It restores agent-created Git commits and ref changes before continuing.
+command. It stops on unexpected file, index, or reference changes and preserves the workspace for inspection.
 Operator-reviewed quality programs are outside that guarantee and must not publish
 or mutate repository metadata indirectly.

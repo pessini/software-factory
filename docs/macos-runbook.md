@@ -1,6 +1,8 @@
 # macOS runbook
 
-This is the supported first-platform path for the MVP. The repository targets
+This is the first-platform setup path for the MVP. Live BB execution is currently
+disabled until an adapter provides tested read-only roles and controller storage
+protection. `doctor` reports this limit. See [the protection policy](repository-protection.md). The repository targets
 Python 3.14 and locks the newest compatible Python libraries with `uv`.
 
 ## 1. Check existing prerequisites
@@ -130,7 +132,7 @@ The parent thread shows graph phases and tool activity. Planner, Builder, and
 Reviewer appear as visible child threads in the same managed worktree. The
 final result is one of `accepted`, `failed`, `blocked`, or `cancelled`.
 
-Artifacts are written to `.factory/runs/<run-id>/`; durable checkpoints and the
+Version-2 artifacts are written to `$BB_THREAD_STORAGE/factory/artifacts/<run-id>/`; durable checkpoints and the
 side-effect ledger are written to
 `$BB_THREAD_STORAGE/factory/checkpoints.sqlite`. No LangSmith account is used.
 
@@ -155,9 +157,9 @@ for inspection.
 ## Current verification boundary
 
 Automated tests cover clean success, deterministic repair, bounded routing,
-invalid-envelope correction, failure-path protected/read-only rollback with Git
-index, ignored-file, HEAD, and ref restoration, in-process and cross-process
+invalid-envelope correction, preservation of unexpected file/index/reference
+changes, ignored-file checks without Git object writes, evidence integrity, in-process and cross-process
 cancellation (including spawn races), and crash-after-spawn reconciliation. A
-real-provider smoke run requires a running
+real-provider smoke run first requires the missing isolation adapter, then a running
 BB server and the user's authenticated provider; the factory deliberately does
 not manage those credentials.

@@ -135,7 +135,7 @@ def inspect_command(run_id: str) -> None:
             "run": record,
             "children": await store.list_children(run_id),
             "events": await store.events(run_id),
-            "artifacts": str(Path(str(record["workspace"])) / ".factory" / "runs" / run_id),
+            "artifacts": str(context.thread_storage / "factory" / "artifacts" / run_id),
         }
 
     console.print_json(json.dumps(asyncio.run(inspect()), default=str))

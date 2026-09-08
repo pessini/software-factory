@@ -4,7 +4,9 @@ import asyncio
 import json
 import os
 import signal
+import tempfile
 import time
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,7 @@ from software_factory.bb import BBClientProtocol, BBContext
 from software_factory.config import AgentConfig, FactoryConfig, QualityCommand
 from software_factory.events import EventSink, FactoryEvent, null_event_sink
 from software_factory.persistence import RunStore
+from software_factory.worktree_policy import WorktreePolicy
 
 
 class FactoryCancelled(RuntimeError):
@@ -45,6 +48,13 @@ class FactoryRuntime:
         self.artifacts = artifacts
         self.event_sink = event_sink
         self.cancel_event = cancel_event or asyncio.Event()
+        self.worktree = WorktreePolicy(workspace, config.safety.protected_paths)
+
+    async def verify_repository(self) -> None:
+        self.artifacts.verify()
+        if self.artifacts.path("protection.json").exists():
+            record = json.loads(self.artifacts.read_text("protection.json"))
+            await self.worktree.verify_baseline(record["repository_state"])
 
     async def emit(
         self,
@@ -77,6 +87,8 @@ class FactoryRuntime:
     async def get_or_spawn(
         self, role: str, prompt: str, agent: AgentConfig, *, tell_existing: bool = False
     ) -> tuple[str, str]:
+        await self.verify_repository()
+        await self.bb.check_protection(self.artifacts.root)
         await self.check_cancelled()
         thread_id = await self.store.child(self.run_id, role)
         if thread_id is None:
@@ -106,14 +118,15 @@ class FactoryRuntime:
         await self.check_cancelled()
         output = await self.bb.output(thread_id)
         await self.store.clear_active_child(self.run_id)
+        self.artifacts.verify()
         return thread_id, output
 
     async def run_quality_command(self, command: QualityCommand, attempt: int) -> dict[str, Any]:
         await self.check_cancelled()
         relative = f"tests/attempt-{attempt:02d}-{command.name}.log"
-        log_path = self.artifacts.path(relative)
+        await self.verify_repository()
         started = time.monotonic()
-        with log_path.open("wb") as log:
+        with tempfile.TemporaryFile() as log:
             process = await asyncio.create_subprocess_exec(
                 *command.argv,
                 cwd=self.workspace,
@@ -137,9 +150,11 @@ class FactoryRuntime:
             cancel_task.cancel()
             await asyncio.gather(cancel_task, return_exceptions=True)
             await self.store.set_process_group(self.run_id, None)
+            log.seek(0)
+            content = log.read().decode("utf-8", errors="replace")
         await self.check_cancelled()
         duration = time.monotonic() - started
-        content = log_path.read_text(encoding="utf-8", errors="replace")
+        log_path = self.artifacts.write_text(relative, content)
         result = {
             "name": command.name,
             "argv": command.argv,
@@ -147,7 +162,7 @@ class FactoryRuntime:
             "duration_seconds": round(duration, 3),
             "timed_out": timed_out,
             "cancelled": cancelled,
-            "log_path": str(log_path.relative_to(self.workspace)),
+            "log_path": str(log_path),
             "output_tail": content[-8000:],
         }
         if cancelled:
@@ -160,10 +175,15 @@ class FactoryRuntime:
         thread_id: str,
         text: str,
         model: type[EnvelopeT],
+        *,
+        check_workspace: Callable[[], Awaitable[None]],
     ) -> EnvelopeT:
+        await check_workspace()
         try:
             return parse_envelope(text, model)
         except ValueError as first_error:
+            await self.verify_repository()
+            await self.bb.check_protection(self.artifacts.root)
             await self.check_cancelled()
             correction = (
                 f"Your final output failed validation: {first_error}. "
@@ -176,6 +196,8 @@ class FactoryRuntime:
             await self.check_cancelled()
             corrected = await self.bb.output(thread_id)
             await self.store.clear_active_child(self.run_id)
+            self.artifacts.verify()
+            await check_workspace()
             return parse_envelope(corrected, model)
 
     async def _activate_child(self, role: str, thread_id: str) -> None:

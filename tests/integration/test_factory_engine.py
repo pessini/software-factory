@@ -144,7 +144,9 @@ async def test_spawn_is_durable_before_wait(tmp_path: Path, factory_yaml: str) -
         config=load_config(tmp_path),
         bb=bb,
         store=store,
-        artifacts=ArtifactStore(tmp_path, "fct_crash"),
+        artifacts=ArtifactStore(
+            tmp_path, "fct_crash", storage_root=ctx.thread_storage / "factory" / "artifacts"
+        ),
     )
     with pytest.raises(RuntimeError, match="simulated process crash"):
         await runtime.get_or_spawn("planner", "prompt", runtime.config.agents.planner)
@@ -175,14 +177,14 @@ async def test_spawn_is_reconciled_when_process_crashes_before_id_is_saved(
         config=load_config(tmp_path),
         bb=bb,
         store=store,
-        artifacts=ArtifactStore(tmp_path, "fct_spawn_window"),
+        artifacts=ArtifactStore(
+            tmp_path, "fct_spawn_window", storage_root=ctx.thread_storage / "factory" / "artifacts"
+        ),
     )
     with pytest.raises(RuntimeError, match="simulated crash after remote spawn"):
         await runtime.get_or_spawn("planner", "prompt", runtime.config.agents.planner)
 
-    thread_id, _ = await runtime.get_or_spawn(
-        "planner", "prompt", runtime.config.agents.planner
-    )
+    thread_id, _ = await runtime.get_or_spawn("planner", "prompt", runtime.config.agents.planner)
 
     assert thread_id == "thread-planner"
     assert bb.spawn_counts["planner"] == 1
@@ -220,7 +222,7 @@ async def test_graph_resume_reattaches_after_process_interruption(
 
 
 @pytest.mark.asyncio
-async def test_protected_change_is_restored_and_fails_run(
+async def test_protected_change_is_preserved_and_fails_run(
     tmp_path: Path, factory_yaml: str
 ) -> None:
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
@@ -252,7 +254,7 @@ async def test_protected_change_is_restored_and_fails_run(
     result = await engine.run("Write the correct answer", "fct_protected")
     assert result["status"] == "blocked"
     assert "protected paths" in (result["error"] or "")
-    assert ".factory/factory.yaml" not in await changed_files(tmp_path)
+    assert ".factory/factory.yaml" in await changed_files(tmp_path)
 
 
 @pytest.mark.asyncio
@@ -280,8 +282,15 @@ async def test_planner_blocked_status_is_terminal(tmp_path: Path, factory_yaml: 
 
 @pytest.mark.asyncio
 async def test_resume_honors_persisted_run_deadline(tmp_path: Path, factory_yaml: str) -> None:
+    from software_factory.artifacts import ArtifactStore
+    from software_factory.config import load_config
+
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
     ctx = context(tmp_path)
+    artifacts = ArtifactStore(
+        tmp_path, "fct_expired", storage_root=ctx.thread_storage / "factory" / "artifacts"
+    )
+    artifacts.write_json("config.json", load_config(tmp_path))
     store = RunStore(database(tmp_path))
     await store.initialize()
     await store.create_run(

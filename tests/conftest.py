@@ -62,6 +62,10 @@ safety:
 
 
 class FakeBB:
+    async def check_protection(self, controller_root: Path) -> None:
+        # In-process scripted test double, not an isolated or supported live provider.
+        del controller_root
+
     def __init__(self, workspace: Path, scripts: dict[str, list[dict[str, Any]]]) -> None:
         self.workspace = workspace
         self.scripts = {role: deque(items) for role, items in scripts.items()}
@@ -73,9 +77,7 @@ class FakeBB:
         self.spawn_error_after_create: BaseException | None = None
         self.remote_threads: dict[tuple[str, str], str] = {}
 
-    async def spawn_child(
-        self, role: str, prompt: str, agent: AgentConfig, spawn_key: str
-    ) -> str:
+    async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
         del prompt, agent
         self.spawn_counts[role] += 1
         thread_id = f"thread-{role}"

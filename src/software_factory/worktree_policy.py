@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
-from software_factory.git import (
-    WorkspaceSnapshot,
-    capture_paths,
-    capture_snapshot,
-    changed_files,
-    protected_changes,
-    restore_path_snapshot,
-    restore_paths,
-    restore_repository_metadata,
-    restore_snapshot,
-)
+from software_factory.git import capture_paths, capture_snapshot, changed_files, protected_changes
 
 
 class WorktreePolicyError(RuntimeError):
@@ -22,56 +14,90 @@ class WorktreePolicyError(RuntimeError):
 
 
 class WorktreePolicy:
-    """Enforce role-specific mutation rules at the Git worktree seam."""
+    """Detect unexpected changes. Never infer ownership or restore user work."""
 
     def __init__(self, workspace: Path, protected_paths: list[str]) -> None:
         self.workspace = workspace
-        self.protected_paths = protected_paths
+        self.protected_paths = sorted(set([".factory/", ".bb/", *protected_paths]))
 
     @asynccontextmanager
-    async def read_only(self, role: str) -> AsyncIterator[None]:
+    async def read_only(self, role: str) -> AsyncIterator[Callable[[], Awaitable[None]]]:
         before = await capture_snapshot(self.workspace, include_ignored=True)
+
+        async def check() -> None:
+            after = await capture_snapshot(self.workspace, include_ignored=True)
+            if after != before:
+                paths = sorted(
+                    path
+                    for path in before.worktree.keys() | after.worktree.keys()
+                    if before.worktree.get(path) != after.worktree.get(path)
+                )
+                raise WorktreePolicyError(
+                    f"{role} read-only check found changed files or Git metadata; "
+                    "workspace preserved for inspection: " + ", ".join(paths)
+                )
+
         try:
-            yield
-        except BaseException:
-            await self._restore_read_only_changes(before)
-            raise
-        if await self._restore_read_only_changes(before):
-            raise WorktreePolicyError(
-                f"{role} modified the worktree despite its read-only contract"
-            )
+            yield check
+        finally:
+            await check()
 
     @asynccontextmanager
-    async def protect_builder_changes(self) -> AsyncIterator[None]:
-        repository_before = await capture_snapshot(self.workspace)
+    async def protect_builder_changes(self) -> AsyncIterator[Callable[[], Awaitable[None]]]:
+        before = await capture_snapshot(self.workspace)
         protected_before = capture_paths(self.workspace, self.protected_paths)
-        try:
-            yield
-        except BaseException:
-            await restore_repository_metadata(self.workspace, repository_before)
-            restore_path_snapshot(
-                self.workspace, self.protected_paths, protected_before
+
+        async def check() -> None:
+            after = await capture_snapshot(self.workspace)
+            metadata_changed = (before.head, before.head_ref, before.refs, before.index) != (
+                after.head,
+                after.head_ref,
+                after.refs,
+                after.index,
             )
-            await self._restore_protected_changes()
-            raise
-        metadata_changed = await restore_repository_metadata(self.workspace, repository_before)
-        protected_snapshot_changed = restore_path_snapshot(
-            self.workspace, self.protected_paths, protected_before
-        )
-        violations = await self._restore_protected_changes()
-        if violations or metadata_changed or protected_snapshot_changed:
-            details = violations or self.protected_paths
+            current = capture_paths(self.workspace, self.protected_paths)
+            violations = sorted(
+                path
+                for path in protected_before.keys() | current.keys()
+                if protected_before.get(path) != current.get(path)
+            )
+            if violations or metadata_changed:
+                raise WorktreePolicyError(
+                    "Builder check found changed protected paths or Git metadata; "
+                    "workspace preserved for inspection: " + ", ".join(violations)
+                )
+
+        try:
+            yield check
+        finally:
+            await check()
+
+    async def repository_baseline(self) -> dict[str, Any]:
+        snapshot = await capture_snapshot(self.workspace)
+        return {
+            "head": snapshot.head,
+            "head_ref": snapshot.head_ref,
+            "refs": snapshot.refs,
+            "index": snapshot.index.hex(),
+            "protected_files": {
+                path: asdict(entry)
+                for path, entry in capture_paths(self.workspace, self.protected_paths).items()
+            },
+        }
+
+    async def verify_baseline(self, expected: dict[str, Any]) -> None:
+        if await self.repository_baseline() != expected:
             raise WorktreePolicyError(
-                "Builder changed protected paths or Git metadata; changes restored: "
-                + ", ".join(details)
+                "Repository references, index, or protected paths changed since bootstrap; "
+                "workspace preserved for inspection"
             )
 
     async def validate_builder_report(self, reported: list[str]) -> list[str]:
         actual = await changed_files(self.workspace)
-        violations = await self._restore_protected_changes(actual)
+        violations = protected_changes(actual, self.protected_paths)
         if violations:
             raise WorktreePolicyError(
-                f"Builder changed protected paths; changes restored: {', '.join(violations)}"
+                f"Builder changed protected paths; workspace preserved: {', '.join(violations)}"
             )
         if set(reported) != set(actual):
             raise WorktreePolicyError(
@@ -81,21 +107,3 @@ class WorktreePolicy:
         if not actual:
             raise WorktreePolicyError("Builder completed without changing repository files")
         return actual
-
-    async def _restore_read_only_changes(self, before: WorkspaceSnapshot) -> bool:
-        if (
-            await capture_snapshot(
-                self.workspace, include_ignored=True, store_ignored=False
-            )
-            == before
-        ):
-            return False
-        await restore_snapshot(self.workspace, before)
-        return True
-
-    async def _restore_protected_changes(self, actual: list[str] | None = None) -> list[str]:
-        paths = actual if actual is not None else await changed_files(self.workspace)
-        violations = protected_changes(paths, self.protected_paths)
-        if violations:
-            await restore_paths(self.workspace, violations)
-        return violations

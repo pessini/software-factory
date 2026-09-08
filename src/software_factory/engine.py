@@ -13,7 +13,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from software_factory.artifacts import ArtifactStore
 from software_factory.bb import BBClient, BBClientProtocol, BBContext
-from software_factory.config import load_config
+from software_factory.config import FactoryConfig, load_config
 from software_factory.events import EventSink, null_event_sink
 from software_factory.graph import build_graph
 from software_factory.persistence import RunStore
@@ -95,7 +95,7 @@ class FactoryEngine:
             raise ValueError(f"unknown run ID: {run_id}")
         if Path(str(record["workspace"])).resolve() != self.workspace:
             raise ValueError("run belongs to a different workspace")
-        runtime = self._runtime(run_id)
+        runtime = self._runtime(run_id, create=False)
         raw_deadline = record.get("deadline_at")
         if isinstance(raw_deadline, (int, float)):
             deadline_at = float(raw_deadline)
@@ -131,15 +131,26 @@ class FactoryEngine:
             result = await graph.ainvoke(value, {"configurable": {"thread_id": thread_id}})
         return cast(FactoryState, result)
 
-    def _runtime(self, run_id: str) -> FactoryRuntime:
+    def _runtime(self, run_id: str, *, create: bool = True) -> FactoryRuntime:
+        artifacts = ArtifactStore(
+            self.workspace,
+            run_id,
+            storage_root=self.context.thread_storage / "factory" / "artifacts",
+            create=create,
+        )
+        config = (
+            load_config(self.workspace)
+            if create
+            else FactoryConfig.model_validate_json(artifacts.read_text("config.json"))
+        )
         return FactoryRuntime(
             run_id=run_id,
             workspace=self.workspace,
             context=self.context,
-            config=load_config(self.workspace),
+            config=config,
             bb=self.bb,
             store=self.store,
-            artifacts=ArtifactStore(self.workspace, run_id),
+            artifacts=artifacts,
             event_sink=self.event_sink,
             cancel_event=self.cancel_event,
         )

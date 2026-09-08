@@ -18,6 +18,7 @@ class BBError(RuntimeError):
 
 
 class BBClientProtocol(Protocol):
+    async def check_protection(self, controller_root: Path) -> None: ...
     async def spawn_child(
         self, role: str, prompt: str, agent: AgentConfig, spawn_key: str
     ) -> str: ...
@@ -33,6 +34,14 @@ class BBClient:
     context: BBContext
     workspace: Path
     executable: tuple[str, ...] = ("bb",)
+
+    async def check_protection(self, controller_root: Path) -> None:
+        raise BBError(
+            "BB execution is disabled: the current adapter cannot enforce read-only "
+            "Planner/Reviewer access or deny child writes to controller storage "
+            f"({controller_root}). BB auto and accept-edits modes allow workspace writes. "
+            "Use an adapter with tested isolation before starting a live run."
+        )
 
     @classmethod
     def from_context(cls, context: BBContext, workspace: Path) -> BBClient:
@@ -58,9 +67,7 @@ class BBClient:
         except json.JSONDecodeError as exc:
             raise BBError("BB command did not return JSON") from exc
 
-    async def spawn_child(
-        self, role: str, prompt: str, agent: AgentConfig, spawn_key: str
-    ) -> str:
+    async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
         args = [
             "thread",
             "spawn",
