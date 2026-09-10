@@ -79,7 +79,10 @@ class BBClient:
             raise BBError("BB provider list is invalid", "protocol")
         catalog: list[ModelOption] = []
         for provider in providers:
-            if not provider.get("available") or provider["id"] == "acp-software-factory":
+            if not provider.get("available") or provider["id"] in {
+                "acp-software-factory",
+                "acp-software-factory-worker",
+            }:
                 continue
             modes = provider["capabilities"]["permissionModes"]
             if not {"auto", "accept-edits"}.intersection(modes):
@@ -129,6 +132,12 @@ class BBClient:
 
     @classmethod
     def from_context(cls, context: BBContext, workspace: Path) -> BBClient:
+        if os.environ.get("FACTORY_PROTECTED_WORKER") == "1":
+            from software_factory.bb.protected import ProtectedBBClient
+
+            return ProtectedBBClient(
+                context=context, workspace=workspace, executable=resolve_bb_command()
+            )
         return cls(context=context, workspace=workspace, executable=resolve_bb_command())
 
     async def _run(self, *args: str) -> Any:

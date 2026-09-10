@@ -40,13 +40,6 @@ def run_doctor(
     )
     git_marker = workspace / ".git"
     checks.append(Check("Workspace", git_marker.exists(), str(workspace)))
-    checks.append(
-        Check(
-            "Child isolation",
-            False,
-            "Live BB execution is disabled until an adapter enforces read-only roles and controller storage protection",
-        )
-    )
     config = None
     try:
         config = load_config(workspace)
@@ -70,6 +63,9 @@ def run_doctor(
         checks.append(Check("Policy", False, str(exc)))
     if context is None:
         checks.append(
+            Check("Child isolation", False, "BB context is required to check worker protection")
+        )
+        checks.append(
             Check("BB context", False, "BB_THREAD_ID/PROJECT_ID/ENVIRONMENT_ID/STORAGE missing")
         )
     else:
@@ -87,6 +83,17 @@ def run_doctor(
         client = bb or BBClient.from_context(context, workspace)
 
         async def connection_checks() -> None:
+            try:
+                await client.check_protection(context.thread_storage / "factory/artifacts")
+                checks.append(
+                    Check(
+                        "Child isolation",
+                        True,
+                        "Protected worker prerequisites are available; live acceptance is a separate check",
+                    )
+                )
+            except Exception as exc:
+                checks.append(Check("Child isolation", False, str(exc)))
             try:
                 await client.validate_workspace(workspace)
                 checks.append(Check("BB connection and environment", True, context.environment_id))

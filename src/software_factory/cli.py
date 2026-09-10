@@ -165,6 +165,14 @@ def acp_command() -> None:
     asyncio.run(serve_acp())
 
 
+@app.command("worker-acp", hidden=True)
+def worker_acp_command() -> None:
+    """Serve a protected provider worker for a saved BB factory operation."""
+    from software_factory.worker import serve_worker
+
+    serve_worker(_required_context())
+
+
 def main() -> None:
     app()
 

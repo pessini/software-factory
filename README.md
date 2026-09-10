@@ -10,6 +10,11 @@ read-only roles and controller storage protection. The workflow is available for
 automated tests. See [the protection policy](docs/repository-protection.md) for the
 remaining requirement in issue #2.
 
+An [opt-in protected worker](docs/protected-worker.md) now has passing local
+container permission checks. Authenticated BB/provider acceptance is pending;
+the default remains disabled. See the [issues 1–4 review](docs/issues-1-4-review.md)
+for the remaining work and dependency order.
+
 See [run ownership and recovery](docs/run-recovery.md) for cancellation rules,
 operation records, process cleanup, saved-state compatibility, and the current
 BB execution-identity limitation.
