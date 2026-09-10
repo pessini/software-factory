@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 from collections import defaultdict, deque
 from pathlib import Path
@@ -8,7 +9,13 @@ from typing import Any
 
 import pytest
 
+from software_factory.bb.client import BBExecution, BBThreadState
 from software_factory.config import AgentConfig
+
+
+@pytest.fixture(autouse=True)
+def ownership_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FACTORY_OWNERSHIP_DIR", str(tmp_path.parent / f"{tmp_path.name}-ownership"))
 
 
 def run(command: list[str], cwd: Path) -> None:
@@ -62,6 +69,10 @@ safety:
 
 
 class FakeBB:
+    async def validate_workspace(self, workspace: Path) -> None:
+        if self.workspace.resolve() != workspace.resolve():
+            raise ValueError("BB environment does not point to the owned workspace")
+
     async def check_protection(self, controller_root: Path) -> None:
         # In-process scripted test double, not an isolated or supported live provider.
         del controller_root
@@ -76,13 +87,17 @@ class FakeBB:
         self.wait_error: BaseException | None = None
         self.spawn_error_after_create: BaseException | None = None
         self.remote_threads: dict[tuple[str, str], str] = {}
+        self.execution_ids: dict[str, str] = {}
+        self.operation_executions: dict[str, BBExecution] = {}
+        self.execution_count = 0
 
     async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
-        del prompt, agent
+        del agent
         self.spawn_counts[role] += 1
         thread_id = f"thread-{role}"
         self.thread_roles[thread_id] = role
         await self._advance(thread_id)
+        self._record_execution(thread_id, prompt)
         self.remote_threads[(role, spawn_key)] = thread_id
         if self.spawn_error_after_create is not None:
             error, self.spawn_error_after_create = self.spawn_error_after_create, None
@@ -101,12 +116,33 @@ class FakeBB:
     async def output(self, thread_id: str) -> str:
         return self.outputs[thread_id]
 
-    async def tell(self, thread_id: str, message: str) -> None:
-        del message
+    async def tell(self, thread_id: str, message: str) -> str:
         await self._advance(thread_id)
+        self._record_execution(thread_id, message)
+        return self.execution_ids[thread_id]
 
     async def stop(self, thread_id: str) -> None:
         self.stopped.append(thread_id)
+
+    async def inspect_thread(self, thread_id: str) -> BBThreadState:
+        return BBThreadState("stopped" if thread_id in self.stopped else "idle", True)
+
+    def _record_execution(self, thread_id: str, prompt: str) -> None:
+        self.execution_count += 1
+        execution_id = f"execution-{self.execution_count}"
+        self.execution_ids[thread_id] = execution_id
+        marker = re.search(r"Factory operation: (\S+)", prompt)
+        if marker:
+            self.operation_executions[marker[1]] = BBExecution(
+                execution_id, "completed", self.outputs[thread_id]
+            )
+
+    async def reconcile_operation(self, thread_id: str, operation_id: str) -> BBExecution | None:
+        return self.operation_executions.get(operation_id)
+
+    async def execution(self, thread_id: str, execution_id: str) -> BBExecution:
+        current = self.execution_ids[thread_id]
+        return BBExecution(current, "completed", self.outputs[thread_id])
 
     async def _advance(self, thread_id: str) -> None:
         role = self.thread_roles[thread_id]

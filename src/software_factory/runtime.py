@@ -2,22 +2,31 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import signal
 import tempfile
 import time
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ValidationError
 
-from software_factory.artifacts import ArtifactStore
-from software_factory.bb import BBClientProtocol, BBContext
+from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
+from software_factory.bb import BBClient, BBClientProtocol, BBContext
+from software_factory.bb.client import BBError, BBExecution, RecoveryNeeded, WaitingForInput
+from software_factory.cleanup import stop_owned_work
 from software_factory.config import AgentConfig, FactoryConfig, QualityCommand
 from software_factory.events import EventSink, FactoryEvent, null_event_sink
 from software_factory.persistence import RunStore
+from software_factory.processes import (
+    CleanupUncertain,
+    finish_process,
+    group_alive,
+    start_process,
+    stop_group,
+)
+from software_factory.reporting import final_report, run_summary
+from software_factory.state import FINAL_STATUSES, FactoryState
 from software_factory.worktree_policy import WorktreePolicy
 
 
@@ -44,6 +53,8 @@ class FactoryRuntime:
         self.context = context
         self.config = config
         self.bb = bb
+        if isinstance(bb, BBClient):
+            bb.store, bb.run_id = store, run_id
         self.store = store
         self.artifacts = artifacts
         self.event_sink = event_sink
@@ -80,76 +91,258 @@ class FactoryRuntime:
         if self.cancel_event.is_set():
             raise FactoryCancelled("factory run cancelled")
         record = await self.store.get_run(self.run_id)
-        if record is not None and record.get("status") == "cancelled":
+        if record is not None and (
+            record.get("stop_target") or record.get("status") == "cancelled"
+        ):
             self.cancel_event.set()
             raise FactoryCancelled(str(record.get("error") or "factory run cancelled"))
 
     async def get_or_spawn(
-        self, role: str, prompt: str, agent: AgentConfig, *, tell_existing: bool = False
+        self,
+        role: str,
+        prompt: str,
+        agent: AgentConfig,
+        *,
+        tell_existing: bool = False,
+        step: str | None = None,
+        attempt: int = 1,
+        operation_kind: str | None = None,
     ) -> tuple[str, str]:
         await self.verify_repository()
         await self.bb.check_protection(self.artifacts.root)
+        await self.bb.validate_workspace(self.workspace)
         await self.check_cancelled()
-        thread_id = await self.store.child(self.run_id, role)
+        step = step or role
+        kind = operation_kind or (
+            "create" if step in {role, "plan", "build", "review"} and attempt == 1 else "follow_up"
+        )
+        operation = await self.store.prepare_operation(
+            self.run_id,
+            step,
+            attempt,
+            kind,
+            prompt,
+            role=role,
+            timeout_seconds=self.config.limits.step_timeout_seconds,
+        )
+        operation_id = str(operation["operation_id"])
+        if operation["state"] == "completed":
+            return str(operation["thread_id"]), str(json.loads(operation["result_json"]))
+        if operation["state"] == "stopped":
+            raise RecoveryNeeded(f"operation was stopped and cannot be repeated: {operation_id}")
+        thread_id = operation["thread_id"] or await self.store.child(self.run_id, role)
+        spawn_key = await self.store.prepare_child_spawn(self.run_id, role)
         if thread_id is None:
-            spawn_key = await self.store.prepare_child_spawn(self.run_id, role)
-            thread_id = await self.bb.find_child(role, spawn_key)
-            reconciled = thread_id is not None
-            if thread_id is None:
-                thread_id = await self.bb.spawn_child(role, prompt, agent, spawn_key)
-            # This write is intentionally before wait/output: it is the side-effect checkpoint.
-            await self._activate_child(role, thread_id)
-            await self.emit(
-                role,
-                "info",
-                f"{'reconciled' if reconciled else 'spawned'} {role} BB thread",
-                metadata={"thread_id": thread_id, "spawn_key": spawn_key},
+            thread_id = await self._read_retry(
+                lambda: self.bb.find_child(role, spawn_key), operation
             )
-        elif tell_existing:
-            await self.bb.tell(thread_id, prompt)
-            await self._activate_child(role, thread_id)
-        else:
-            await self._activate_child(role, thread_id)
-            await self.emit(
-                role, "info", f"reattached to {role} BB thread", metadata={"thread_id": thread_id}
+        if operation["state"] == "prepared":
+            await self.check_cancelled()
+            await self.store.update_operation(
+                operation_id, state="dispatching", thread_id=thread_id, dispatch_count=1
+            )
+            tagged_prompt = prompt + f"\n\nFactory operation: {operation_id}\n"
+            try:
+                if thread_id is None:
+                    thread_id = await self._controlled(
+                        lambda: self.bb.spawn_child(role, tagged_prompt, agent, spawn_key),
+                        operation,
+                    )
+                elif kind != "create" or tell_existing:
+                    existing_thread: str = thread_id
+                    await self._activate_child(role, existing_thread)
+                    execution_id = await self._controlled(
+                        lambda: self.bb.tell(existing_thread, tagged_prompt), operation
+                    )
+                    operation["execution_id"] = execution_id
+                    await self.store.update_operation(operation_id, execution_id=execution_id)
+            except BBError as exc:
+                if exc.kind != "connection":
+                    raise
+                await self.emit(
+                    step,
+                    "info",
+                    "dispatch response was lost; reconciling the recorded request",
+                    attempt=attempt,
+                )
+                if thread_id is None:
+                    thread_id = await self._read_retry(
+                        lambda: self.bb.find_child(role, spawn_key), operation
+                    )
+                if thread_id is None:
+                    raise RecoveryNeeded(
+                        f"cannot establish whether dispatch ran: {operation_id}"
+                    ) from exc
+            await self.store.update_operation(operation_id, thread_id=thread_id)
+        elif thread_id is None:
+            raise RecoveryNeeded(f"cannot establish whether child creation ran: {operation_id}")
+        await self._activate_child(role, thread_id)
+        execution = await self._read_retry(
+            lambda: self.bb.reconcile_operation(thread_id, operation_id), operation
+        )
+        if execution is None:
+            raise RecoveryNeeded(
+                f"cannot establish the execution for {operation_id}; request was not repeated"
+            )
+        if operation["execution_id"] and execution.execution_id != operation["execution_id"]:
+            raise RecoveryNeeded(f"execution identity changed for {operation_id}")
+        await self.store.update_operation(
+            operation_id, state="dispatched", execution_id=execution.execution_id
+        )
+        await self.check_cancelled()
+        if execution.status == "waiting_for_input":
+            raise WaitingForInput(f"{role} is waiting for user input in {thread_id}")
+        completed = await self._wait_execution(thread_id, execution.execution_id, operation)
+        if completed.execution_id != execution.execution_id:
+            raise RecoveryNeeded(f"stale or unrelated output for {operation_id}")
+        if completed.status == "waiting_for_input":
+            raise WaitingForInput(f"{role} is waiting for user input in {thread_id}")
+        if completed.status != "completed" or completed.output is None:
+            raise BBError(f"{role} execution ended with status {completed.status}")
+        inspection = await self._read_retry(lambda: self.bb.inspect_thread(thread_id), operation)
+        if not inspection.stopped:
+            raise RecoveryNeeded(
+                f"execution returned output but child work still runs: {thread_id}"
             )
         await self.check_cancelled()
-        await self.bb.wait(thread_id)
-        await self.check_cancelled()
-        output = await self.bb.output(thread_id)
+        await self.store.update_operation(
+            operation_id, state="completed", result_json=json.dumps(completed.output)
+        )
         await self.store.clear_active_child(self.run_id)
         self.artifacts.verify()
-        return thread_id, output
+        return thread_id, completed.output
+
+    async def _wait_execution(
+        self, thread_id: str, execution_id: str, operation: dict[str, Any]
+    ) -> BBExecution:
+        waiter = asyncio.create_task(self._read_retry(lambda: self.bb.wait(thread_id), operation))
+        try:
+            while not waiter.done():
+                current = await self._read_retry(
+                    lambda: self.bb.execution(thread_id, execution_id), operation
+                )
+                if current.execution_id != execution_id:
+                    raise RecoveryNeeded("execution changed while waiting")
+                if current.status == "waiting_for_input":
+                    raise WaitingForInput(f"child is waiting for user input in {thread_id}")
+                if current.status in {"failed", "stopped"}:
+                    raise BBError(f"child execution {current.status}")
+                await asyncio.wait({waiter}, timeout=0.1)
+            await waiter
+            return await self._read_retry(
+                lambda: self.bb.execution(thread_id, execution_id), operation
+            )
+        finally:
+            if not waiter.done():
+                waiter.cancel()
+            await asyncio.gather(waiter, return_exceptions=True)
+
+    @staticmethod
+    def _remaining_seconds(operation: dict[str, Any]) -> float:
+        remaining = float(operation["deadline_at"]) - time.time()
+        if remaining <= 0:
+            raise TimeoutError(f"step time limit exceeded: {operation['step']}")
+        return remaining
+
+    async def _controlled[T](
+        self, action: Callable[[], Awaitable[T]], operation: dict[str, Any]
+    ) -> T:
+        await self.check_cancelled()
+        self._remaining_seconds(operation)
+        task = asyncio.ensure_future(action())
+        try:
+            while not task.done():
+                await self.check_cancelled()
+                remaining = self._remaining_seconds(operation)
+                await asyncio.wait({task}, timeout=min(0.1, remaining))
+            return await task
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def _read_retry[T](
+        self, action: Callable[[], Awaitable[T]], operation: dict[str, Any]
+    ) -> T:
+        while True:
+            try:
+                return await self._controlled(action, operation)
+            except BBError as exc:
+                if exc.kind != "connection":
+                    raise
+                retry = await self.store.claim_retry(
+                    str(operation["operation_id"]), self.config.limits.connection_retries
+                )
+                if retry is None:
+                    raise RecoveryNeeded(f"connection unavailable: {exc}") from exc
+                await self.emit(
+                    str(operation["step"]),
+                    "info",
+                    "reconnecting to the same execution",
+                    attempt=int(operation["attempt"]),
+                )
+                await self._controlled(partial(asyncio.sleep, 0.1 * retry), operation)
 
     async def run_quality_command(self, command: QualityCommand, attempt: int) -> dict[str, Any]:
         await self.check_cancelled()
         relative = f"tests/attempt-{attempt:02d}-{command.name}.log"
         await self.verify_repository()
+        operation = await self.store.prepare_operation(
+            self.run_id,
+            f"test:{command.name}",
+            attempt,
+            "check",
+            command.model_dump_json(),
+            timeout_seconds=command.timeout_seconds,
+            repeat_rule="verification_only" if command.repeat_on_recovery else "never",
+        )
+        operation_id = str(operation["operation_id"])
+        if operation["state"] == "completed":
+            return cast(dict[str, Any], json.loads(operation["result_json"]))
+        if operation["state"] != "prepared":
+            if await self.store.processes(self.run_id):
+                raise RecoveryNeeded("old command processes must stop before a check can repeat")
+            if operation["repeat_rule"] != "verification_only":
+                raise RecoveryNeeded(
+                    f"check result was not saved; repeat is not authorized: {operation_id}"
+                )
+            await self.emit(
+                "test",
+                "info",
+                "repeating verification under the saved repeat rule",
+                attempt=attempt,
+            )
+        await self.check_cancelled()
+        self._remaining_seconds(operation)
+        await self.store.update_operation(
+            operation_id, state="dispatching", dispatch_count=int(operation["dispatch_count"]) + 1
+        )
         started = time.monotonic()
         with tempfile.TemporaryFile() as log:
-            process = await asyncio.create_subprocess_exec(
-                *command.argv,
-                cwd=self.workspace,
+            process, process_id = await start_process(
+                command.argv,
+                self.workspace,
+                store=self.store,
+                run_id=self.run_id,
+                kind="check",
+                deadline_at=float(operation["deadline_at"]),
                 stdout=log,
                 stderr=asyncio.subprocess.STDOUT,
-                start_new_session=True,
             )
-            await self.store.set_process_group(self.run_id, process.pid)
-            wait_task = asyncio.create_task(process.wait())
-            cancel_task = asyncio.create_task(self.cancel_event.wait())
-            done, _ = await asyncio.wait(
-                {wait_task, cancel_task},
-                timeout=command.timeout_seconds,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            timed_out = not done
-            cancelled = cancel_task in done and self.cancel_event.is_set()
-            if timed_out or cancelled:
-                await _terminate_process_group(process)
-            return_code = await wait_task
-            cancel_task.cancel()
-            await asyncio.gather(cancel_task, return_exceptions=True)
-            await self.store.set_process_group(self.run_id, None)
+            timed_out = False
+            try:
+                await self.store.set_process_group(self.run_id, process.pid)
+                await self.store.update_operation(
+                    operation_id, state="dispatched", execution_id=process_id
+                )
+                try:
+                    await self._controlled(process.wait, operation)
+                except TimeoutError:
+                    timed_out = True
+            finally:
+                await asyncio.shield(finish_process(process, process_id, self.store))
+                await self.store.set_process_group(self.run_id, None)
+            return_code = process.returncode
             log.seek(0)
             content = log.read().decode("utf-8", errors="replace")
         await self.check_cancelled()
@@ -161,12 +354,13 @@ class FactoryRuntime:
             "exit_code": return_code,
             "duration_seconds": round(duration, 3),
             "timed_out": timed_out,
-            "cancelled": cancelled,
+            "cancelled": False,
             "log_path": str(log_path),
             "output_tail": content[-8000:],
         }
-        if cancelled:
-            raise FactoryCancelled("factory run cancelled during tests")
+        await self.store.update_operation(
+            operation_id, state="completed", result_json=json.dumps(result)
+        )
         return result
 
     async def parse_with_correction[EnvelopeT: BaseModel](
@@ -177,6 +371,8 @@ class FactoryRuntime:
         model: type[EnvelopeT],
         *,
         check_workspace: Callable[[], Awaitable[None]],
+        step: str | None = None,
+        attempt: int = 1,
     ) -> EnvelopeT:
         await check_workspace()
         try:
@@ -190,12 +386,16 @@ class FactoryRuntime:
                 "Return only one corrected JSON object matching this schema:\n"
                 f"{json.dumps(model.model_json_schema(), indent=2)}"
             )
-            await self.bb.tell(thread_id, correction)
-            await self._activate_child(role, thread_id)
-            await self.bb.wait(thread_id)
-            await self.check_cancelled()
-            corrected = await self.bb.output(thread_id)
-            await self.store.clear_active_child(self.run_id)
+            agent = getattr(self.config.agents, role)
+            _, corrected = await self.get_or_spawn(
+                role,
+                correction,
+                agent,
+                tell_existing=True,
+                step=step or role,
+                attempt=attempt,
+                operation_kind="correction",
+            )
             self.artifacts.verify()
             await check_workspace()
             return parse_envelope(corrected, model)
@@ -204,7 +404,158 @@ class FactoryRuntime:
         if await self.store.save_child(self.run_id, role, thread_id):
             return
         await self.bb.stop(thread_id)
+        inspection = await self.bb.inspect_thread(thread_id)
+        if not inspection.stopped:
+            raise RecoveryNeeded(f"cannot confirm that {thread_id} stopped")
+        for operation in await self.store.operations(self.run_id):
+            if operation["thread_id"] == thread_id and operation["state"] != "completed":
+                await self.store.update_operation(operation["operation_id"], state="stopped")
         raise FactoryCancelled(f"factory run stopped while activating {role} child")
+
+    async def reconcile_owned_work(self) -> None:
+        """Do not dispatch a new writer until old local processes are accounted for."""
+        for process_record in await self.store.processes(self.run_id):
+            group = int(process_record["process_group"])
+            await stop_group(group, str(process_record["identity"]))
+            await self.store.clear_process(str(process_record["process_id"]))
+        record = await self.store.get_run(self.run_id)
+        if record and record["active_process_group"]:
+            group = int(record["active_process_group"])
+            if await group_alive(group):
+                raise RecoveryNeeded("unregistered old process group still exists")
+            await self.store.set_process_group(self.run_id, None)
+        active_threads: set[str] = set()
+        for operation in await self.store.operations(self.run_id):
+            if (
+                operation["state"] not in {"dispatching", "dispatched"}
+                or operation["kind"] == "check"
+            ):
+                continue
+            thread_id = operation["thread_id"] or await self.bb.find_child(
+                str(operation["role"]), f"{self.run_id}:{operation['role']}"
+            )
+            if thread_id is None:
+                raise RecoveryNeeded("old child creation has an uncertain outcome")
+            active_threads.add(thread_id)
+            execution = await self.bb.reconcile_operation(thread_id, operation["operation_id"])
+            if execution is None or (
+                operation["execution_id"] and operation["execution_id"] != execution.execution_id
+            ):
+                raise RecoveryNeeded("old child execution could not be identified")
+            await self.store.update_operation(
+                operation["operation_id"],
+                thread_id=thread_id,
+                execution_id=execution.execution_id,
+                state="dispatched",
+            )
+        for thread_id in (await self.store.list_children(self.run_id)).values():
+            if thread_id not in active_threads:
+                inspection = await self.bb.inspect_thread(thread_id)
+                if not inspection.stopped:
+                    raise RecoveryNeeded(f"unrelated work remains active in {thread_id}")
+
+    async def recover(self, deadline_at: float) -> None:
+        async def reconcile() -> None:
+            await self.bb.check_protection(self.artifacts.root)
+            await self.bb.validate_workspace(self.workspace)
+            await self.reconcile_owned_work()
+
+        await self._controlled(
+            reconcile,
+            {
+                "step": "recovery",
+                "deadline_at": min(
+                    deadline_at, time.time() + self.config.limits.step_timeout_seconds
+                ),
+            },
+        )
+
+    async def finish(self, state: FactoryState, status: str) -> FactoryState:
+        record = await self.store.get_run(self.run_id)
+        assert record is not None
+        if record["stop_target"]:
+            status = str(record["stop_target"])
+        if record["status"] not in FINAL_STATUSES:
+            if status != "accepted" or record["stop_target"] or self.cancel_event.is_set():
+                if self.cancel_event.is_set() and not record["stop_target"]:
+                    status = "cancelled"
+                await self.store.request_stop(
+                    self.run_id,
+                    "cancelled" if status == "accepted" else status,
+                    state.get("error") or "cancelled by user",
+                )
+                try:
+                    await stop_owned_work(self.store, self.run_id, self.bb)
+                except (RecoveryNeeded, CleanupUncertain, BBError) as exc:
+                    return await self.pause(
+                        state, "recovery_needed", str(exc), stop_if_requested=False
+                    )
+            record = await self.store.set_status(
+                self.run_id, status, state.get("error"), result=await self._report_state(state)
+            )
+            if record["status"] == "stopping":
+                return await self.finish(state, str(record["stop_target"]))
+        result = await self.report(state)
+        await self.emit(
+            "finalize" if result["status"] == "accepted" else "failed",
+            "completed"
+            if result["status"] == "accepted"
+            else "cancelled"
+            if result["status"] == "cancelled"
+            else "failed",
+            f"factory run {result['status']}",
+        )
+        return result
+
+    async def pause(
+        self, state: FactoryState, status: str, error: str, *, stop_if_requested: bool = True
+    ) -> FactoryState:
+        record = await self.store.set_status(self.run_id, status, error)
+        if record["stop_target"] and stop_if_requested:
+            return await self.finish(state, str(record["stop_target"]))
+        result = await self.report(state)
+        await self.emit("recovery", "info", error, metadata={"status": result["status"]})
+        latest = await self.store.get_run(self.run_id)
+        if latest and latest["stop_target"] and stop_if_requested:
+            return await self.finish(state, str(latest["stop_target"]))
+        return result
+
+    async def _report_state(self, state: FactoryState) -> dict[str, Any]:
+        record = await self.store.get_run(self.run_id)
+        saved = json.loads(record["result_json"] or "{}") if record else {}
+        result: dict[str, Any] = {**saved, **state}
+        for operation in await self.store.operations(self.run_id):
+            if not operation["dispatch_count"]:
+                continue
+            step = operation["step"]
+            key = (
+                "test_attempt_count"
+                if step.startswith("test:")
+                else {
+                    "repair": "test_repair_count",
+                    "review": "review_attempt_count",
+                    "revise": "review_revision_count",
+                }.get(step)
+            )
+            if key:
+                result[key] = max(int(result.get(key, 0)), int(operation["attempt"]))
+        return result
+
+    async def report(self, state: FactoryState) -> FactoryState:
+        result = await self.store.save_result(self.run_id, await self._report_state(state))
+        typed = cast(FactoryState, result)
+        try:
+            report = final_report(typed, str(result["status"]).upper())
+            path = self.artifacts.write_text("final-report.md", report)
+            self.artifacts.write_json("run-summary.json", run_summary(typed, str(result["status"])))
+            typed["final_report_path"] = str(path)
+            self.context.thread_storage.mkdir(parents=True, exist_ok=True)
+            (self.context.thread_storage / f"factory-{self.run_id}-final-report.md").write_text(
+                report
+            )
+        except ArtifactIntegrityError:
+            typed["final_report_path"] = ""
+        return cast(FactoryState, await self.store.save_result(self.run_id, dict(typed)))
 
 
 def parse_envelope[EnvelopeT: BaseModel](text: str, model: type[EnvelopeT]) -> EnvelopeT:
@@ -224,16 +575,3 @@ def parse_envelope[EnvelopeT: BaseModel](text: str, model: type[EnvelopeT]) -> E
     raise ValueError(
         f"invalid {model.__name__} output: {errors[-1] if errors else 'no JSON object'}"
     )
-
-
-async def _terminate_process_group(process: asyncio.subprocess.Process) -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    try:
-        await asyncio.wait_for(process.wait(), timeout=3)
-    except TimeoutError:
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        await process.wait()

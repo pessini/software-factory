@@ -14,20 +14,20 @@ def after_ok(state: FactoryState) -> Literal["next", "failed"]:
 
 
 def after_tests(state: FactoryState) -> Literal["review", "repair", "failed"]:
-    if state.get("test_passed"):
-        return "review"
     if state.get("status") in {"cancelled", "blocked"}:
         return "failed"
+    if state.get("test_passed"):
+        return "review"
     if state.get("test_repair_count", 0) < state.get("max_test_repairs", 0):
         return "repair"
     return "failed"
 
 
 def after_review(state: FactoryState) -> Literal["finalize", "revise", "failed"]:
-    if state.get("review_approved"):
-        return "finalize"
     if state.get("status") in {"cancelled", "blocked"}:
         return "failed"
+    if state.get("review_approved"):
+        return "finalize"
     if state.get("review_revision_count", 0) < state.get("max_review_revisions", 0):
         return "revise"
     return "failed"
@@ -36,15 +36,18 @@ def after_review(state: FactoryState) -> Literal["finalize", "revise", "failed"]
 def build_graph(runtime: FactoryRuntime, checkpointer: Any = None) -> Any:
     nodes = WorkflowNodes(runtime)
     graph = StateGraph(FactoryState)
-    graph.add_node("bootstrap", nodes.bootstrap)
-    graph.add_node("plan", nodes.plan)
-    graph.add_node("build", nodes.build)
-    graph.add_node("test", nodes.test)
-    graph.add_node("repair", nodes.repair)
-    graph.add_node("review", nodes.review)
-    graph.add_node("revise", nodes.revise)
-    graph.add_node("finalize", nodes.finalize)
-    graph.add_node("failed", nodes.failed)
+    for name in (
+        "bootstrap",
+        "plan",
+        "build",
+        "test",
+        "repair",
+        "review",
+        "revise",
+        "finalize",
+        "failed",
+    ):
+        graph.add_node(name, nodes.guarded(name, getattr(nodes, name)))
     graph.add_edge(START, "bootstrap")
     graph.add_conditional_edges("bootstrap", after_ok, {"next": "plan", "failed": "failed"})
     graph.add_conditional_edges("plan", after_ok, {"next": "build", "failed": "failed"})

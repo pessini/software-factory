@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 
 from software_factory.artifacts import ArtifactIntegrityError
+from software_factory.bb.client import RecoveryNeeded, WaitingForInput
 from software_factory.contracts import BuildEnvelope, PlanEnvelope, ReviewEnvelope
 from software_factory.git import capture_snapshot, changed_files, repository_root
 from software_factory.prompts import (
@@ -13,10 +15,14 @@ from software_factory.prompts import (
     reviewer_prompt,
     revision_prompt,
 )
-from software_factory.reporting import final_report, plan_markdown, review_findings, run_summary
+from software_factory.reporting import plan_markdown, review_findings
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
-from software_factory.state import FactoryState
+from software_factory.state import FINAL_STATUSES, FactoryState
 from software_factory.worktree_policy import WorktreePolicyError
+
+
+class NodeAction(Protocol):
+    def __call__(self, state: FactoryState) -> Awaitable[FactoryState]: ...
 
 
 class WorkflowNodes:
@@ -25,6 +31,25 @@ class WorkflowNodes:
     def __init__(self, runtime: FactoryRuntime) -> None:
         self.runtime = runtime
         self.worktree = runtime.worktree
+
+    def guarded(
+        self, name: str, action: Callable[[FactoryState], Awaitable[FactoryState]]
+    ) -> NodeAction:
+        async def execute(state: FactoryState) -> FactoryState:
+            if name == "failed":
+                return await action(state)
+            try:
+                await self.runtime.check_cancelled()
+                result = await action(state)
+                if result.get("status") not in FINAL_STATUSES:
+                    await self.runtime.check_cancelled()
+                return result
+            except FactoryCancelled as exc:
+                if name == "finalize":
+                    return await self.failed({**state, "status": "cancelled", "error": str(exc)})
+                return await self._cancelled(name, exc)
+
+        return execute
 
     async def bootstrap(self, state: FactoryState) -> FactoryState:
         runtime = self.runtime
@@ -55,10 +80,13 @@ class WorkflowNodes:
             )
             runtime.artifacts.write_json("config.json", runtime.config)
             await runtime.bb.check_protection(runtime.artifacts.root)
+            await runtime.bb.validate_workspace(runtime.workspace)
             runtime.artifacts.write_text("request.md", state["request"].rstrip() + "\n")
             await runtime.store.set_status(runtime.run_id, "running")
             await runtime.emit("bootstrap", "completed", "repository and policy validated")
             return {"status": "running", "baseline_files": baseline, "error": None}
+        except RecoveryNeeded, WaitingForInput:
+            raise
         except Exception as exc:
             await runtime.emit("bootstrap", "failed", str(exc))
             return {"status": "failed", "error": str(exc)}
@@ -72,9 +100,15 @@ class WorkflowNodes:
                     "planner",
                     planner_prompt(runtime.run_id, state["request"], runtime.workspace),
                     runtime.config.agents.planner,
+                    step="plan",
                 )
                 envelope = await runtime.parse_with_correction(
-                    "planner", thread_id, output, PlanEnvelope, check_workspace=check_workspace
+                    "planner",
+                    thread_id,
+                    output,
+                    PlanEnvelope,
+                    check_workspace=check_workspace,
+                    step="plan",
                 )
                 if envelope.status == "blocked" or not envelope.acceptance_criteria:
                     raise ValueError(envelope.summary or "Planner blocked")
@@ -89,6 +123,8 @@ class WorkflowNodes:
             }
         except FactoryCancelled as exc:
             return await self._cancelled("plan", exc)
+        except RecoveryNeeded, WaitingForInput:
+            raise
         except Exception as exc:
             await runtime.emit("plan", "failed", str(exc))
             return {"status": "blocked", "error": str(exc)}
@@ -99,7 +135,7 @@ class WorkflowNodes:
         try:
             plan_path = runtime.workspace / state["plan_markdown_path"]
             thread_id, envelope, actual = await self._builder_handoff(
-                builder_prompt(runtime.run_id, state["request"], plan_path)
+                builder_prompt(runtime.run_id, state["request"], plan_path), step="build"
             )
             report = runtime.artifacts.write_json("build-report.json", envelope)
             runtime.artifacts.write_json("changes.json", {"changed_files": actual})
@@ -112,6 +148,8 @@ class WorkflowNodes:
             }
         except FactoryCancelled as exc:
             return await self._cancelled("build", exc)
+        except RecoveryNeeded, WaitingForInput:
+            raise
         except Exception as exc:
             await runtime.emit("build", "failed", str(exc))
             return {"status": "blocked", "error": str(exc)}
@@ -142,6 +180,8 @@ class WorkflowNodes:
             }
         except FactoryCancelled as exc:
             return await self._cancelled("test", exc)
+        except RecoveryNeeded, WaitingForInput:
+            raise
         except Exception as exc:
             await runtime.emit("test", "failed", str(exc), attempt=attempt)
             return {
@@ -168,6 +208,8 @@ class WorkflowNodes:
             thread_id, envelope, actual = await self._builder_handoff(
                 repair_prompt(runtime.run_id, state["test_attempt_count"], logs),
                 tell_existing=True,
+                step="repair",
+                attempt=repair_count,
             )
             runtime.artifacts.write_json(f"build-repair-{repair_count:02d}.json", envelope)
             await runtime.emit(
@@ -182,6 +224,8 @@ class WorkflowNodes:
             }
         except FactoryCancelled as exc:
             return await self._cancelled("repair", exc)
+        except RecoveryNeeded, WaitingForInput:
+            raise
         except Exception as exc:
             await runtime.emit("repair", "failed", str(exc), attempt=repair_count)
             return {"test_repair_count": repair_count, "status": "blocked", "error": str(exc)}
@@ -207,9 +251,17 @@ class WorkflowNodes:
                     prompt,
                     runtime.config.agents.reviewer,
                     tell_existing=existing is not None,
+                    step="review",
+                    attempt=attempt,
                 )
                 envelope = await runtime.parse_with_correction(
-                    "reviewer", thread_id, output, ReviewEnvelope, check_workspace=check_workspace
+                    "reviewer",
+                    thread_id,
+                    output,
+                    ReviewEnvelope,
+                    check_workspace=check_workspace,
+                    step="review",
+                    attempt=attempt,
                 )
             path = runtime.artifacts.write_json(f"review/attempt-{attempt:02d}.json", envelope)
             await runtime.emit(
@@ -227,6 +279,8 @@ class WorkflowNodes:
             }
         except FactoryCancelled as exc:
             return await self._cancelled("review", exc)
+        except RecoveryNeeded, WaitingForInput:
+            raise
         except Exception as exc:
             await runtime.emit("review", "failed", str(exc), attempt=attempt)
             return {"review_attempt_count": attempt, "status": "blocked", "error": str(exc)}
@@ -246,6 +300,8 @@ class WorkflowNodes:
             thread_id, envelope, actual = await self._builder_handoff(
                 revision_prompt(runtime.run_id, review.blocking_findings),
                 tell_existing=True,
+                step="revise",
+                attempt=count,
             )
             runtime.artifacts.write_json(f"build-revision-{count:02d}.json", envelope)
             await runtime.emit("revise", "completed", "review revision completed", attempt=count)
@@ -259,6 +315,8 @@ class WorkflowNodes:
             }
         except FactoryCancelled as exc:
             return await self._cancelled("revise", exc)
+        except RecoveryNeeded, WaitingForInput:
+            raise
         except Exception as exc:
             await runtime.emit("revise", "failed", str(exc), attempt=count)
             return {"review_revision_count": count, "status": "blocked", "error": str(exc)}
@@ -269,58 +327,24 @@ class WorkflowNodes:
             await runtime.verify_repository()
         except (ArtifactIntegrityError, WorktreePolicyError) as exc:
             return await self.failed({**state, "status": "blocked", "error": str(exc)})
-        report = final_report(state, "ACCEPTED")
-        path = runtime.artifacts.write_text("final-report.md", report)
-        runtime.artifacts.write_json("run-summary.json", run_summary(state, "accepted"))
-        runtime.context.thread_storage.mkdir(parents=True, exist_ok=True)
-        storage_report = (
-            runtime.context.thread_storage / f"factory-{runtime.run_id}-final-report.md"
-        )
-        storage_report.write_text(report, encoding="utf-8")
-        await runtime.store.set_status(runtime.run_id, "accepted")
-        await runtime.emit("finalize", "completed", "factory run accepted")
-        return {
-            "status": "accepted",
-            "final_report_path": str(path),
-            "error": None,
-        }
+        await runtime.check_cancelled()
+        return await runtime.finish({**state, "error": None}, "accepted")
 
     async def failed(self, state: FactoryState) -> FactoryState:
-        runtime = self.runtime
-        current = state.get("status")
-        if current == "cancelled":
-            outcome = "CANCELLED"
-            status: Literal["blocked", "cancelled", "failed"] = "cancelled"
-        elif current == "blocked":
-            outcome = "BLOCKED"
-            status = "blocked"
-        else:
-            outcome = "FAILED"
-            status = "failed"
-        report = final_report(state, outcome)
-        path = None
-        try:
-            path = runtime.artifacts.write_text("final-report.md", report)
-            runtime.artifacts.write_json("run-summary.json", run_summary(state, status))
-        except ArtifactIntegrityError:
-            # Preserve damaged evidence. The controller event log records the failure.
-            pass
-        await runtime.store.set_status(runtime.run_id, status, state.get("error"))
-        await runtime.emit(
-            "failed",
-            "cancelled" if status == "cancelled" else "failed",
-            state.get("error") or outcome,
-        )
-        return {"status": status, "final_report_path": str(path) if path else ""}
+        current = state.get("status", "failed")
+        status = current if current in {"cancelled", "blocked", "failed"} else "failed"
+        return await self.runtime.finish(state, status)
 
     async def _cancelled(self, node: str, exc: Exception) -> FactoryState:
         runtime = self.runtime
-        await runtime.store.set_status(runtime.run_id, "cancelled", str(exc))
+        record = await runtime.store.get_run(runtime.run_id)
+        target = str(record["stop_target"] or "cancelled") if record else "cancelled"
+        await runtime.store.request_stop(runtime.run_id, target, str(exc))
         await runtime.emit(node, "cancelled", str(exc))
         return {"status": "cancelled", "error": str(exc)}
 
     async def _builder_handoff(
-        self, prompt: str, *, tell_existing: bool = False
+        self, prompt: str, *, tell_existing: bool = False, step: str = "build", attempt: int = 1
     ) -> tuple[str, BuildEnvelope, list[str]]:
         runtime = self.runtime
         async with self.worktree.protect_builder_changes() as check_workspace:
@@ -329,9 +353,17 @@ class WorkflowNodes:
                 prompt,
                 runtime.config.agents.builder,
                 tell_existing=tell_existing,
+                step=step,
+                attempt=attempt,
             )
             envelope = await runtime.parse_with_correction(
-                "builder", thread_id, output, BuildEnvelope, check_workspace=check_workspace
+                "builder",
+                thread_id,
+                output,
+                BuildEnvelope,
+                check_workspace=check_workspace,
+                step=step,
+                attempt=attempt,
             )
             if envelope.status == "blocked":
                 detail = "; ".join(envelope.blockers) or envelope.summary

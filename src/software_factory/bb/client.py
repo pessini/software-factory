@@ -7,17 +7,43 @@ import shlex
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from software_factory.bb.context import BBContext
 from software_factory.config import AgentConfig
+from software_factory.persistence import RunStore
+from software_factory.processes import finish_process, start_process
 
 
 class BBError(RuntimeError):
+    def __init__(self, message: str, kind: str = "provider") -> None:
+        super().__init__(message)
+        self.kind = kind
+
+
+class RecoveryNeeded(RuntimeError):
     pass
 
 
+class WaitingForInput(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class BBExecution:
+    execution_id: str
+    status: Literal["running", "completed", "waiting_for_input", "failed", "stopped"]
+    output: str | None = None
+
+
+@dataclass(frozen=True)
+class BBThreadState:
+    status: str
+    stopped: bool
+
+
 class BBClientProtocol(Protocol):
+    async def validate_workspace(self, workspace: Path) -> None: ...
     async def check_protection(self, controller_root: Path) -> None: ...
     async def spawn_child(
         self, role: str, prompt: str, agent: AgentConfig, spawn_key: str
@@ -25,8 +51,13 @@ class BBClientProtocol(Protocol):
     async def find_child(self, role: str, spawn_key: str) -> str | None: ...
     async def wait(self, thread_id: str) -> None: ...
     async def output(self, thread_id: str) -> str: ...
-    async def tell(self, thread_id: str, message: str) -> None: ...
+    async def tell(self, thread_id: str, message: str) -> str | None: ...
     async def stop(self, thread_id: str) -> None: ...
+    async def inspect_thread(self, thread_id: str) -> BBThreadState: ...
+    async def reconcile_operation(
+        self, thread_id: str, operation_id: str
+    ) -> BBExecution | None: ...
+    async def execution(self, thread_id: str, execution_id: str) -> BBExecution: ...
 
 
 @dataclass
@@ -34,6 +65,19 @@ class BBClient:
     context: BBContext
     workspace: Path
     executable: tuple[str, ...] = ("bb",)
+    command_timeout_seconds: float = 30
+    store: RunStore | None = None
+    run_id: str = ""
+
+    async def validate_workspace(self, workspace: Path) -> None:
+        result = await self._run("environment", "show", self.context.environment_id)
+        if not isinstance(result, dict) or result.get("id") != self.context.environment_id:
+            raise BBError("BB returned a different environment", "configuration")
+        path = result.get("path")
+        if not isinstance(path, str) or Path(path).resolve() != workspace.resolve():
+            raise BBError("BB environment does not point to the owned workspace", "configuration")
+        if result.get("projectId") != self.context.project_id:
+            raise BBError("BB environment belongs to a different project", "configuration")
 
     async def check_protection(self, controller_root: Path) -> None:
         raise BBError(
@@ -48,20 +92,38 @@ class BBClient:
         return cls(context=context, workspace=workspace, executable=resolve_bb_command())
 
     async def _run(self, *args: str) -> Any:
-        process = await asyncio.create_subprocess_exec(
-            *self.executable,
-            *args,
-            "--json",
-            cwd=self.workspace,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        process, process_id = await start_process(
+            [*self.executable, *args, "--json"],
+            self.workspace,
+            store=self.store,
+            run_id=self.run_id,
+            kind="bb" if args[:2] in {("thread", "spawn"), ("thread", "tell")} else "bb_control",
         )
-        stdout, stderr = await process.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(), self.command_timeout_seconds
+            )
+        except TimeoutError as exc:
+            raise BBError("BB command time limit exceeded", "time_limit") from exc
+        finally:
+            await asyncio.shield(finish_process(process, process_id, self.store))
         if process.returncode:
             detail = (
                 stderr.decode(errors="replace").strip() or stdout.decode(errors="replace").strip()
             )
-            raise BBError(f"BB command failed ({process.returncode}): {detail}")
+            lowered = detail.lower()
+            kind = "provider"
+            if any(
+                word in lowered
+                for word in ("econnrefused", "econnreset", "fetch failed", "connection", "network")
+            ):
+                kind = "connection"
+            elif any(
+                word in lowered
+                for word in ("unauthorized", "credential", "api key", "invalid model", "forbidden")
+            ):
+                kind = "configuration"
+            raise BBError(f"BB command failed ({process.returncode}): {detail}", kind)
         try:
             return json.loads(stdout)
         except json.JSONDecodeError as exc:
@@ -93,8 +155,9 @@ class BBClient:
         if agent.model:
             args.extend(("--model", agent.model))
         result = await self._run(*args)
-        thread_id = _find_string(result, ("threadId", "thread_id", "id"))
-        if not thread_id:
+        thread = result.get("thread", result) if isinstance(result, dict) else None
+        thread_id = thread.get("id") if isinstance(thread, dict) else None
+        if not isinstance(thread_id, str) or not thread_id:
             raise BBError("BB spawn response did not include a thread ID")
         return thread_id
 
@@ -109,16 +172,19 @@ class BBClient:
             "--include-hidden",
         )
         title = _child_title(role, spawn_key)
+        matches: set[str] = set()
         for candidate in _find_mappings(result):
             if candidate.get("title") != title:
                 continue
             thread_id = _find_string(candidate, ("threadId", "thread_id", "id"))
             if thread_id:
-                return thread_id
-        return None
+                matches.add(thread_id)
+        if len(matches) > 1:
+            raise RecoveryNeeded(f"multiple children match the saved creation request: {spawn_key}")
+        return next(iter(matches), None)
 
     async def wait(self, thread_id: str) -> None:
-        await self._run("thread", "wait", thread_id, "--status", "idle")
+        await self._run("thread", "wait", thread_id, "--status", "idle", "--timeout", "20")
 
     async def output(self, thread_id: str) -> str:
         result = await self._run("thread", "output", thread_id)
@@ -127,11 +193,37 @@ class BBClient:
             raise BBError("BB output response did not include final text")
         return output
 
-    async def tell(self, thread_id: str, message: str) -> None:
-        await self._run("thread", "tell", thread_id, message, "--mode", "steer")
+    async def tell(self, thread_id: str, message: str) -> str | None:
+        result = await self._run("thread", "tell", thread_id, message, "--mode", "steer")
+        # The CLI does not expose a caller-supplied idempotency key. Only the
+        # documented top-level receipt can supply a request identity.
+        receipt = result.get("requestId") if isinstance(result, dict) else None
+        return receipt if isinstance(receipt, str) and receipt else None
 
     async def stop(self, thread_id: str) -> None:
         await self._run("thread", "stop", thread_id)
+
+    async def inspect_thread(self, thread_id: str) -> BBThreadState:
+        result = await self._run("thread", "show", thread_id)
+        thread = result.get("thread") if isinstance(result, dict) else None
+        if not isinstance(thread, dict) or thread.get("id") != thread_id:
+            raise BBError("BB thread inspection response is invalid", "protocol")
+        status = thread.get("status")
+        if not isinstance(status, str):
+            raise BBError("BB did not supply a thread status", "protocol")
+        # Pending interactions and scheduled work must also be absent. An idle
+        # status alone is not proof that a provider stopped.
+        return BBThreadState(status, False)
+
+    async def reconcile_operation(self, thread_id: str, operation_id: str) -> BBExecution | None:
+        del thread_id, operation_id
+        return None
+
+    async def execution(self, thread_id: str, execution_id: str) -> BBExecution:
+        del thread_id, execution_id
+        raise RecoveryNeeded(
+            "BB CLI output has no execution identity; the current adapter cannot prove which request completed"
+        )
 
 
 def _find_string(value: Any, keys: tuple[str, ...]) -> str | None:

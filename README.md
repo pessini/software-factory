@@ -10,6 +10,10 @@ read-only roles and controller storage protection. The workflow is available for
 automated tests. See [the protection policy](docs/repository-protection.md) for the
 remaining requirement in issue #2.
 
+See [run ownership and recovery](docs/run-recovery.md) for cancellation rules,
+operation records, process cleanup, saved-state compatibility, and the current
+BB execution-identity limitation.
+
 The MVP provides:
 
 - an ACP agent registered as **Software Factory** in BB;

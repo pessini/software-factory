@@ -1,24 +1,26 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import signal
+import json
 import time
-from contextlib import suppress
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from software_factory.artifacts import ArtifactStore
+from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
 from software_factory.bb import BBClient, BBClientProtocol, BBContext
+from software_factory.bb.client import BBError, RecoveryNeeded, WaitingForInput
+from software_factory.cleanup import stop_owned_work
 from software_factory.config import FactoryConfig, load_config
 from software_factory.events import EventSink, null_event_sink
 from software_factory.graph import build_graph
+from software_factory.ownership import OwnershipError, RunOwnership
 from software_factory.persistence import RunStore
-from software_factory.runtime import FactoryRuntime
-from software_factory.state import FactoryState
+from software_factory.processes import CleanupUncertain
+from software_factory.runtime import FactoryCancelled, FactoryRuntime
+from software_factory.state import FINAL_STATUSES, FactoryState
 
 
 def new_run_id() -> str:
@@ -47,24 +49,14 @@ class FactoryEngine:
         self.store = RunStore(self.database_path)
         self.event_sink = event_sink
         self.cancel_event = cancel_event or asyncio.Event()
+        self.active_run_id: str | None = None
 
     async def run(self, request: str, run_id: str | None = None) -> FactoryState:
         if not request.strip():
             raise ValueError("request must not be empty")
         run_id = run_id or new_run_id()
         config = load_config(self.workspace)
-        deadline_at = time.time() + config.limits.total_run_timeout_seconds
         await self.store.initialize()
-        await self.store.create_run(
-            run_id,
-            self.workspace,
-            self.context.parent_thread_id,
-            deadline_at=deadline_at,
-        )
-        record = await self.store.get_run(run_id)
-        if record is not None and isinstance(record.get("deadline_at"), (int, float)):
-            deadline_at = float(record["deadline_at"])
-        runtime = self._runtime(run_id)
         initial: FactoryState = {
             "run_id": run_id,
             "request": request.strip(),
@@ -86,7 +78,21 @@ class FactoryEngine:
             "active_child_thread_id": None,
             "error": None,
         }
-        return await self._invoke_before_deadline(runtime, initial, deadline_at)
+        ownership = RunOwnership(self.workspace, run_id, self.database_path)
+        await ownership.acquire()
+        try:
+            if await self.store.get_run(run_id) is not None:
+                raise ValueError(f"run already exists; use resume: {run_id}")
+            deadline_at = time.time() + config.limits.total_run_timeout_seconds
+            await self.store.create_run(
+                run_id, self.workspace, self.context.parent_thread_id, deadline_at=deadline_at
+            )
+            await self.store.save_result(run_id, dict(initial))
+            runtime = self._runtime(run_id)
+            runtime.artifacts.write_json("config.json", config)
+            return await self._execute_owned(runtime, initial, deadline_at, ownership)
+        finally:
+            ownership.close()
 
     async def resume(self, run_id: str) -> FactoryState:
         await self.store.initialize()
@@ -95,41 +101,125 @@ class FactoryEngine:
             raise ValueError(f"unknown run ID: {run_id}")
         if Path(str(record["workspace"])).resolve() != self.workspace:
             raise ValueError("run belongs to a different workspace")
-        runtime = self._runtime(run_id, create=False)
-        raw_deadline = record.get("deadline_at")
-        if isinstance(raw_deadline, (int, float)):
-            deadline_at = float(raw_deadline)
-        else:
-            deadline_at = time.time() + runtime.config.limits.total_run_timeout_seconds
-            await self.store.set_deadline(run_id, deadline_at)
-        return await self._invoke_before_deadline(runtime, None, deadline_at)
+        if record["parent_thread_id"] != self.context.parent_thread_id:
+            raise ValueError("run belongs to a different parent task")
+        if record["control_version"] != 2:
+            raise ValueError(
+                "legacy run cannot resume safely: execution identities and ownership were not recorded"
+            )
+        if record["status"] in FINAL_STATUSES:
+            return cast(
+                FactoryState,
+                {
+                    **json.loads(record["result_json"] or "{}"),
+                    "run_id": run_id,
+                    "status": record["status"],
+                    "error": record["error"],
+                },
+            )
+        ownership = RunOwnership(self.workspace, run_id, self.database_path)
+        await ownership.acquire()
+        try:
+            try:
+                runtime = self._runtime(run_id, create=False)
+            except (ArtifactIntegrityError, ValueError) as exc:
+                result = await self._cleanup_without_artifacts(run_id, "blocked", str(exc))
+                if result["status"] in FINAL_STATUSES:
+                    ownership.release_claim()
+                return result
+            return await self._execute_owned(runtime, None, float(record["deadline_at"]), ownership)
+        finally:
+            ownership.close()
+
+    async def _execute_owned(
+        self,
+        runtime: FactoryRuntime,
+        value: FactoryState | None,
+        deadline_at: float,
+        ownership: RunOwnership,
+    ) -> FactoryState:
+        self.active_run_id = runtime.run_id
+        try:
+            result = await self._execute_run(runtime, value, deadline_at)
+            # After this point a concurrent cancel waits to acquire the lock.
+            # A stop accepted by a callback during execution is handled here.
+            self.active_run_id = None
+            record = await self.store.get_run(runtime.run_id)
+            if record and record["stop_target"] and result["status"] not in FINAL_STATUSES:
+                self.active_run_id = runtime.run_id
+                result = await runtime.finish(result, str(record["stop_target"]))
+                self.active_run_id = None
+            return result
+        finally:
+            self.active_run_id = None
+            record = await self.store.get_run(runtime.run_id)
+            if record and record["status"] in FINAL_STATUSES:
+                ownership.release_claim()
+
+    async def _execute_run(
+        self, runtime: FactoryRuntime, value: FactoryState | None, deadline_at: float
+    ) -> FactoryState:
+        record = await self.store.get_run(runtime.run_id)
+        assert record is not None
+        saved = cast(FactoryState, json.loads(record["result_json"] or "{}"))
+        saved.setdefault("run_id", runtime.run_id)
+        if record["stop_target"]:
+            return await runtime.finish(saved, str(record["stop_target"]))
+        try:
+            if value is None:
+                await runtime.recover(deadline_at)
+            await self.store.set_status(runtime.run_id, "running")
+            await runtime.check_cancelled()
+            return await self._invoke_before_deadline(runtime, value, deadline_at)
+        except (RecoveryNeeded, WaitingForInput, CleanupUncertain) as exc:
+            return await runtime.pause(
+                saved,
+                "waiting_for_input" if isinstance(exc, WaitingForInput) else "recovery_needed",
+                str(exc),
+            )
+        except FactoryCancelled as exc:
+            stopped = await self.store.get_run(runtime.run_id)
+            target = str(stopped["stop_target"] or "cancelled") if stopped else "cancelled"
+            return await runtime.finish({**saved, "error": str(exc)}, target)
+        except BBError as exc:
+            if exc.kind == "connection":
+                return await runtime.pause(saved, "recovery_needed", str(exc))
+            return await runtime.finish({**saved, "error": f"{exc.kind}: {exc}"}, "blocked")
+        except TimeoutError:
+            stopped = await self.store.request_stop(
+                runtime.run_id, "failed", "total run timeout exceeded"
+            )
+            if stopped["status"] in FINAL_STATUSES:
+                return cast(FactoryState, json.loads(stopped["result_json"]))
+            await runtime.finish({**saved, "error": "total run timeout exceeded"}, "failed")
+            raise TimeoutError("total run timeout exceeded") from None
 
     async def _invoke_before_deadline(
         self, runtime: FactoryRuntime, value: FactoryState | None, deadline_at: float
     ) -> FactoryState:
         remaining = deadline_at - time.time()
         if remaining <= 0:
-            await self.cancel_external(
-                runtime.run_id, status="failed", error="total run timeout exceeded"
-            )
             raise TimeoutError("total run timeout exceeded")
-        try:
-            async with asyncio.timeout(remaining):
-                return await self._invoke(runtime, value)
-        except TimeoutError:
-            self.cancel_event.set()
-            await self.cancel_external(
-                runtime.run_id, status="failed", error="total run timeout exceeded"
-            )
-            raise TimeoutError("total run timeout exceeded") from None
+        async with asyncio.timeout(remaining):
+            return await self._invoke(runtime, value)
 
     async def _invoke(self, runtime: FactoryRuntime, value: FactoryState | None) -> FactoryState:
         thread_id = f"{self.context.parent_thread_id}:{runtime.run_id}"
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         async with AsyncSqliteSaver.from_conn_string(str(self.database_path)) as saver:
             graph = build_graph(runtime, saver)
-            result = await graph.ainvoke(value, {"configurable": {"thread_id": thread_id}})
-        return cast(FactoryState, result)
+            config = {"configurable": {"thread_id": thread_id}}
+            try:
+                result = await graph.ainvoke(value, config)
+            except (RecoveryNeeded, WaitingForInput) as exc:
+                snapshot = await graph.aget_state(config)
+                state = cast(FactoryState, snapshot.values or value or {"run_id": runtime.run_id})
+                return await runtime.pause(
+                    state,
+                    "waiting_for_input" if isinstance(exc, WaitingForInput) else "recovery_needed",
+                    str(exc),
+                )
+        return await runtime.report(cast(FactoryState, result))
 
     def _runtime(self, run_id: str, *, create: bool = True) -> FactoryRuntime:
         artifacts = ArtifactStore(
@@ -157,24 +247,103 @@ class FactoryEngine:
 
     async def cancel_external(
         self, run_id: str, *, status: str = "cancelled", error: str = "cancelled by user"
-    ) -> None:
-        self.cancel_event.set()
+    ) -> FactoryState:
         await self.store.initialize()
         record = await self.store.get_run(run_id)
         if record is None:
             raise ValueError(f"unknown run ID: {run_id}")
-        # Persist first so the active workflow observes cancellation before a stopped
-        # child or process can return control and advance the graph.
-        await self.store.set_status(run_id, status, error)
-        record = await self.store.get_run(run_id)
-        if record is None:
-            raise ValueError(f"unknown run ID: {run_id}")
-        child = record.get("active_child_thread_id")
-        if isinstance(child, str) and child:
-            await self.bb.stop(child)
-            await self.store.clear_active_child(run_id)
-        process_group = record.get("active_process_group")
-        if isinstance(process_group, int):
-            with suppress(ProcessLookupError):
-                os.killpg(process_group, signal.SIGTERM)
-            await self.store.set_process_group(run_id, None)
+        if Path(record["workspace"]).resolve() != self.workspace:
+            raise ValueError("run belongs to a different workspace")
+        record = await self.store.request_stop(run_id, status, error)
+        saved = cast(
+            FactoryState,
+            {
+                **json.loads(record["result_json"] or "{}"),
+                "run_id": run_id,
+                "status": record["status"],
+                "error": record["error"],
+            },
+        )
+        if record["status"] in FINAL_STATUSES:
+            return saved
+        if self.active_run_id == run_id:
+            self.cancel_event.set()
+            return saved
+        ownership = RunOwnership(self.workspace, run_id, self.database_path)
+        for retry in range(100):
+            try:
+                await ownership.acquire()
+                break
+            except OwnershipError:
+                latest = await self.store.get_run(run_id)
+                assert latest is not None
+                if latest["status"] in FINAL_STATUSES:
+                    return cast(
+                        FactoryState,
+                        {
+                            **json.loads(latest["result_json"] or "{}"),
+                            "run_id": run_id,
+                            "status": latest["status"],
+                            "error": latest["error"],
+                        },
+                    )
+                if retry == 99:
+                    return cast(
+                        FactoryState,
+                        {**saved, "status": latest["status"], "error": latest["error"]},
+                    )
+                await asyncio.sleep(0.05)
+        try:
+            try:
+                artifacts = ArtifactStore(
+                    self.workspace,
+                    run_id,
+                    storage_root=self.context.thread_storage / "factory" / "artifacts",
+                )
+                config = (
+                    FactoryConfig.model_validate_json(artifacts.read_text("config.json"))
+                    if artifacts.path("config.json").exists()
+                    else load_config(self.workspace)
+                )
+            except ArtifactIntegrityError, ValueError:
+                result = await self._cleanup_without_artifacts(run_id, status, error)
+                if result["status"] in FINAL_STATUSES:
+                    ownership.release_claim()
+                return result
+            runtime = FactoryRuntime(
+                run_id=run_id,
+                workspace=self.workspace,
+                context=self.context,
+                bb=self.bb,
+                store=self.store,
+                artifacts=artifacts,
+                config=config,
+                event_sink=self.event_sink,
+            )
+            result = await runtime.finish(saved, status)
+            if result["status"] in FINAL_STATUSES:
+                ownership.release_claim()
+            return result
+        finally:
+            ownership.close()
+
+    async def _cleanup_without_artifacts(
+        self, run_id: str, target: str, error: str
+    ) -> FactoryState:
+        record = await self.store.request_stop(run_id, target, error)
+        saved = {
+            **json.loads(record["result_json"] or "{}"),
+            "run_id": run_id,
+            "final_report_path": "",
+        }
+        if isinstance(self.bb, BBClient):
+            self.bb.store, self.bb.run_id = self.store, run_id
+        try:
+            await stop_owned_work(self.store, run_id, self.bb)
+        except Exception as exc:
+            await self.store.set_status(run_id, "recovery_needed", str(exc), result=saved)
+        else:
+            await self.store.set_status(
+                run_id, str(record["stop_target"] or target), error, result=saved
+            )
+        return cast(FactoryState, await self.store.save_result(run_id, saved))

@@ -1,6 +1,28 @@
 from typing import Literal, TypedDict
 
-RunStatus = Literal["pending", "running", "accepted", "failed", "blocked", "cancelled"]
+RunStatus = Literal[
+    "pending",
+    "running",
+    "waiting_for_input",
+    "recovery_needed",
+    "stopping",
+    "accepted",
+    "failed",
+    "blocked",
+    "cancelled",
+]
+
+FINAL_STATUSES = frozenset({"accepted", "failed", "blocked", "cancelled"})
+TRANSITIONS: dict[str, frozenset[str]] = {
+    "pending": frozenset({"running", "stopping", "recovery_needed", "failed", "blocked"}),
+    "running": frozenset(
+        {"waiting_for_input", "recovery_needed", "stopping", "accepted", "failed", "blocked"}
+    ),
+    "waiting_for_input": frozenset({"running", "recovery_needed", "stopping"}),
+    "recovery_needed": frozenset({"running", "waiting_for_input", "stopping"}),
+    "stopping": frozenset({"recovery_needed", "cancelled", "failed", "blocked"}),
+    **{status: frozenset() for status in FINAL_STATUSES},
+}
 
 
 class FactoryState(TypedDict, total=False):

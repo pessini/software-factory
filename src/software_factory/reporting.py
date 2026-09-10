@@ -31,6 +31,15 @@ def run_summary(state: FactoryState, status: str) -> dict[str, Any]:
 def final_report(state: FactoryState, outcome: str) -> str:
     changed = "\n".join(f"- {item}" for item in state.get("changed_files", [])) or "- None"
     error = f"\nError: {state['error']}\n" if state.get("error") else ""
+    action = {
+        "accepted": "inspect the BB diff and commit/open a PR manually.",
+        "waiting_for_input": "answer the child task's question, then resume this run.",
+        "recovery_needed": "inspect recorded operations and active work before resuming; the workspace remains reserved.",
+        "stopping": "wait for confirmed cleanup; external work may still be active.",
+    }.get(
+        state.get("status", "failed"),
+        "inspect the failure and preserved workspace before starting new work.",
+    )
     return f"""# Factory run {state["run_id"]}: {outcome}
 
 Plan: {"validated" if state.get("plan_json_path") else "not completed"}
@@ -43,5 +52,5 @@ Review: {"approved" if state.get("review_approved") else "not approved"} on atte
 {changed}
 
 No commit or push was performed.
-Next action: inspect the BB diff and commit/open a PR manually.
+Next action: {action}
 """

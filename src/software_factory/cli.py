@@ -118,6 +118,8 @@ def resume_command(
     engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
     result = asyncio.run(engine.resume(run_id))
     console.print_json(json.dumps(result))
+    if result.get("status") != "accepted":
+        raise typer.Exit(1)
 
 
 @app.command("inspect")
@@ -135,6 +137,8 @@ def inspect_command(run_id: str) -> None:
             "run": record,
             "children": await store.list_children(run_id),
             "events": await store.events(run_id),
+            "operations": await store.operations(run_id),
+            "processes": await store.processes(run_id),
             "artifacts": str(context.thread_storage / "factory" / "artifacts" / run_id),
         }
 
@@ -148,8 +152,10 @@ def cancel_command(
 ) -> None:
     """Stop active external work and mark a run cancelled."""
     engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
-    asyncio.run(engine.cancel_external(run_id))
-    console.print(f"cancelled {run_id}")
+    result = asyncio.run(engine.cancel_external(run_id))
+    console.print_json(json.dumps(result))
+    if result.get("status") == "recovery_needed":
+        raise typer.Exit(1)
 
 
 @app.command("acp")

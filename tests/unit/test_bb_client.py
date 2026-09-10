@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
 
 from software_factory.bb import BBClient, BBContext
+from software_factory.bb.client import BBError, RecoveryNeeded
 from software_factory.config import AgentConfig
+from software_factory.persistence import RunStore
 
 
 @pytest.mark.asyncio
@@ -37,6 +41,45 @@ print(json.dumps({"thread": {"id": "child-123"}}))
     assert argv[argv.index("--parent-thread") + 1] == "parent-1"
     assert argv[argv.index("--environment") + 1] == "environment-1"
     assert argv[argv.index("--permission-mode") + 1] == "full"
+
+
+async def test_bb_command_timeout_stops_a_group_that_ignores_term(tmp_path: Path) -> None:
+    marker = tmp_path / "group.json"
+    executable = tmp_path / "slow-bb"
+    executable.write_text(f"""#!/usr/bin/env python3
+import json, os, signal, subprocess, sys, time
+from pathlib import Path
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+child = subprocess.Popen([sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'])
+Path({str(marker)!r}).write_text(json.dumps({{'group': os.getpgrp(), 'child': child.pid}}))
+time.sleep(30)
+""")
+    executable.chmod(0o755)
+    store = RunStore(tmp_path / "factory.sqlite")
+    await store.initialize()
+    await store.create_run("slow-command", tmp_path, "parent")
+    client = BBClient(
+        BBContext("parent", "project", "environment", tmp_path / "storage"),
+        tmp_path,
+        (sys.executable, str(executable)),
+        command_timeout_seconds=1,
+        store=store,
+        run_id="slow-command",
+    )
+    with pytest.raises(BBError) as caught:
+        await client.output("child")
+    assert caught.value.kind == "time_limit"
+    group = json.loads(marker.read_text())["group"]
+    with pytest.raises(ProcessLookupError):
+        os.killpg(group, 0)
+    assert await store.processes("slow-command") == []
+
+
+async def test_live_adapter_rejects_output_without_an_execution_identity(tmp_path: Path) -> None:
+    client = BBClient(BBContext("parent", "project", "environment", tmp_path / "storage"), tmp_path)
+    assert await client.reconcile_operation("child", "saved-operation") is None
+    with pytest.raises(RecoveryNeeded, match="no execution identity"):
+        await client.execution("child", "expected-execution")
 
 
 @pytest.mark.asyncio
