@@ -102,3 +102,31 @@ print(json.dumps({"threads": [
     thread_id = await client.find_child("planner", "fct_test:planner")
 
     assert thread_id == "child-123"
+
+
+async def test_model_discovery_uses_environment_and_model_specific_efforts(tmp_path: Path) -> None:
+    executable = tmp_path / "catalog-bb"
+    log = tmp_path / "catalog-args.jsonl"
+    executable.write_text(f"""#!/usr/bin/env python3
+import json, sys
+from pathlib import Path
+with Path({str(log)!r}).open('a') as out: out.write(json.dumps(sys.argv[1:]) + '\\n')
+if sys.argv[1:3] == ['provider', 'list']:
+    print(json.dumps([{{'id':'provider-a','available':True,'capabilities':{{'permissionModes':['auto','accept-edits']}}}}, {{'id':'acp-software-factory','available':True}}]))
+else:
+    print(json.dumps([{{'id':'catalog-id','model':'dispatch-id','displayName':'Model','supportedReasoningEfforts':[{{'reasoningEffort':'minimal'}}],'defaultReasoningEffort':'minimal','isDefault':True}}]))
+""")
+    executable.chmod(0o755)
+    client = BBClient(
+        BBContext("parent", "project", "target-env", tmp_path / "storage"),
+        tmp_path,
+        (str(executable),),
+    )
+    catalog = await client.model_catalog()
+    assert catalog[0].model == "dispatch-id"
+    assert catalog[0].efforts == ["minimal"]
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert calls == [
+        ["provider", "list", "--environment", "target-env", "--json"],
+        ["provider", "models", "provider-a", "--environment", "target-env", "--json"],
+    ]

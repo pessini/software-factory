@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -166,6 +167,18 @@ def acp_command() -> None:
 
 def main() -> None:
     app()
+
+
+@app.command("settings-panel", hidden=True)
+def settings_panel(
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Read a bounded JSON request on stdin and serve the local BB panel."""
+    from software_factory.panel import PanelRequest, panel_request
+
+    request = PanelRequest.model_validate_json(sys.stdin.read(65537))
+    result = asyncio.run(panel_request(_workspace(workspace), _required_context(), request))
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

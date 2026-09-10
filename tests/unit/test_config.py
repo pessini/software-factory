@@ -67,3 +67,29 @@ def test_rejects_enabling_automatic_push(factory_yaml: str) -> None:
     raw["safety"]["allow_push"] = True
     with pytest.raises(ValidationError):
         FactoryConfig.model_validate(raw)
+
+
+async def test_project_preset_shared_and_step_choices_have_defined_priority(
+    factory_yaml: str, tmp_path: Path
+) -> None:
+    import yaml
+
+    from software_factory.config import ModelChoice, Selection
+    from software_factory.session_settings import SessionSettings
+    from tests.conftest import FakeBB
+
+    raw = yaml.safe_load(factory_yaml)
+    raw["settings"] = {"shared": {"model": "model-a"}}
+    raw["presets"] = {"fast": {"shared": {"model": "model-b", "reasoning_level": "low"}}}
+    config = FactoryConfig.model_validate(raw)
+    selected = Selection(
+        preset="fast", steps={"review": ModelChoice(model="model-a", reasoning_level="high")}
+    )
+    resolved = SessionSettings.resolve(config, selected, await FakeBB(tmp_path, {}).model_catalog())
+    assert resolved.effective["build"].model == "model-b"
+    assert resolved.effective["repair"].reasoning_level == "low"
+    assert resolved.effective["review"].model == "model-a"
+    assert resolved.effective["build"].permission_mode == "accept-edits"
+    selected.shared = ModelChoice(model="model-a", reasoning_level="high")
+    resolved = SessionSettings.resolve(config, selected, await FakeBB(tmp_path, {}).model_catalog())
+    assert resolved.effective["plan"].model == "model-a"

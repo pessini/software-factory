@@ -59,7 +59,12 @@ class RunStore:
                 CREATE TABLE IF NOT EXISTS factory_sessions (
                     session_id TEXT PRIMARY KEY,
                     cwd TEXT NOT NULL,
-                    run_id TEXT
+                    run_id TEXT,
+                    settings_json TEXT
+                );
+                CREATE TABLE IF NOT EXISTS factory_active_sessions (
+                    cwd TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS factory_operations (
                     operation_id TEXT PRIMARY KEY,
@@ -100,6 +105,9 @@ class RunStore:
             ):
                 if name not in columns:
                     await db.execute(f"ALTER TABLE factory_runs ADD COLUMN {name} {definition}")
+            cursor = await db.execute("PRAGMA table_info(factory_sessions)")
+            if "settings_json" not in {str(row[1]) for row in await cursor.fetchall()}:
+                await db.execute("ALTER TABLE factory_sessions ADD COLUMN settings_json TEXT")
             await db.commit()
 
     async def create_run(
@@ -468,8 +476,86 @@ class RunStore:
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT session_id, cwd, run_id FROM factory_sessions WHERE session_id = ?",
+                "SELECT session_id, cwd, run_id, settings_json FROM factory_sessions WHERE session_id = ?",
                 (session_id,),
             )
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+    async def save_session_settings(self, session_id: str, settings_json: str) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                "SELECT run_id FROM factory_sessions WHERE session_id = ?", (session_id,)
+            )
+            session = await cursor.fetchone()
+            if session is None:
+                raise ValueError(f"unknown ACP session: {session_id}")
+            if session[0]:
+                cursor = await db.execute(
+                    "SELECT status FROM factory_runs WHERE run_id = ?", (session[0],)
+                )
+                run = await cursor.fetchone()
+                if run is None or run[0] not in FINAL_STATUSES:
+                    raise ValueError(
+                        "settings cannot change while a run is active; finish or cancel it first"
+                    )
+            await db.execute(
+                "UPDATE factory_sessions SET settings_json = ? WHERE session_id = ?",
+                (settings_json, session_id),
+            )
+            await db.commit()
+
+    async def latest_session(self, cwd: Path) -> dict[str, str | None] | None:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT * FROM factory_sessions WHERE cwd = ?
+                   ORDER BY session_id = (SELECT session_id FROM factory_active_sessions WHERE cwd = factory_sessions.cwd) DESC,
+                            rowid DESC LIMIT 1""",
+                (str(cwd.resolve()),),
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def activate_session(self, session_id: str) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """INSERT INTO factory_active_sessions (cwd, session_id)
+                   SELECT cwd, session_id FROM factory_sessions WHERE session_id = ?
+                   ON CONFLICT(cwd) DO UPDATE SET session_id = excluded.session_id""",
+                (session_id,),
+            )
+            await db.commit()
+
+    async def claim_session_run(
+        self, session_id: str, run_id: str, expected_settings: str | None
+    ) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                "SELECT run_id, settings_json FROM factory_sessions WHERE session_id = ?",
+                (session_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None or row[1] != expected_settings:
+                raise ValueError("session settings changed; reload before starting")
+            if row[0]:
+                cursor = await db.execute(
+                    "SELECT status FROM factory_runs WHERE run_id = ?", (row[0],)
+                )
+                active = await cursor.fetchone()
+                if active is None or active[0] not in FINAL_STATUSES:
+                    raise ValueError("this session already has an active run; resume or cancel it")
+            await db.execute(
+                "UPDATE factory_sessions SET run_id = ? WHERE session_id = ?", (run_id, session_id)
+            )
+            await db.commit()
+
+    async def release_unstarted_session_run(self, session_id: str, run_id: str) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                "UPDATE factory_sessions SET run_id = NULL WHERE session_id = ? AND run_id = ? AND NOT EXISTS (SELECT 1 FROM factory_runs WHERE run_id = ?)",
+                (session_id, run_id, run_id),
+            )
+            await db.commit()

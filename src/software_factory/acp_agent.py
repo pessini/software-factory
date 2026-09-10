@@ -17,20 +17,27 @@ from acp import (
     update_plan,
     update_tool_call,
 )
-from acp.schema import AgentCapabilities, Implementation, TextContentBlock
+from acp.schema import (
+    AgentCapabilities,
+    Implementation,
+    SetSessionConfigOptionResponse,
+    TextContentBlock,
+)
 
 from software_factory import __version__
-from software_factory.bb import BBContext
+from software_factory.bb import BBClient, BBClientProtocol, BBContext
 from software_factory.engine import FactoryEngine, checkpoint_path, new_run_id
 from software_factory.events import FactoryEvent
 from software_factory.persistence import RunStore
+from software_factory.session_settings import SessionSettings
 
 PHASES = ["bootstrap", "plan", "build", "test", "repair", "review", "revise", "finalize"]
 
 
 class SoftwareFactoryAgent:
-    def __init__(self, context: BBContext) -> None:
+    def __init__(self, context: BBContext, bb: BBClientProtocol | None = None) -> None:
         self.context = context
+        self.bb = bb
         self.connection: acp.Client | None = None
         self.store = RunStore(checkpoint_path(context))
         self.cancellations: dict[str, asyncio.Event] = {}
@@ -64,8 +71,13 @@ class SoftwareFactoryAgent:
         del additional_directories, mcp_servers, kwargs
         session_id = f"factory_session_{uuid4().hex}"
         await self.store.initialize()
+        previous = await self.store.latest_session(Path(cwd))
         await self.store.save_session(session_id, Path(cwd).resolve())
-        return NewSessionResponse(session_id=session_id)
+        if previous and previous["settings_json"]:
+            await self.store.save_session_settings(session_id, str(previous["settings_json"]))
+        options = await self.settings(Path(cwd)).options(session_id)
+        await self.store.activate_session(session_id)
+        return NewSessionResponse(session_id=session_id, config_options=list(options))
 
     async def load_session(
         self,
@@ -82,7 +94,27 @@ class SoftwareFactoryAgent:
             raise ValueError(f"unknown ACP session: {session_id}")
         if Path(str(session["cwd"])).resolve() != Path(cwd).resolve():
             raise ValueError("ACP session belongs to a different workspace")
-        return LoadSessionResponse()
+        options = await self.settings(Path(cwd)).options(session_id)
+        await self.store.activate_session(session_id)
+        return LoadSessionResponse(config_options=list(options))
+
+    def settings(self, workspace: Path) -> SessionSettings:
+        return SessionSettings(
+            self.store, self.bb or BBClient.from_context(self.context, workspace)
+        )
+
+    async def set_config_option(
+        self, session_id: str, config_id: str, value: str, **kwargs: Any
+    ) -> SetSessionConfigOptionResponse:
+        del kwargs
+        await self.store.initialize()
+        session = await self.store.session(session_id)
+        if session is None:
+            raise ValueError(f"unknown ACP session: {session_id}")
+        options = await self.settings(Path(str(session["cwd"]))).change(
+            session_id, config_id, value
+        )
+        return SetSessionConfigOptionResponse(config_options=list(options))
 
     async def prompt(self, session_id: str, prompt: list[Any], **kwargs: Any) -> PromptResponse:
         del kwargs
@@ -96,17 +128,14 @@ class SoftwareFactoryAgent:
         request = "\n".join(
             block.text for block in prompt if isinstance(block, TextContentBlock)
         ).strip()
+        configuration, selection = await self.settings(Path(str(session["cwd"]))).read(session_id)
         run_id = new_run_id()
-        await self.store.save_session(session_id, Path(str(session["cwd"])), run_id)
+        await self.store.claim_session_run(session_id, run_id, session["settings_json"])
         cancellation = asyncio.Event()
         self.cancellations[run_id] = cancellation
         statuses: dict[str, Literal["pending", "in_progress", "completed"]] = {
             phase: "pending" for phase in PHASES
         }
-        await connection.session_update(
-            session_id,
-            update_plan(plan_entry(phase.title(), status="pending") for phase in PHASES),
-        )
 
         async def sink(event: FactoryEvent) -> None:
             node = event.node
@@ -152,10 +181,17 @@ class SoftwareFactoryAgent:
             workspace=Path(str(session["cwd"])),
             context=self.context,
             event_sink=sink,
+            bb=self.bb,
             cancel_event=cancellation,
         )
         try:
-            result = await engine.run(request, run_id)
+            await connection.session_update(
+                session_id,
+                update_plan(plan_entry(phase.title(), status="pending") for phase in PHASES),
+            )
+            result = await engine.run(
+                request, run_id, selection=selection, configuration=configuration
+            )
             report_path = (
                 Path(result.get("workspace_path", str(session["cwd"])))
                 / result["final_report_path"]
@@ -168,6 +204,7 @@ class SoftwareFactoryAgent:
             return PromptResponse(stop_reason=reason)
         finally:
             self.cancellations.pop(run_id, None)
+            await self.store.release_unstarted_session_run(session_id, run_id)
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         del kwargs

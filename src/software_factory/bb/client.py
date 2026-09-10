@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from software_factory.bb.context import BBContext
-from software_factory.config import AgentConfig
+from software_factory.config import AgentConfig, ModelOption
 from software_factory.persistence import RunStore
 from software_factory.processes import finish_process, start_process
 
@@ -34,6 +34,7 @@ class BBExecution:
     execution_id: str
     status: Literal["running", "completed", "waiting_for_input", "failed", "stopped"]
     output: str | None = None
+    reported_choice: AgentConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class BBThreadState:
 
 
 class BBClientProtocol(Protocol):
+    async def model_catalog(self) -> list[ModelOption]: ...
     async def validate_workspace(self, workspace: Path) -> None: ...
     async def check_protection(self, controller_root: Path) -> None: ...
     async def spawn_child(
@@ -68,6 +70,44 @@ class BBClient:
     command_timeout_seconds: float = 30
     store: RunStore | None = None
     run_id: str = ""
+
+    async def model_catalog(self) -> list[ModelOption]:
+        providers = await self._run(
+            "provider", "list", "--environment", self.context.environment_id
+        )
+        if not isinstance(providers, list):
+            raise BBError("BB provider list is invalid", "protocol")
+        catalog: list[ModelOption] = []
+        for provider in providers:
+            if not provider.get("available") or provider["id"] == "acp-software-factory":
+                continue
+            modes = provider["capabilities"]["permissionModes"]
+            if not {"auto", "accept-edits"}.intersection(modes):
+                continue
+            models = await self._run(
+                "provider", "models", provider["id"], "--environment", self.context.environment_id
+            )
+            if not isinstance(models, list):
+                raise BBError("BB model list is invalid", "protocol")
+            for model in models:
+                catalog.append(
+                    ModelOption(
+                        provider=provider["id"],
+                        model=model["model"],
+                        name=model["displayName"],
+                        efforts=[
+                            item["reasoningEffort"] for item in model["supportedReasoningEfforts"]
+                        ],
+                        default_effort=model["defaultReasoningEffort"],
+                        is_default=model["isDefault"],
+                        permission_modes=modes,
+                    )
+                )
+        if not catalog:
+            raise BBError(
+                "BB returned no supported model choices for this environment", "configuration"
+            )
+        return catalog
 
     async def validate_workspace(self, workspace: Path) -> None:
         result = await self._run("environment", "show", self.context.environment_id)
@@ -269,4 +309,10 @@ def resolve_bb_command() -> tuple[str, ...]:
         return command
     if shutil.which("bb"):
         return ("bb",)
-    return ("npx", "--package", "bb-app", "bb")
+    packaged = Path(
+        "/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/dist/bb.js"
+    )
+    node = shutil.which("node")
+    if node and packaged.is_file():
+        return (node, str(packaged))
+    return ("npx", "--no-install", "--package", "bb-app", "bb")

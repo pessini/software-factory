@@ -15,8 +15,49 @@ class ConfigModel(BaseModel):
 class AgentConfig(ConfigModel):
     provider: str = Field(min_length=1)
     model: str | None = None
-    reasoning_level: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    reasoning_level: str = Field(default="high", min_length=1)
     permission_mode: Literal["accept-edits", "auto", "full"] = "auto"
+
+
+Step = Literal["plan", "build", "repair", "review", "revision"]
+STEP_ROLES: dict[Step, str] = {
+    "plan": "planner",
+    "build": "builder",
+    "repair": "builder",
+    "review": "reviewer",
+    "revision": "builder",
+}
+
+
+class ModelChoice(ConfigModel):
+    provider: str | None = Field(default=None, min_length=1)
+    model: str | None = Field(default=None, min_length=1)
+    reasoning_level: str | None = Field(default=None, min_length=1)
+
+
+class Selection(ConfigModel):
+    shared: ModelChoice = Field(default_factory=ModelChoice)
+    steps: dict[Step, ModelChoice] = Field(default_factory=dict)
+    preset: str | None = None
+
+
+class ModelOption(ConfigModel):
+    provider: str
+    model: str
+    name: str
+    efforts: list[str]
+    default_effort: str
+    is_default: bool = False
+    permission_modes: list[str]
+
+
+class SettingsSnapshot(ConfigModel):
+    version: Literal[1] = 1
+    prompt_version: str = "1"
+    config_version: int
+    requested: Selection
+    effective: dict[Step, AgentConfig]
+    catalog: list[ModelOption]
 
 
 class AgentsConfig(ConfigModel):
@@ -117,6 +158,9 @@ class FactoryConfig(ConfigModel):
     workflow: Literal["simple-sdlc"]
     agents: AgentsConfig
     quality: QualityConfig
+    settings: Selection = Field(default_factory=Selection)
+    presets: dict[str, Selection] = Field(default_factory=dict)
+    resolved_settings: SettingsSnapshot | None = None
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
 

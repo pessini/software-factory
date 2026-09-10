@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from software_factory.bb.client import BBExecution, BBThreadState
-from software_factory.config import AgentConfig
+from software_factory.config import AgentConfig, ModelOption
 
 
 @pytest.fixture(autouse=True)
@@ -69,6 +69,27 @@ safety:
 
 
 class FakeBB:
+    async def model_catalog(self) -> list[ModelOption]:
+        return [
+            ModelOption(
+                provider="fake",
+                model="model-a",
+                name="Model A",
+                efforts=["high"],
+                default_effort="high",
+                is_default=True,
+                permission_modes=["auto", "accept-edits"],
+            ),
+            ModelOption(
+                provider="fake",
+                model="model-b",
+                name="Model B",
+                efforts=["low", "high"],
+                default_effort="low",
+                permission_modes=["auto", "accept-edits"],
+            ),
+        ]
+
     async def validate_workspace(self, workspace: Path) -> None:
         if self.workspace.resolve() != workspace.resolve():
             raise ValueError("BB environment does not point to the owned workspace")
@@ -90,11 +111,14 @@ class FakeBB:
         self.execution_ids: dict[str, str] = {}
         self.operation_executions: dict[str, BBExecution] = {}
         self.execution_count = 0
+        self.choices: list[tuple[str, AgentConfig]] = []
 
     async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
-        del agent
+        self.choices.append((role, agent))
         self.spawn_counts[role] += 1
-        thread_id = f"thread-{role}"
+        thread_id = f"thread-{role}" + (
+            f"-{self.spawn_counts[role]}" if self.spawn_counts[role] > 1 else ""
+        )
         self.thread_roles[thread_id] = role
         await self._advance(thread_id)
         self._record_execution(thread_id, prompt)

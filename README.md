@@ -65,3 +65,9 @@ The workflow never commits, pushes, merges, deploys, or runs an LLM-proposed
 command. It stops on unexpected file, index, or reference changes and preserves the workspace for inspection.
 Operator-reviewed quality programs are outside that guarantee and must not publish
 or mutate repository metadata indirectly.
+
+Model and effort choices for Plan, Build, Repair, Review, and Revision are
+available through the [BB Factory panel](bb-plugin-factory-controls/README.md).
+See [model settings](docs/model-settings.md) for saved settings and presets,
+and [BB compatibility](docs/bb-settings-compatibility.md) for the tested interface
+and the remaining live-execution limit.

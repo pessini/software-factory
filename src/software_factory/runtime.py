@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import tempfile
 import time
@@ -15,7 +16,7 @@ from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
 from software_factory.bb import BBClient, BBClientProtocol, BBContext
 from software_factory.bb.client import BBError, BBExecution, RecoveryNeeded, WaitingForInput
 from software_factory.cleanup import stop_owned_work
-from software_factory.config import AgentConfig, FactoryConfig, QualityCommand
+from software_factory.config import AgentConfig, FactoryConfig, QualityCommand, Step
 from software_factory.events import EventSink, FactoryEvent, null_event_sink
 from software_factory.persistence import RunStore
 from software_factory.processes import (
@@ -113,6 +114,21 @@ class FactoryRuntime:
         await self.bb.validate_workspace(self.workspace)
         await self.check_cancelled()
         step = step or role
+        settings = self.config.resolved_settings
+        conversation_role = role
+        if settings is not None:
+            selected_step = cast(Step, {"revise": "revision"}.get(step, step))
+            if selected_step not in settings.effective:
+                selected_step = cast(
+                    Step, {"planner": "plan", "builder": "build", "reviewer": "review"}[role]
+                )
+            agent = settings.effective[selected_step]
+            primary = settings.effective[
+                cast(Step, {"planner": "plan", "builder": "build", "reviewer": "review"}[role])
+            ]
+            if agent != primary:
+                digest = hashlib.sha256(agent.model_dump_json().encode()).hexdigest()[:16]
+                conversation_role = f"{role}:{digest}"
         kind = operation_kind or (
             "create" if step in {role, "plan", "build", "review"} and attempt == 1 else "follow_up"
         )
@@ -122,7 +138,7 @@ class FactoryRuntime:
             attempt,
             kind,
             prompt,
-            role=role,
+            role=conversation_role,
             timeout_seconds=self.config.limits.step_timeout_seconds,
         )
         operation_id = str(operation["operation_id"])
@@ -130,8 +146,8 @@ class FactoryRuntime:
             return str(operation["thread_id"]), str(json.loads(operation["result_json"]))
         if operation["state"] == "stopped":
             raise RecoveryNeeded(f"operation was stopped and cannot be repeated: {operation_id}")
-        thread_id = operation["thread_id"] or await self.store.child(self.run_id, role)
-        spawn_key = await self.store.prepare_child_spawn(self.run_id, role)
+        thread_id = operation["thread_id"] or await self.store.child(self.run_id, conversation_role)
+        spawn_key = await self.store.prepare_child_spawn(self.run_id, conversation_role)
         if thread_id is None:
             thread_id = await self._read_retry(
                 lambda: self.bb.find_child(role, spawn_key), operation
@@ -150,7 +166,7 @@ class FactoryRuntime:
                     )
                 elif kind != "create" or tell_existing:
                     existing_thread: str = thread_id
-                    await self._activate_child(role, existing_thread)
+                    await self._activate_child(conversation_role, existing_thread)
                     execution_id = await self._controlled(
                         lambda: self.bb.tell(existing_thread, tagged_prompt), operation
                     )
@@ -176,7 +192,7 @@ class FactoryRuntime:
             await self.store.update_operation(operation_id, thread_id=thread_id)
         elif thread_id is None:
             raise RecoveryNeeded(f"cannot establish whether child creation ran: {operation_id}")
-        await self._activate_child(role, thread_id)
+        await self._activate_child(conversation_role, thread_id)
         execution = await self._read_retry(
             lambda: self.bb.reconcile_operation(thread_id, operation_id), operation
         )
@@ -199,6 +215,28 @@ class FactoryRuntime:
             raise WaitingForInput(f"{role} is waiting for user input in {thread_id}")
         if completed.status != "completed" or completed.output is None:
             raise BBError(f"{role} execution ended with status {completed.status}")
+        reported = completed.reported_choice
+        await self.emit(
+            step,
+            "info",
+            "Execution model choice",
+            attempt=attempt,
+            metadata={
+                "requested": agent.model_dump(mode="json"),
+                "reported": reported.model_dump(mode="json") if reported else None,
+                "verification": "verified" if reported else "unverified",
+                "execution_id": completed.execution_id,
+            },
+        )
+        if reported and (reported.provider, reported.model, reported.reasoning_level) != (
+            agent.provider,
+            agent.model,
+            agent.reasoning_level,
+        ):
+            raise BBError(
+                "provider reported a different model or effort; automatic substitution is forbidden",
+                "configuration",
+            )
         inspection = await self._read_retry(lambda: self.bb.inspect_thread(thread_id), operation)
         if not inspection.stopped:
             raise RecoveryNeeded(
@@ -432,7 +470,7 @@ class FactoryRuntime:
             ):
                 continue
             thread_id = operation["thread_id"] or await self.bb.find_child(
-                str(operation["role"]), f"{self.run_id}:{operation['role']}"
+                str(operation["role"]).split(":", 1)[0], f"{self.run_id}:{operation['role']}"
             )
             if thread_id is None:
                 raise RecoveryNeeded("old child creation has an uncertain outcome")

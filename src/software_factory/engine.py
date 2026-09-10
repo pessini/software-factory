@@ -13,13 +13,14 @@ from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
 from software_factory.bb import BBClient, BBClientProtocol, BBContext
 from software_factory.bb.client import BBError, RecoveryNeeded, WaitingForInput
 from software_factory.cleanup import stop_owned_work
-from software_factory.config import FactoryConfig, load_config
+from software_factory.config import FactoryConfig, Selection, load_config
 from software_factory.events import EventSink, null_event_sink
 from software_factory.graph import build_graph
 from software_factory.ownership import OwnershipError, RunOwnership
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
+from software_factory.settings import resolve_choices
 from software_factory.state import FINAL_STATUSES, FactoryState
 
 
@@ -51,11 +52,20 @@ class FactoryEngine:
         self.cancel_event = cancel_event or asyncio.Event()
         self.active_run_id: str | None = None
 
-    async def run(self, request: str, run_id: str | None = None) -> FactoryState:
+    async def run(
+        self,
+        request: str,
+        run_id: str | None = None,
+        *,
+        selection: Selection | None = None,
+        configuration: FactoryConfig | None = None,
+    ) -> FactoryState:
         if not request.strip():
             raise ValueError("request must not be empty")
         run_id = run_id or new_run_id()
-        config = load_config(self.workspace)
+        config = (
+            configuration.model_copy(deep=True) if configuration else load_config(self.workspace)
+        )
         await self.store.initialize()
         initial: FactoryState = {
             "run_id": run_id,
@@ -88,8 +98,28 @@ class FactoryEngine:
                 run_id, self.workspace, self.context.parent_thread_id, deadline_at=deadline_at
             )
             await self.store.save_result(run_id, dict(initial))
-            runtime = self._runtime(run_id)
+            runtime = self._runtime(run_id, config=config)
             runtime.artifacts.write_json("config.json", config)
+            try:
+                async with asyncio.timeout(config.limits.total_run_timeout_seconds):
+                    await self.bb.check_protection(runtime.artifacts.root)
+                    await self.bb.validate_workspace(self.workspace)
+                    config.resolved_settings = resolve_choices(
+                        {
+                            role: getattr(config.agents, role)
+                            for role in ("planner", "builder", "reviewer")
+                        },
+                        config.settings,
+                        config.presets,
+                        selection or Selection(),
+                        await self.bb.model_catalog(),
+                        config.version,
+                    )
+                    runtime.artifacts.write_json("config.json", config)
+            except (BBError, ValueError, TimeoutError) as exc:
+                result = await runtime.finish({**initial, "error": str(exc)}, "failed")
+                ownership.release_claim()
+                return result
             return await self._execute_owned(runtime, initial, deadline_at, ownership)
         finally:
             ownership.close()
@@ -221,18 +251,22 @@ class FactoryEngine:
                 )
         return await runtime.report(cast(FactoryState, result))
 
-    def _runtime(self, run_id: str, *, create: bool = True) -> FactoryRuntime:
+    def _runtime(
+        self, run_id: str, *, create: bool = True, config: FactoryConfig | None = None
+    ) -> FactoryRuntime:
         artifacts = ArtifactStore(
             self.workspace,
             run_id,
             storage_root=self.context.thread_storage / "factory" / "artifacts",
             create=create,
         )
-        config = (
+        config = config or (
             load_config(self.workspace)
             if create
             else FactoryConfig.model_validate_json(artifacts.read_text("config.json"))
         )
+        if not create and config.resolved_settings is None:
+            raise ValueError("run has no saved model settings; start a new run")
         return FactoryRuntime(
             run_id=run_id,
             workspace=self.workspace,
