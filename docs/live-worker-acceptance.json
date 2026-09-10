@@ -1,0 +1,139 @@
+{
+  "date": "2026-09-10",
+  "versions": {
+    "bb": "0.42.1",
+    "container": "1.0.0",
+    "provider_cli": "0.154.0"
+  },
+  "full_workflow": {
+    "run_id": "fct_9c5911f51ff1",
+    "parent": "thr_u3m5i3abap",
+    "status": "accepted",
+    "test_passed": true,
+    "review_approved": true,
+    "changed_files": [
+      "src/demo_target/__init__.py",
+      "src/demo_target/core.py",
+      "tests/test_core.py"
+    ],
+    "operations": [
+      {
+        "operation_id": "fct_9c5911f51ff1:build:1:create",
+        "step": "build",
+        "state": "completed",
+        "thread_id": "thr_avu29tnczy",
+        "execution_id": "01a08d61-195c-75d1-bfbc-f3000093ff4e",
+        "dispatch_count": 1,
+        "requested": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "accept-edits"
+        },
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "accept-edits"
+        },
+        "container_stopped": true
+      },
+      {
+        "operation_id": "fct_9c5911f51ff1:plan:1:create",
+        "step": "plan",
+        "state": "completed",
+        "thread_id": "thr_zmd6ttbwyu",
+        "execution_id": "01a08d60-b401-7a22-9533-8912bc33fd39",
+        "dispatch_count": 1,
+        "requested": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "container_stopped": true
+      },
+      {
+        "operation_id": "fct_9c5911f51ff1:review:1:create",
+        "step": "review",
+        "state": "completed",
+        "thread_id": "thr_kz727pgdke",
+        "execution_id": "01a08d61-c12a-7c42-8c3b-a012ee611402",
+        "dispatch_count": 1,
+        "requested": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "medium",
+          "permission_mode": "auto"
+        },
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "medium",
+          "permission_mode": "auto"
+        },
+        "container_stopped": true
+      },
+      {
+        "operation_id": "fct_9c5911f51ff1:test:tests:1:check",
+        "step": "test:tests",
+        "state": "completed",
+        "thread_id": null,
+        "execution_id": "b9ab7bbe3cf84a1dafe555c574131c15",
+        "dispatch_count": 1,
+        "result": {
+          "name": "tests",
+          "argv": [
+            "uv",
+            "run",
+            "--no-sync",
+            "python",
+            "-B",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider"
+          ],
+          "exit_code": 0,
+          "duration_seconds": 0.448,
+          "timed_out": false,
+          "cancelled": false,
+          "output_tail": "..........                                                               [100%]\n10 passed in 0.01s\n"
+        }
+      }
+    ]
+  },
+  "restart_and_cancel": {
+    "run_id": "fct_live_recovery_20260910",
+    "parent": "thr_w2rh4656qt",
+    "status": "cancelled",
+    "reconciled_same_execution": true,
+    "dispatch_count": 1,
+    "children_stopped": {
+      "thr_tuqdy26c6c": true
+    }
+  },
+  "same_builder_followup": {
+    "run_id": "fct_live_followup_20260910",
+    "child": "thr_5vbbth84b6",
+    "same_provider_conversation": true,
+    "execution_ids": [
+      "01a08d63-573e-7b62-92ee-de29d66cbd15",
+      "01a08d63-6c6f-7f32-b413-5b3e54fe11b8"
+    ],
+    "outputs": [
+      "FIRST BLUE",
+      "SECOND BLUE"
+    ],
+    "premature_parent_notices": 0,
+    "containers_stopped": true,
+    "report_note": "The initial report script rejected a null BB event field. These assertions were independently repeated from the saved records; no provider request was repeated."
+  }
+}

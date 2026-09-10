@@ -125,11 +125,12 @@ and [`environment.ts`](https://github.com/get-bb/bb/blob/4ae0a7c893e9922721e0e36
 - Waiting for `idle` can fail at `error`. A status of `idle` alone does not prove
   that pending interactions or scheduled work are absent.
 
-The current live adapter therefore does not claim execution reconciliation or
-confirmed stop support. It returns an unknown reconciliation result and rejects
-unidentified execution output. The existing issue-2 permission check still
-disables live BB work. The in-process test adapter supplies explicit execution
-identities and stop confirmations; these tests do not establish live-provider
-support. A supported live adapter needs tested isolation, request identity,
-waiting-for-input detection, and confirmed stop before that restriction can be
-removed. No exactly-once guarantee is claimed for the current BB CLI.
+The default adapter now uses the [protected worker](protected-worker.md). It
+records actual provider thread and turn IDs outside the provider's writable
+mounts, reads only the matching saved result, and checks container exit. The
+[authenticated evidence](live-worker-acceptance.json) covers controller restart,
+one dispatch after recovery, cancellation, and a same-Builder follow-up.
+
+The generic BB CLI adapter remains disabled because its latest text cannot
+establish request identity. No exactly-once guarantee is inferred from the BB
+CLI alone. Uncertain dispatch remains a recovery state and is not repeated.

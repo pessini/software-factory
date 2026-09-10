@@ -5,19 +5,15 @@ workflow to [BB](https://github.com/get-bb/bb). LangGraph owns routing and durab
 state; BB owns visible Planner, Builder, and Reviewer threads; Python owns all
 quality gates.
 
-Live BB execution is currently disabled because the adapter cannot enforce
-read-only roles and controller storage protection. The workflow is available for
-automated tests. See [the protection policy](docs/repository-protection.md) for the
-remaining requirement in issue #2.
+Live runs use the [protected local BB worker](docs/protected-worker.md), tested
+with BB 0.42.1, Apple Container 1.0.0, and the Codex provider CLI 0.154.0.
+The worker enforces read-only roles and protects controller storage. Other
+providers and remote BB environments are not currently supported.
 
-An [opt-in protected worker](docs/protected-worker.md) now has passing local
-container permission checks. Authenticated BB/provider acceptance is pending;
-the default remains disabled. See the [issues 1–4 review](docs/issues-1-4-review.md)
-for the remaining work and dependency order.
-
-See [run ownership and recovery](docs/run-recovery.md) for cancellation rules,
-operation records, process cleanup, saved-state compatibility, and the current
-BB execution-identity limitation.
+See [run ownership and recovery](docs/run-recovery.md) for cancellation and restart
+rules, [live acceptance evidence](docs/live-worker-acceptance.json) for the
+verified run, and the [issues 1–4 review](docs/issues-1-4-review.md) for the
+remaining dependency order.
 
 The MVP provides:
 

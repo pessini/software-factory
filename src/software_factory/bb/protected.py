@@ -89,6 +89,8 @@ class ProtectedBBClient(BBClient):
             self._message(prompt),
             "--provider",
             WORKER_PROVIDER,
+            "--permission-mode",
+            "accept-edits",
         )
         thread = result.get("thread", result) if isinstance(result, dict) else None
         if not isinstance(thread, dict) or not isinstance(thread.get("id"), str):
@@ -143,7 +145,7 @@ class ProtectedBBClient(BBClient):
                         receipt.error or "Provider dispatch could not be established"
                     )
             child = await read_bb(f"threads/{quote(thread_id, safe='')}")
-            if child.get("status") not in {"running", "starting"} and not child.get(
+            if child.get("status") not in {"active", "running", "starting"} and not child.get(
                 "queuedMessageCount"
             ):
                 return None
@@ -171,13 +173,17 @@ class ProtectedBBClient(BBClient):
         queued = await read_bb(f"threads/{quote(thread_id, safe='')}/queued-messages")
         if not isinstance(queued, list):
             raise BBError("BB did not return a pending-message list", "protocol")
+        receipts = records.all()
         stopped = (
-            child.get("status") == "idle"
+            (
+                child.get("status") in {"idle", "error"}
+                or (child.get("status") == "active" and bool(receipts))
+            )
             and child.get("activeBackgroundAgentCount") == 0
             and child.get("queuedMessageCount") == 0
             and not queued
         )
-        for receipt in records.all():
+        for receipt in receipts:
             if receipt.container_creation_requested:
                 container = await inspect_container(receipt.container_id, receipt.operation_id)
                 stopped = (

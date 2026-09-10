@@ -7,6 +7,27 @@ from software_factory.bb import BBContext
 from tests.conftest import FakeBB
 
 
+async def test_bb_child_completion_does_not_start_another_factory_run(tmp_path, factory_yaml):
+    from acp.schema import TextContentBlock
+
+    (tmp_path / ".factory").mkdir()
+    (tmp_path / ".factory/factory.yaml").write_text(factory_yaml)
+    context = BBContext("parent", "project", "environment", tmp_path / "storage")
+    agent = SoftwareFactoryAgent(context, FakeBB(tmp_path, {}))
+    session = await agent.new_session(str(tmp_path))
+    result = await agent.prompt(
+        session.session_id,
+        [
+            TextContentBlock(
+                type="text",
+                text="<system_instructions>\nBB context\n</system_instructions>\n[bb system]\n\n@thread:child completed:\n\n{}",
+            )
+        ],
+    )
+    assert result.stop_reason == "end_turn"
+    assert (await agent.store.session(session.session_id))["run_id"] is None
+
+
 @pytest.mark.asyncio
 async def test_acp_session_can_be_created_and_loaded(tmp_path: Path, factory_yaml: str) -> None:
     context = BBContext("parent", "project", "environment", tmp_path / "storage")

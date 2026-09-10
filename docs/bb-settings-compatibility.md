@@ -30,12 +30,16 @@ session-settings implementation as ACP `session/set_config_option`.
 
 The live checks below test this panel decision.
 
-## Existing execution limit
+## Execution support
 
-Issue 3 remains open. The live adapter rejects execution because it cannot yet
-enforce role isolation, protect controller storage, or match output to a saved
-execution identity. Settings work must not remove these checks. A model listing
-or successful panel save does not prove a supported end-to-end factory run.
+The [protected worker](protected-worker.md) now supports local Codex execution.
+The [authenticated test evidence](live-worker-acceptance.json) verifies saved
+choices against actual provider responses, a complete run, restart, cancellation,
+and a same-Builder follow-up. Settings are still rejected when the requested
+provider/model/effort is unsupported.
+
+The earlier checks below document the panel implementation before that worker
+was available. Their disabled-adapter results are historical.
 
 ## Live results
 
@@ -81,6 +85,5 @@ after these checks.
 Workflow tests verify that different saved models and efforts reach plan,
 build, repair, review, and revision. Repair and revision create separate saved
 child conversations when their settings differ from Build. An unsupported
-model/effort pair fails before child creation. Actual provider execution remains
-unverified on live BB because the existing isolation and execution-identity
-adapter is incomplete; no live child-execution pass is claimed.
+model/effort pair fails before child creation. Actual execution is now covered by the subsequent authenticated worker tests
+linked above.

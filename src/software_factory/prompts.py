@@ -25,6 +25,8 @@ def builder_prompt(run_id: str, request: str, plan_path: Path) -> str:
     schema = json.dumps(BuildEnvelope.model_json_schema(), indent=2)
     return f"""You are the Builder for software factory run {run_id}.
 Implement the request using the validated plan at {plan_path}. You may edit application and test files.
+The controller runs configured quality checks and Reviewer after your handoff. Do not wait for review approval.
+If your isolated environment cannot run a check, describe that limit in the summary and return the completed implementation for controller verification.
 Do not edit .factory/factory.yaml, .bb, CI/deployment controls, or any protected path.
 Do not commit or push. At the end return exactly one JSON object matching the schema.
 changed_files must list every repository file you changed and no unchanged files.

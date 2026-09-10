@@ -112,7 +112,11 @@ class ContainerProvider:
             "/tmp": "write",
             "/factory/provider/auth.json": "deny",
         }
-        rules.update({str(path): "read" for path in self.protected})
+        # The provider creates mount placeholders for missing read-only paths.
+        # On a writable shared mount those placeholders alter the host checkout.
+        # Existing paths are denied here; creation of a new protected path is
+        # rejected by the controller's repository check after the operation.
+        rules.update({str(path): "read" for path in self.protected if path.exists()})
         table = (
             "{"
             + ",".join(

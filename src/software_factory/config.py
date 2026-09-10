@@ -202,7 +202,7 @@ agents:
 quality:
   commands:
     - name: tests
-      argv: [\"uv\", \"run\", \"pytest\", \"-q\"]
+      argv: [\"uv\", \"run\", \"--no-sync\", \"python\", \"-B\", \"-m\", \"pytest\", \"-q\", \"-p\", \"no:cacheprovider\"]
       timeout_seconds: 900
 
 limits:

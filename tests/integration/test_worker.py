@@ -207,3 +207,32 @@ async def test_startup_validation_failure_does_not_claim_a_container(worker):
     assert receipt.stopped
     assert not receipt.container_creation_requested
     assert not Provider.instances[0].calls
+
+
+async def test_completed_worker_holds_bb_notice_until_next_controller_request(worker):
+    from acp.schema import TextContentBlock
+
+    agent, message, store = worker
+    ready = asyncio.Event()
+
+    class Client:
+        async def session_update(self, *args):
+            ready.set()
+
+    agent.connection = Client()
+    task = asyncio.create_task(
+        agent.prompt("child", [TextContentBlock(type="text", text=message.model_dump_json())])
+    )
+    async with asyncio.timeout(5):
+        await ready.wait()
+        assert not task.done()
+        assert agent.records.read(message.operation_id).stopped
+        await agent.cancel("child")
+        assert (await task).stop_reason == "end_turn"
+    assert not agent.cancelled.is_set()
+    operation = await store.prepare_operation(
+        "run1", "repair", 1, "follow_up", "Repair request", role="builder", timeout_seconds=60
+    )
+    await store.update_operation(operation["operation_id"], state="dispatching", dispatch_count=1)
+    await agent.execute(message.model_copy(update={"operation_id": operation["operation_id"]}))
+    assert Provider.instances[-1].calls[0][0] == "thread/resume"

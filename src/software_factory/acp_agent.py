@@ -21,11 +21,11 @@ from acp.schema import (
     AgentCapabilities,
     Implementation,
     SetSessionConfigOptionResponse,
-    TextContentBlock,
 )
 
 from software_factory import __version__
 from software_factory.bb import BBClient, BBClientProtocol, BBContext
+from software_factory.bb.acp_input import request_text
 from software_factory.engine import FactoryEngine, checkpoint_path, new_run_id
 from software_factory.events import FactoryEvent
 from software_factory.persistence import RunStore
@@ -119,6 +119,10 @@ class SoftwareFactoryAgent:
     async def prompt(self, session_id: str, prompt: list[Any], **kwargs: Any) -> PromptResponse:
         from software_factory.ownership import session_lease
 
+        if request_text(prompt).startswith("[bb system]\n"):
+            # BB echoes child completion back to the parent as a system prompt.
+            # The controller already reads the exact saved child result.
+            return PromptResponse(stop_reason="end_turn")
         await self.store.initialize()
         with session_lease(self.store.path, session_id):
             session = await self.store.session(session_id)
@@ -137,9 +141,7 @@ class SoftwareFactoryAgent:
         session = await self.store.session(session_id)
         if session is None:
             raise ValueError(f"unknown ACP session: {session_id}")
-        request = "\n".join(
-            block.text for block in prompt if isinstance(block, TextContentBlock)
-        ).strip()
+        request = request_text(prompt)
         configuration, selection = await self.settings(Path(str(session["cwd"]))).read(session_id)
         run_id = new_run_id()
         await self.store.claim_session_run(session_id, run_id, session["settings_json"])

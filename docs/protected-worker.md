@@ -1,13 +1,12 @@
-# Protected BB worker: acceptance pending
+# Protected BB worker
 
-The protected worker is an opt-in implementation for local BB 0.42.1, Apple
-Container 1.0.0, and the Codex provider CLI 0.154.0. It is not yet approved for
-routine use. The authenticated BB/provider acceptance test has not run.
+The default adapter supports local BB 0.42.1, Apple Container 1.0.0, and the
+Codex provider CLI 0.154.0. The authenticated acceptance tests passed on
+10 September 2026. See [the saved evidence](live-worker-acceptance.json).
 
-The default adapter remains disabled. Set `FACTORY_PROTECTED_WORKER=1` on the
-Software Factory parent agent only when testing the new worker. `doctor` then
-checks the worker image and BB registration. A successful prerequisite check
-does not establish that a complete model run passed.
+`doctor` checks the image, worker registration, repository environment, and
+model choices. Setting `FACTORY_PROTECTED_WORKER=0` selects the old disabled
+adapter for compatibility testing; it does not bypass protection.
 
 ## What the worker does
 
@@ -19,10 +18,13 @@ environment, repository, and any previously saved child ID before dispatch.
 
 Each operation gets a named container and a saved creation record. Planner and
 Reviewer get a read-only workspace. Builder gets a writable workspace with
-read-only mounts for Git metadata, configured protected paths, existing ignored
+read-only mounts for Git metadata, existing configured protected paths, existing ignored
 files, and controller evidence. The provider's command permissions also enforce
 these restrictions and disable command network access. Provider communication
-with OpenAI still requires network access outside the command sandbox.
+with OpenAI still requires network access outside the command sandbox. Creation
+of a new protected path is detected and rejected by the controller after the
+operation. Missing paths are not mounted: provider mount placeholders would
+otherwise change the host checkout.
 
 The existing Codex login file is mounted read-only into a separate provider
 directory. It is not copied into the repository, Git objects, or evidence.
@@ -33,6 +35,13 @@ The worker saves the actual provider thread and turn IDs. Only a matching turn
 can supply output. A completed request can return its saved result after restart;
 an uncertain request is never sent again. Repair and revision can resume a
 previous provider conversation when the saved settings match.
+
+BB prepends transport instructions to ACP requests; the factory separates them
+from the submitted request. BB also steers a running parent when a child returns.
+The worker therefore saves its completed result and waits to finish its ACP turn
+until the controller ends, its deadline expires, or a follow-up arrives. The
+controller verifies stopped provider containers before it consumes the result.
+Parent system notices do not start another factory run.
 
 Cancellation first saves a stop request. Cleanup checks each container's name
 and operation label, stops it, and verifies its stopped state. After a worker
@@ -65,9 +74,10 @@ Add a BB custom ACP agent with these fields, preserving existing agents:
 }
 ```
 
-The parent agent must have `FACTORY_PROTECTED_WORKER=1` in its environment.
 Use the absolute executable path from `command -v software-factory`. Keep the
 worker's repository environment the same as the parent environment.
+After changing the legacy BB registration file, run `bb-app config refresh`
+and reload the `provider-acp` plugin so its provider list picks up the new entry.
 
 Run the local protection checks without a login or model request:
 
@@ -77,21 +87,31 @@ FACTORY_LIVE_CONTAINER=1 uv run pytest tests/live/test_worker_permissions.py
 
 These checks passed on 10 September 2026 for Builder and read-only roles. They
 verify allowed edits, denied protected-file edits, unchanged dummy secrets and
-evidence, and confirmed container exit. Simulated provider tests separately
+evidence, deletion, rename, permission changes, hard links, symbolic-link writes, and
+confirmed container exit. Simulated provider tests separately
 cover exact turn matching, duplicate requests, child authorization, and crash
-cleanup. They do not replace authenticated acceptance.
+cleanup. The authenticated checks below add real BB/provider evidence.
 
-## Remaining acceptance
+## Authenticated acceptance results
 
-Use a disposable copy of `examples/demo-target`, with dummy data only. Register
-the worker, select available Codex models and efforts, run the complete factory,
-and retain the saved operation IDs, choices, check output, and final report.
-Also test a stopped run and a controller restart. Verify that no owned worker or
-container remains active after completion or cancellation.
+The user authorized these tests after the initial approval review requested
+explicit permission. Only disposable demo source and test instructions were used.
 
-Automatic approval review rejected the earlier authenticated probe because it
-could send workspace and instruction data to an external service without
-explicit user authorization. That test remains pending. The proposed test sends
-only the disposable demo source, its project instructions, and the test request
-to OpenAI through the existing Codex login. Do not treat the local checks above
-as approval to run it.
+- Run `fct_9c5911f51ff1` completed Planner, Builder, configured checks, and Reviewer
+  with status `accepted`. Plan and Build used `gpt-5.6-luna / low`; Review used
+  `gpt-5.6-luna / medium`. The provider reported the matching choices.
+- The controller-crash test recovered the same saved provider turn with one
+  dispatch, then cancelled and confirmed the child stopped.
+- Build and Repair reused one child and one provider conversation. They had
+  distinct provider turn IDs, retained the test marker, and produced no parent
+  notice before controller cancellation.
+- All provider containers in these checks were inspected and confirmed stopped.
+
+The demo and generated policy now use `uv run --no-sync python -B -m pytest -q
+-p no:cacheprovider`. Run `uv sync` during repository setup. The quality command
+then verifies code without synchronizing dependencies or writing Python/pytest
+caches into the protected checkout.
+
+This proves the current single-Reviewer workflow and worker contract. It does
+not complete issue #1's evidence-based review design, question continuation in
+#5, or the later first-release acceptance work in #6.

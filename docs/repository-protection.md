@@ -80,19 +80,18 @@ Binding final approval to the exact tested application contents remains in issue
 | BB `full` | Existing factory configuration rejects it. | Remains forbidden. |
 | Scripted test adapter | Runs known test actions in process. It deliberately permits tampering to test detection. | Automated tests only; not a supported live provider. |
 
-These statements concern the interface used by this repository and the installed
-BB CLI guidance. They do not certify every provider implementation. The current
-BB adapter has **no enabled live provider**. `doctor` reports the missing
-isolation, and workflow bootstrap fails before creating a child. There is no
-configuration switch to bypass this check.
+These rows describe the generic BB CLI adapter. The default adapter now uses
+[the protected local worker](protected-worker.md): a container per provider
+operation, a read-only Planner/Reviewer workspace, read-only existing protected
+Builder paths and Git metadata, and controller evidence outside writable mounts.
+New protected-path creation is detected and rejected after the operation.
 
-To enable a live adapter, it must enforce read-only access for Planner/Reviewer,
-limit Builder writes to its permitted workspace scope, and deny all children
-write access to the controller's complete storage. Validate those restrictions on
-the actual execution host, including writes, replacement, deletion, permission
-changes, links, and indirect access through tools. The adapter must maintain the
-restrictions for new, reused, and resumed child tasks. Sandboxing the `bb` client
-process alone cannot constrain work started by an existing BB server.
+Local container tests cover writes, deletion, rename, permission changes, and
+link-based attempts. The authenticated demo run, crash/recovery/cancel check,
+and same-Builder follow-up passed. Their
+[saved evidence](live-worker-acceptance.json) includes exact provider turn IDs
+and confirmed container exit. Other provider/environment combinations remain
+unsupported and fail prerequisite checks.
 
 Automated regression tests prove preservation of another worktree's commit and
 new branch, preservation of existing staged and unstaged work, absence of new
@@ -100,5 +99,5 @@ Git objects containing ignored secrets/caches, rejection of forged plans and tes
 results, and valid simulated implementation, repair, review, and resume. A
 separate-process test proves that location and ordinary file permissions do not
 prevent same-user evidence replacement. A dispatch test proves that unverified
-BB permissions are refused. **Actual read-only provider isolation remains
-unimplemented and unverified; issue #2 must stay open until it is available.**
+BB permissions are refused. Actual provider isolation is now covered by the local and authenticated worker
+checks described above.

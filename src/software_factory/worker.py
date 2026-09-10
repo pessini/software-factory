@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
@@ -18,16 +19,18 @@ from acp import (
     PromptResponse,
     update_agent_message_text,
 )
-from acp.schema import AgentCapabilities, Implementation, TextContentBlock
+from acp.schema import AgentCapabilities, Implementation
 
 from software_factory.artifacts import ArtifactStore
 from software_factory.bb import BBContext
+from software_factory.bb.acp_input import request_text
 from software_factory.bb.client import BBError, RecoveryNeeded, _child_title
 from software_factory.bb.local_api import read_bb, thread_storage
 from software_factory.config import FactoryConfig, Step
 from software_factory.git import git
 from software_factory.ownership import session_lease
 from software_factory.persistence import RunStore
+from software_factory.state import FINAL_STATUSES
 from software_factory.worker_container import ContainerProvider
 from software_factory.worker_records import WorkerMessage, WorkerReceipt, WorkerRecords, request_key
 
@@ -43,6 +46,8 @@ class WorkerAgent:
         self.connection: acp.Client | None = None
         self.workspace: Path | None = None
         self.cancelled = asyncio.Event()
+        self.handoff = asyncio.Event()
+        self.awaiting_handoff = False
 
     def on_connect(self, connection: acp.Client) -> None:
         self.connection = connection
@@ -66,18 +71,41 @@ class WorkerAgent:
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         if session_id == self.context.parent_thread_id:
-            self.cancelled.set()
+            if self.awaiting_handoff:
+                self.handoff.set()
+            else:
+                self.cancelled.set()
 
     async def prompt(self, session_id: str, prompt: list[Any], **kwargs: Any) -> PromptResponse:
         if session_id != self.context.parent_thread_id or self.workspace is None:
             raise ValueError("worker session is not loaded")
-        message = WorkerMessage.model_validate_json(
-            "\n".join(block.text for block in prompt if isinstance(block, TextContentBlock))
-        )
+        message = WorkerMessage.model_validate_json(request_text(prompt))
         output = await self.execute(message)
-        if self.connection is not None:
-            await self.connection.session_update(session_id, update_agent_message_text(output))
+        self.awaiting_handoff = True
+        self.handoff.clear()
+        try:
+            if self.connection is not None:
+                await self.connection.session_update(session_id, update_agent_message_text(output))
+            await self._hold_result(message)
+        finally:
+            self.awaiting_handoff = False
         return PromptResponse(stop_reason="cancelled" if self.cancelled.is_set() else "end_turn")
+
+    async def _hold_result(self, message: WorkerMessage) -> None:
+        """Avoid BB steering its active parent when a child finishes a step."""
+        storage = await thread_storage(message.parent_thread_id)
+        store = RunStore(storage / "factory/checkpoints.sqlite")
+        while not self.handoff.is_set() and not self.records.stop_requested:
+            run = await store.get_run(message.operation_id.split(":")[0])
+            if (
+                run is None
+                or run["status"] in FINAL_STATUSES
+                or run["stop_target"]
+                or time.time() >= float(run["deadline_at"])
+            ):
+                return
+            with suppress(TimeoutError):
+                await asyncio.wait_for(self.handoff.wait(), 0.1)
 
     async def execute(self, message: WorkerMessage) -> str:
         assert self.workspace is not None

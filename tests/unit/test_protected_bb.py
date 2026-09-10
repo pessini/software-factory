@@ -116,3 +116,78 @@ async def test_output_is_not_complete_until_exit_is_confirmed(bridge):
     receipt.stopped = True
     records.save(receipt)
     assert (await client.execution("child", "exact")).output == "answer"
+
+
+async def test_reconcile_waits_for_receipt_while_bb_reports_active(bridge, monkeypatch):
+    from software_factory.bb import protected
+
+    client, records, receipt, calls = bridge
+    original = protected.read_bb
+
+    async def active(path):
+        value = await original(path)
+        if isinstance(value, dict):
+            value["status"] = "active"
+            if records.root.exists():
+                receipt.execution_id, receipt.status = "actual-turn", "running"
+                records.save(receipt)
+            else:
+                records.root.mkdir(parents=True)
+        return value
+
+    monkeypatch.setattr(protected, "read_bb", active)
+    execution = await client.reconcile_operation("child", receipt.operation_id)
+    assert execution.execution_id == "actual-turn"
+
+
+async def test_stopped_bb_task_can_retain_its_previous_error_status(bridge, monkeypatch):
+    from software_factory.bb import protected
+
+    client, records, receipt, calls = bridge
+    original = protected.read_bb
+
+    async def errored(path):
+        value = await original(path)
+        if isinstance(value, dict):
+            value["status"] = "error"
+        return value
+
+    monkeypatch.setattr(protected, "read_bb", errored)
+    await client.stop("child")
+    assert (await client.inspect_thread("child")).stopped
+
+
+@pytest.mark.parametrize(
+    "saved_stop,container_state,queued,expected",
+    [
+        (True, "stopped", False, True),
+        (False, "stopped", False, False),
+        (True, "running", False, False),
+        (True, "stopped", True, False),
+    ],
+)
+async def test_active_bb_handoff_requires_all_exit_evidence(
+    bridge, monkeypatch, saved_stop, container_state, queued, expected
+):
+    from software_factory.bb import protected
+
+    client, records, receipt, calls = bridge
+    receipt.container_creation_requested, receipt.stopped = True, saved_stop
+    receipt.status, receipt.execution_id = "completed", "actual-turn"
+    records.save(receipt)
+    original = protected.read_bb
+
+    async def active(path):
+        value = await original(path)
+        if isinstance(value, dict):
+            value["status"] = "active"
+        elif queued:
+            value = [{"id": "pending"}]
+        return value
+
+    async def inspect(*args):
+        return {"status": {"state": container_state}}
+
+    monkeypatch.setattr(protected, "read_bb", active)
+    monkeypatch.setattr(protected, "inspect_container", inspect)
+    assert (await client.inspect_thread("child")).stopped is expected

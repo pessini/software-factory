@@ -1,9 +1,9 @@
 # macOS runbook
 
-This is the first-platform setup path for the MVP. Live BB execution is currently
-disabled until an adapter provides tested read-only roles and controller storage
-protection. `doctor` reports this limit. See [the protection policy](repository-protection.md). The repository targets
-Python 3.14 and locks the newest compatible Python libraries with `uv`.
+This setup uses the [protected local worker](protected-worker.md), verified with
+BB 0.42.1 and Apple Container 1.0.0. Build the worker image and register both the
+Factory parent and `software-factory-worker` ACP agent before starting a run.
+The repository targets Python 3.14 and manages dependencies with `uv`.
 
 ## 1. Check existing prerequisites
 
@@ -38,8 +38,8 @@ export FACTORY_BB_COMMAND="/absolute/path/to/bb"
 ```
 
 Authenticate a supported coding provider through that provider's normal CLI.
-Provider credentials remain BB's responsibility and are never copied into the
-factory configuration or artifacts.
+The protected worker mounts the existing Codex login read-only; it never copies
+it into factory configuration, Git objects, or evidence.
 
 ## 2. Build and verify the factory
 
@@ -87,6 +87,7 @@ Apply the configuration to a running BB server:
 
 ```bash
 npx bb-app config refresh
+bb plugin reload provider-acp
 ```
 
 BB prefixes the configured ID, so the provider is internally named

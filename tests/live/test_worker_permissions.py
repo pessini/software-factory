@@ -36,12 +36,12 @@ async def test_real_container_enforces_role_and_evidence_permissions(
         workspace,
         evidence,
         tmp_path / "provider",
-        [workspace / ".factory", workspace / ".git", workspace / ".env"],
+        [workspace / ".factory", workspace / ".git", workspace / ".env", workspace / ".bb"],
         read_only=read_only,
         authenticate=False,
     )
     script = (
-        """import json
+        """import json, os
 from pathlib import Path
 out={}
 for target in ['answer.txt','.factory/settings.json','.git/index','.env', """
@@ -52,11 +52,24 @@ for target in ['answer.txt','.factory/settings.json','.git/index','.env', """
   out[target]='wrote'
  except OSError:
   out[target]='denied'
+for action in ['unlink', 'rename', 'chmod', 'hardlink', 'symlink-write']:
+ try:
+  if action == 'unlink': Path('.env').unlink()
+  elif action == 'rename': Path('.env').rename('moved-secret')
+  elif action == 'chmod': Path('.env').chmod(0o777)
+  elif action == 'hardlink': os.link('.env','hardlink-secret')
+  else:
+   os.symlink('.env','symlink-secret')
+   Path('symlink-secret').write_text('changed')
+  out[action]='wrote'
+ except OSError:
+  out[action]='denied'
 print(json.dumps(out))
 """
     )
     try:
         await provider.start()
+        assert not (workspace / ".bb").exists()
         result = await provider.request(
             "command/exec",
             {
@@ -72,6 +85,7 @@ print(json.dumps(out))
         assert set(outcomes.values()) == {"denied"}
         assert (evidence / "result.json").read_text() == "original evidence"
         assert (workspace / ".env").read_text() == "dummy secret"
+        assert not (workspace / ".bb").exists()
     finally:
         await provider.close()
     assert (await inspect_container(provider.name, operation))["status"]["state"] == "stopped"

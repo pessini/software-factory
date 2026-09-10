@@ -132,7 +132,7 @@ class BBClient:
 
     @classmethod
     def from_context(cls, context: BBContext, workspace: Path) -> BBClient:
-        if os.environ.get("FACTORY_PROTECTED_WORKER") == "1":
+        if os.environ.get("FACTORY_PROTECTED_WORKER") != "0":
             from software_factory.bb.protected import ProtectedBBClient
 
             return ProtectedBBClient(
