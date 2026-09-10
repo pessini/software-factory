@@ -21,7 +21,9 @@ async def stop_owned_work(store: RunStore, run_id: str, bb: BBClientProtocol) ->
             continue
         try:
             thread_id = operation["thread_id"] or await asyncio.wait_for(
-                bb.find_child(str(operation["role"]), f"{run_id}:{operation['role']}"),
+                bb.find_child(
+                    str(operation["role"]).split(":")[0], f"{run_id}:{operation['role']}"
+                ),
                 5,
             )
         except Exception as exc:

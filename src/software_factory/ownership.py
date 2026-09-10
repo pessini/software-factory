@@ -4,6 +4,8 @@ import fcntl
 import hashlib
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Any
 
@@ -15,6 +17,18 @@ from software_factory.state import FINAL_STATUSES
 
 class OwnershipError(RuntimeError):
     pass
+
+
+@contextmanager
+def session_lease(database: Path, session_id: str) -> Iterator[None]:
+    """Protect startup claims until the run exists; the OS releases this on crash."""
+    key = hashlib.sha256(session_id.encode()).hexdigest()
+    with (database.parent / f"session-{key}.lock").open("a+") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise OwnershipError("this session already has an active prompt") from exc
+        yield
 
 
 class RunOwnership:
@@ -34,7 +48,7 @@ class RunOwnership:
         }
         self.handles: list[IO[str]] = []
 
-    async def acquire(self) -> None:
+    async def acquire(self, *, publish: bool = True) -> None:
         try:
             for path in self.paths:
                 handle = path.open("a+")
@@ -47,14 +61,20 @@ class RunOwnership:
                 previous = json.loads(self.claim_path.read_text())
                 if previous != self.claim:
                     await self._check_previous(previous)
-            temporary = self.claim_path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(self.claim))
-            with temporary.open("r+") as handle:
-                os.fsync(handle.fileno())
-            temporary.replace(self.claim_path)
+            if publish:
+                self.publish_claim()
         except BaseException:
             self.close()
             raise
+
+    def publish_claim(self) -> None:
+        if len(self.handles) != len(self.paths):
+            raise OwnershipError("ownership locks are required before recording a claim")
+        temporary = self.claim_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(self.claim))
+        with temporary.open("r+") as handle:
+            os.fsync(handle.fileno())
+        temporary.replace(self.claim_path)
 
     async def _check_previous(self, previous: dict[str, Any]) -> None:
         path = Path(previous["database"])

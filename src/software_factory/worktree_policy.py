@@ -6,7 +6,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from software_factory.git import capture_paths, capture_snapshot, changed_files, protected_changes
+from software_factory.git import (
+    capture_ignored,
+    capture_paths,
+    capture_snapshot,
+    changed_files,
+    protected_changes,
+)
 
 
 class WorktreePolicyError(RuntimeError):
@@ -46,6 +52,7 @@ class WorktreePolicy:
     async def protect_builder_changes(self) -> AsyncIterator[Callable[[], Awaitable[None]]]:
         before = await capture_snapshot(self.workspace)
         protected_before = capture_paths(self.workspace, self.protected_paths)
+        protected_before.update(await capture_ignored(self.workspace))
 
         async def check() -> None:
             after = await capture_snapshot(self.workspace)
@@ -56,6 +63,7 @@ class WorktreePolicy:
                 after.index,
             )
             current = capture_paths(self.workspace, self.protected_paths)
+            current.update(await capture_ignored(self.workspace))
             violations = sorted(
                 path
                 for path in protected_before.keys() | current.keys()

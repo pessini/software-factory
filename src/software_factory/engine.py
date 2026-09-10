@@ -89,7 +89,7 @@ class FactoryEngine:
             "error": None,
         }
         ownership = RunOwnership(self.workspace, run_id, self.database_path)
-        await ownership.acquire()
+        await ownership.acquire(publish=False)
         try:
             if await self.store.get_run(run_id) is not None:
                 raise ValueError(f"run already exists; use resume: {run_id}")
@@ -97,6 +97,7 @@ class FactoryEngine:
             await self.store.create_run(
                 run_id, self.workspace, self.context.parent_thread_id, deadline_at=deadline_at
             )
+            ownership.publish_claim()
             await self.store.save_result(run_id, dict(initial))
             runtime = self._runtime(run_id, config=config)
             runtime.artifacts.write_json("config.json", config)
@@ -118,7 +119,8 @@ class FactoryEngine:
                     runtime.artifacts.write_json("config.json", config)
             except (BBError, ValueError, TimeoutError) as exc:
                 result = await runtime.finish({**initial, "error": str(exc)}, "failed")
-                ownership.release_claim()
+                if result["status"] in FINAL_STATUSES:
+                    ownership.release_claim()
                 return result
             return await self._execute_owned(runtime, initial, deadline_at, ownership)
         finally:
@@ -221,8 +223,7 @@ class FactoryEngine:
             )
             if stopped["status"] in FINAL_STATUSES:
                 return cast(FactoryState, json.loads(stopped["result_json"]))
-            await runtime.finish({**saved, "error": "total run timeout exceeded"}, "failed")
-            raise TimeoutError("total run timeout exceeded") from None
+            return await runtime.finish({**saved, "error": "total run timeout exceeded"}, "failed")
 
     async def _invoke_before_deadline(
         self, runtime: FactoryRuntime, value: FactoryState | None, deadline_at: float

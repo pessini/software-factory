@@ -37,11 +37,23 @@ SCHEMA:
 """
 
 
-def repair_prompt(run_id: str, attempt: int, log_paths: list[str]) -> str:
+def repair_prompt(
+    run_id: str,
+    attempt: int,
+    log_paths: list[str],
+    *,
+    request: str,
+    plan_path: Path,
+    changed: list[str],
+) -> str:
     schema = json.dumps(BuildEnvelope.model_json_schema(), indent=2)
     return f"""Repair software factory run {run_id} after deterministic test attempt {attempt} failed.
 Read the exact logs at: {", ".join(log_paths)}. Diagnose and fix only the implementation.
 Do not alter factory policy, quality commands, CI/deployment controls, or protected paths.
+Original request: {json.dumps(request)}
+Validated plan: {plan_path}
+Current implementation files: {json.dumps(changed)}
+Keep the original scope and criteria. You may be starting a new conversation.
 Do not commit or push. Return exactly one JSON object matching this schema:
 {schema}
 """
@@ -71,10 +83,16 @@ SCHEMA:
 """
 
 
-def revision_prompt(run_id: str, findings: list[str]) -> str:
+def revision_prompt(
+    run_id: str, findings: list[str], *, request: str, plan_path: Path, changed: list[str]
+) -> str:
     schema = json.dumps(BuildEnvelope.model_json_schema(), indent=2)
     return f"""Revise software factory run {run_id} for these blocking review findings:
 {json.dumps(findings, indent=2)}
+Original request: {json.dumps(request)}
+Validated plan: {plan_path}
+Current implementation files: {json.dumps(changed)}
+Keep the original scope and criteria. You may be starting a new conversation.
 Do not commit, push, or edit protected paths. Return exactly one JSON object matching this schema:
 {schema}
 """

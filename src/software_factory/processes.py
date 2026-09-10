@@ -9,6 +9,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import IO
 from uuid import uuid4
+from weakref import WeakKeyDictionary
 
 from software_factory.persistence import RunStore
 
@@ -20,6 +21,7 @@ class CleanupUncertain(RuntimeError):
 # The child cannot execute a command before its process group is saved. If the
 # controller dies before opening the gate, EOF makes the child exit without work.
 _GATE = "import os,sys; fd=int(sys.argv[1]); ready=os.read(fd,1); os.close(fd); ready==b'1' or sys.exit(125); os.execvp(sys.argv[2],sys.argv[2:])"
+_identities: WeakKeyDictionary[asyncio.subprocess.Process, str] = WeakKeyDictionary()
 
 
 async def process_identity(pid: int) -> str | None:
@@ -30,9 +32,11 @@ async def process_identity(pid: int) -> str | None:
         "-o",
         "lstart=",
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
     )
-    output, _ = await asyncio.wait_for(process.communicate(), 5)
+    output, error = await asyncio.wait_for(process.communicate(), 5)
+    if process.returncode and (process.returncode != 1 or error.strip() or output.strip()):
+        raise CleanupUncertain(f"cannot inspect process {pid}: {error.decode(errors='replace')}")
     return output.decode().strip() or None
 
 
@@ -54,11 +58,13 @@ async def group_alive(group: int) -> bool:
     return False
 
 
-async def stop_group(group: int, identity: str | None = None, grace: float = 0.5) -> None:
-    actual = await process_identity(group)
-    if actual is not None and identity is not None and actual != identity:
-        raise CleanupUncertain(f"process identity changed for group {group}; refusing to signal it")
+async def stop_group(group: int, identity: str, grace: float = 0.5) -> None:
     for sig in (signal.SIGTERM, signal.SIGKILL):
+        actual = await process_identity(group)
+        if actual is not None and actual != identity:
+            raise CleanupUncertain(
+                f"process identity changed for group {group}; refusing to signal it"
+            )
         if not await group_alive(group):
             return
         with suppress(ProcessLookupError):
@@ -82,6 +88,7 @@ async def start_process(
     deadline_at: float | None = None,
     stdout: int | IO[bytes] = asyncio.subprocess.PIPE,
     stderr: int = asyncio.subprocess.PIPE,
+    stdin: int | None = None,
 ) -> tuple[asyncio.subprocess.Process, str]:
     reader, writer = os.pipe()
     process: asyncio.subprocess.Process | None = None
@@ -97,6 +104,8 @@ async def start_process(
                 cwd=workspace,
                 stdout=stdout,
                 stderr=stderr,
+                stdin=stdin,
+                limit=8 * 1024 * 1024,
                 start_new_session=True,
                 pass_fds=(reader,),
             )
@@ -109,6 +118,7 @@ async def start_process(
         identity = await process_identity(process.pid)
         if identity is None:
             raise CleanupUncertain("command process exited before registration")
+        _identities[process] = identity
         if store is not None:
             await store.register_process(run_id, process_id, kind, process.pid, identity)
             record = await store.get_run(run_id)
@@ -119,21 +129,30 @@ async def start_process(
         os.write(writer, b"1")
         return process, process_id
     except BaseException:
+        # Every failure here precedes dispatch. Close the gate so the child
+        # exits without executing; inspection failure does not authorize signals.
+        os.close(writer)
+        writer = -1
         if process is not None:
-            await stop_group(process.pid)
             await process.wait()
+            _identities.pop(process, None)
             if store is not None:
                 await store.clear_process(process_id)
         raise
     finally:
         os.close(reader)
-        os.close(writer)
+        if writer >= 0:
+            os.close(writer)
 
 
 async def finish_process(
     process: asyncio.subprocess.Process, process_id: str, store: RunStore | None = None
 ) -> None:
-    await stop_group(process.pid)
+    identity = _identities.get(process)
+    if identity is None:
+        raise CleanupUncertain("command process has no saved identity")
+    await stop_group(process.pid, identity)
     await process.wait()
+    _identities.pop(process, None)
     if store is not None:
         await store.clear_process(process_id)

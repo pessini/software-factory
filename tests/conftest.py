@@ -112,9 +112,11 @@ class FakeBB:
         self.operation_executions: dict[str, BBExecution] = {}
         self.execution_count = 0
         self.choices: list[tuple[str, AgentConfig]] = []
+        self.prompts: list[tuple[str, str]] = []
 
     async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
         self.choices.append((role, agent))
+        self.prompts.append((role, prompt))
         self.spawn_counts[role] += 1
         thread_id = f"thread-{role}" + (
             f"-{self.spawn_counts[role]}" if self.spawn_counts[role] > 1 else ""

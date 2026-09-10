@@ -117,6 +117,18 @@ class SoftwareFactoryAgent:
         return SetSessionConfigOptionResponse(config_options=list(options))
 
     async def prompt(self, session_id: str, prompt: list[Any], **kwargs: Any) -> PromptResponse:
+        from software_factory.ownership import session_lease
+
+        await self.store.initialize()
+        with session_lease(self.store.path, session_id):
+            session = await self.store.session(session_id)
+            if session and session["run_id"]:
+                await self.store.release_unstarted_session_run(session_id, str(session["run_id"]))
+            return await self._prompt_owned(session_id, prompt, **kwargs)
+
+    async def _prompt_owned(
+        self, session_id: str, prompt: list[Any], **kwargs: Any
+    ) -> PromptResponse:
         del kwargs
         if self.connection is None:
             raise RuntimeError("ACP client connection is unavailable")

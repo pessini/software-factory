@@ -19,6 +19,7 @@ from software_factory.config import (
     Step,
     load_config,
 )
+from software_factory.ownership import OwnershipError, session_lease
 from software_factory.persistence import RunStore
 from software_factory.settings import resolve_choices
 
@@ -26,6 +27,18 @@ from software_factory.settings import resolve_choices
 class SessionSettings:
     def __init__(self, store: RunStore, bb: BBClientProtocol) -> None:
         self.store, self.bb = store, bb
+
+    async def recover_start(self, session_id: str) -> None:
+        try:
+            with session_lease(self.store.path, session_id):
+                session = await self.store.session(session_id)
+                if session and session["run_id"]:
+                    await self.store.release_unstarted_session_run(
+                        session_id, str(session["run_id"])
+                    )
+        except OwnershipError:
+            # A live prompt owns the startup window; its claim must remain.
+            pass
 
     async def read(self, session_id: str) -> tuple[FactoryConfig, Selection]:
         session = await self.store.session(session_id)
@@ -65,6 +78,7 @@ class SessionSettings:
         )
 
     async def options(self, session_id: str) -> list[SessionConfigOptionSelect]:
+        await self.recover_start(session_id)
         config, selection = await self.read(session_id)
         return self.controls(config, selection, await self.bb.model_catalog())
 
@@ -141,6 +155,7 @@ class SessionSettings:
     async def change(
         self, session_id: str, config_id: str, value: str
     ) -> list[SessionConfigOptionSelect]:
+        await self.recover_start(session_id)
         config, selection = await self.read(session_id)
         catalog = await self.bb.model_catalog()
         if config_id == "preset":

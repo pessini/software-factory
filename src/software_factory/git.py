@@ -78,6 +78,14 @@ async def capture_snapshot(workspace: Path, *, include_ignored: bool = False) ->
     return WorkspaceSnapshot(worktree, index, head, head_ref, refs)
 
 
+async def capture_ignored(workspace: Path) -> dict[str, WorktreeEntry]:
+    """Hash ignored files without copying their contents or writing Git objects."""
+    paths = _paths(
+        await git(workspace, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+    )
+    return {path: _capture_worktree_entry(workspace, path) for path in sorted(paths)}
+
+
 async def repository_metadata(workspace: Path) -> tuple[str, str | None, dict[str, str]]:
     head = (await git(workspace, "rev-parse", "--verify", "HEAD")).decode("ascii").strip()
     head_ref = (await git(workspace, "symbolic-ref", "-q", "HEAD", check=False)).decode(

@@ -206,7 +206,14 @@ class WorkflowNodes:
             )
             logs = [item["log_path"] for item in result["commands"]]
             thread_id, envelope, actual = await self._builder_handoff(
-                repair_prompt(runtime.run_id, state["test_attempt_count"], logs),
+                repair_prompt(
+                    runtime.run_id,
+                    state["test_attempt_count"],
+                    logs,
+                    request=state["request"],
+                    plan_path=runtime.workspace / state["plan_markdown_path"],
+                    changed=state["changed_files"],
+                ),
                 tell_existing=True,
                 step="repair",
                 attempt=repair_count,
@@ -298,7 +305,13 @@ class WorkflowNodes:
                 )
             )
             thread_id, envelope, actual = await self._builder_handoff(
-                revision_prompt(runtime.run_id, review.blocking_findings),
+                revision_prompt(
+                    runtime.run_id,
+                    review.blocking_findings,
+                    request=state["request"],
+                    plan_path=runtime.workspace / state["plan_markdown_path"],
+                    changed=state["changed_files"],
+                ),
                 tell_existing=True,
                 step="revise",
                 attempt=count,

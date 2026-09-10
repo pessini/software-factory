@@ -311,8 +311,9 @@ async def test_resume_honors_persisted_run_deadline(tmp_path: Path, factory_yaml
         database_path=database(tmp_path),
     )
 
-    with pytest.raises(TimeoutError, match="total run timeout exceeded"):
-        await engine.resume("fct_expired")
+    result = await engine.resume("fct_expired")
+    assert result["status"] == "failed"
+    assert result["error"] == "total run timeout exceeded"
 
     record = await store.get_run("fct_expired")
     assert record is not None
@@ -356,6 +357,12 @@ async def test_each_step_receives_its_saved_model_choice(tmp_path: Path, factory
         ("reviewer", "model-a", "high"),
         ("builder", "model-b", "high"),
     ]
+    for role, prompt in bb.prompts:
+        if role == "builder":
+            assert "Write the answer" in prompt
+            assert "plan.md" in prompt
+    for _, prompt in [item for item in bb.prompts if item[0] == "builder"][1:]:
+        assert "answer.txt" in prompt
     saved = json.loads(
         (
             context(tmp_path).thread_storage

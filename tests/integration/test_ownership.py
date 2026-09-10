@@ -145,3 +145,37 @@ async def test_separate_workspaces_can_execute_at_the_same_time(
     )
     assert planning == {"fct_parallel_0", "fct_parallel_1"}
     assert [result["status"] for result in results] == ["accepted", "accepted"]
+
+
+async def test_crash_before_run_record_does_not_leave_an_unrecoverable_claim(
+    tmp_path: Path, factory_yaml: str
+) -> None:
+    init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
+    storage = context(tmp_path).thread_storage
+    program = """import asyncio, os, sys
+from pathlib import Path
+from software_factory.engine import FactoryEngine
+from software_factory.persistence import RunStore
+from software_factory.bb import BBContext
+from tests.conftest import FakeBB
+async def crash(*args, **kwargs): os._exit(83)
+RunStore.create_run = crash
+root, storage = map(Path, sys.argv[1:])
+asyncio.run(FactoryEngine(workspace=root, context=BBContext('parent-1','project-1','environment-1',storage), bb=FakeBB(root, {})).run('Write the answer', 'fct_crashed_start'))
+"""
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", program, str(tmp_path), str(storage)
+    )
+    assert await process.wait() == 83
+    bb = FakeBB(
+        tmp_path,
+        {
+            "planner": [{"output": plan_output()}],
+            "builder": [{"action": write_answer("good"), "output": build_output()}],
+            "reviewer": [{"output": review_output()}],
+        },
+    )
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+        "Write the answer", "fct_new_start"
+    )
+    assert result["status"] == "accepted"

@@ -555,7 +555,11 @@ class RunStore:
     async def release_unstarted_session_run(self, session_id: str, run_id: str) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.execute(
-                "UPDATE factory_sessions SET run_id = NULL WHERE session_id = ? AND run_id = ? AND NOT EXISTS (SELECT 1 FROM factory_runs WHERE run_id = ?)",
-                (session_id, run_id, run_id),
+                """UPDATE factory_sessions SET run_id = NULL WHERE session_id = ? AND run_id = ?
+                   AND NOT EXISTS (SELECT 1 FROM factory_runs WHERE run_id = ?)
+                   AND NOT EXISTS (SELECT 1 FROM factory_operations WHERE run_id = ?)
+                   AND NOT EXISTS (SELECT 1 FROM factory_processes WHERE run_id = ?)
+                   AND NOT EXISTS (SELECT 1 FROM factory_children WHERE run_id = ?)""",
+                (session_id, run_id, run_id, run_id, run_id, run_id),
             )
             await db.commit()

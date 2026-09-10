@@ -68,6 +68,7 @@ async def test_unsupported_choice_does_not_replace_saved_selection(
 
 async def test_active_run_prevents_settings_changes(tmp_path: Path, factory_yaml: str) -> None:
     from software_factory.config import ModelChoice
+    from software_factory.ownership import session_lease
 
     (tmp_path / ".factory").mkdir()
     (tmp_path / ".factory/factory.yaml").write_text(factory_yaml)
@@ -78,7 +79,10 @@ async def test_active_run_prevents_settings_changes(tmp_path: Path, factory_yaml
     saved = await agent.store.session(session.session_id)
     await agent.store.claim_session_run(session.session_id, "pending-run", saved["settings_json"])
     value = ModelChoice(provider="fake", model="model-b", reasoning_level="low").model_dump_json()
-    with pytest.raises(ValueError, match="active"):
+    with (
+        session_lease(agent.store.path, session.session_id),
+        pytest.raises(ValueError, match="active"),
+    ):
         await agent.set_config_option(session.session_id, "shared", value)
     await agent.store.release_unstarted_session_run(session.session_id, "pending-run")
     await agent.set_config_option(session.session_id, "shared", value)
@@ -216,3 +220,45 @@ asyncio.run(acp.run_agent(SoftwareFactoryAgent(BBContext('parent','project','env
             cwd=str(tmp_path), session_id=session.session_id, mcp_servers=[]
         )
         assert loaded.config_options == changed.config_options
+
+
+async def test_restart_releases_claim_when_controller_died_before_run_creation(
+    tmp_path: Path, factory_yaml: str
+) -> None:
+    import asyncio
+    import sys
+
+    from software_factory.config import ModelChoice
+
+    (tmp_path / ".factory").mkdir()
+    (tmp_path / ".factory/factory.yaml").write_text(factory_yaml)
+    launcher = """import asyncio, os, sys
+from pathlib import Path
+from acp.schema import TextContentBlock
+from software_factory.acp_agent import SoftwareFactoryAgent
+from software_factory.bb import BBContext
+from tests.conftest import FakeBB
+root = Path(sys.argv[1])
+class CrashClient:
+ async def session_update(self, *args, **kwargs): os._exit(84)
+async def main():
+ agent=SoftwareFactoryAgent(BBContext('parent','project','environment',root/'storage'),FakeBB(root,{}))
+ session=await agent.new_session(str(root))
+ print(session.session_id,flush=True)
+ agent.on_connect(CrashClient())
+ await agent.prompt(session.session_id,[TextContentBlock(type='text',text='Write the answer')])
+asyncio.run(main())
+"""
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", launcher, str(tmp_path), stdout=asyncio.subprocess.PIPE
+    )
+    output, _ = await process.communicate()
+    assert process.returncode == 84
+    session_id = output.decode().strip()
+    restarted = SoftwareFactoryAgent(
+        BBContext("parent", "project", "environment", tmp_path / "storage"), FakeBB(tmp_path, {})
+    )
+    await restarted.load_session(str(tmp_path), session_id)
+    value = ModelChoice(provider="fake", model="model-b", reasoning_level="low").model_dump_json()
+    await restarted.set_config_option(session_id, "shared", value)
+    assert (await restarted.store.session(session_id))["run_id"] is None
