@@ -144,7 +144,7 @@ async def test_separate_workspaces_can_execute_at_the_same_time(
         )
     )
     assert planning == {"fct_parallel_0", "fct_parallel_1"}
-    assert [result["status"] for result in results] == ["accepted", "accepted"]
+    assert [result["status"] for result in results] == ["ready_for_review", "ready_for_review"]
 
 
 async def test_crash_before_run_record_does_not_leave_an_unrecoverable_claim(
@@ -178,4 +178,4 @@ asyncio.run(FactoryEngine(workspace=root, context=BBContext('parent-1','project-
     result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
         "Write the answer", "fct_new_start"
     )
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"

@@ -19,9 +19,13 @@ from tests.conftest import FakeBB, init_repository
 def plan_output() -> str:
     return json.dumps(
         {
+            "version": 2,
+            "test_strategy": "Run the configured behavior check",
             "status": "ready",
             "summary": "Write the answer",
-            "acceptance_criteria": ["answer.txt contains good"],
+            "acceptance_criteria": [
+                {"id": "criterion-001", "description": "answer.txt contains good"}
+            ],
             "implementation_steps": ["Create answer.txt"],
         }
     )
@@ -40,9 +44,35 @@ def build_output() -> str:
 def review_output(approved: bool = True) -> str:
     return json.dumps(
         {
+            "version": 2,
+            "content_version": "__CONTENT_VERSION__",
             "approved": approved,
             "summary": "Looks good" if approved else "Needs revision",
-            "blocking_findings": [] if approved else ["answer must be good"],
+            "criteria": [
+                {
+                    "criterion_id": "criterion-001",
+                    "status": "satisfied" if approved else "unmet",
+                    "evidence": "Inspected answer.txt",
+                    "evidence_refs": ["source:answer.txt"],
+                }
+            ],
+            "findings": []
+            if approved
+            else [
+                {
+                    "id": "finding-001",
+                    "criterion_id": "criterion-001",
+                    "category": "correctness",
+                    "severity": "warning",
+                    "title": "Answer needs correction",
+                    "evidence": "The answer does not meet the requested result",
+                    "evidence_refs": ["source:answer.txt"],
+                    "required_change": "Make the answer good",
+                    "confidence": "high",
+                    "file": "answer.txt",
+                    "line": 1,
+                }
+            ],
         }
     )
 
@@ -68,7 +98,7 @@ async def test_clean_success_path(tmp_path: Path, factory_yaml: str) -> None:
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
     bb = FakeBB(
         tmp_path,
@@ -85,7 +115,7 @@ async def test_clean_success_path(tmp_path: Path, factory_yaml: str) -> None:
         database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", "fct_success")
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert result["test_attempt_count"] == 1
     assert result["review_approved"] is True
     assert bb.spawn_counts == {"planner": 1, "builder": 1, "reviewer": 1}
@@ -99,7 +129,7 @@ async def test_failed_test_repairs_in_same_builder_thread(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
     bb = FakeBB(
         tmp_path,
@@ -119,7 +149,7 @@ async def test_failed_test_repairs_in_same_builder_thread(
         database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", "fct_repair")
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert result["test_attempt_count"] == 2
     assert result["test_repair_count"] == 1
     assert bb.spawn_counts["builder"] == 1
@@ -197,7 +227,7 @@ async def test_graph_resume_reattaches_after_process_interruption(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
     bb = FakeBB(
         tmp_path,
@@ -217,7 +247,7 @@ async def test_graph_resume_reattaches_after_process_interruption(
     with pytest.raises(NodeCancelledError):
         await engine.run("Write the correct answer", "fct_resume")
     result = await engine.resume("fct_resume")
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert bb.spawn_counts["planner"] == 1
 
 
@@ -262,6 +292,8 @@ async def test_planner_blocked_status_is_terminal(tmp_path: Path, factory_yaml: 
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
     blocked = json.dumps(
         {
+            "version": 2,
+            "test_strategy": "Cannot choose tests until scope is clear",
             "status": "blocked",
             "summary": "request needs clarification",
             "acceptance_criteria": [],
@@ -311,6 +343,7 @@ async def test_resume_honors_persisted_run_deadline(tmp_path: Path, factory_yaml
         database_path=database(tmp_path),
     )
 
+    await store.save_result("fct_expired", {"evidence_version": 1})
     result = await engine.resume("fct_expired")
     assert result["status"] == "failed"
     assert result["error"] == "total run timeout exceeded"
@@ -326,7 +359,7 @@ async def test_each_step_receives_its_saved_model_choice(tmp_path: Path, factory
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
     bb = FakeBB(
         tmp_path,
@@ -349,7 +382,7 @@ async def test_each_step_receives_its_saved_model_choice(tmp_path: Path, factory
         }
     )
     result = await engine.run("Write the answer", selection=selected)
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert [(role, choice.model, choice.reasoning_level) for role, choice in bb.choices] == [
         ("planner", "model-b", "low"),
         ("builder", "model-a", "high"),
@@ -444,7 +477,7 @@ async def test_restart_uses_snapshot_when_project_policy_changes_before_bootstra
     )
     restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
     result = await restarted.resume("fct_settings_restart")
-    assert result["status"] == "accepted", result
+    assert result["status"] == "ready_for_review", result
     assert all(
         choice.model == "model-b" and choice.reasoning_level == "low" for _, choice in bb.choices
     )

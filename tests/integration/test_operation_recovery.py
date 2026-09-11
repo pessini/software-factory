@@ -96,7 +96,7 @@ async def test_restart_reconciles_the_saved_request_before_any_new_dispatch(
         assert result["status"] == "recovery_needed"
         assert not bb.spawn_counts
     else:
-        assert result["status"] == "accepted"
+        assert result["status"] == "ready_for_review"
         assert bb.spawn_counts == {"planner": 1, "builder": 1, "reviewer": 1}
         assert bb.tells == (1 if interruption == "correction" else 0)
         assert all(
@@ -111,7 +111,7 @@ async def test_connection_loss_recovers_without_resending_work(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
 
     class DisconnectedBB(FakeBB):
@@ -157,7 +157,7 @@ async def test_connection_loss_recovers_without_resending_work(
     )
     result = await engine.run("Write the answer", "fct_connection_loss")
 
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert bb.tells == 1 and bb.spawn_counts == {"planner": 1, "builder": 1, "reviewer": 1}
     assert bb.stopped == []
     operations = await engine.store.operations(result["run_id"])
@@ -172,7 +172,7 @@ async def test_unrelated_or_unknown_execution_never_supplies_a_result(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
 
     class UnverifiedBB(FakeBB):
@@ -246,17 +246,21 @@ async def test_waiting_for_user_input_preserves_the_request_and_deadline(
     )
     waiting = await asyncio.wait_for(engine.run("Write the answer", "fct_question"), 10)
     assert waiting["status"] == "waiting_for_input"
-    operation = (await engine.store.operations(waiting["run_id"]))[0]
+    operation = next(
+        op for op in await engine.store.operations(waiting["run_id"]) if op["step"] == "plan"
+    )
     assert operation["state"] == "dispatched"
     if continuation == "answer":
         bb.needs_answer = False
         result = await engine.resume(waiting["run_id"])
-        assert result["status"] == "accepted"
+        assert result["status"] == "ready_for_review"
     else:
         result = await engine.cancel_external(waiting["run_id"])
         assert result["status"] == "cancelled"
         assert bb.stopped == ["thread-planner"]
-    recovered = (await engine.store.operations(waiting["run_id"]))[0]
+    recovered = next(
+        op for op in await engine.store.operations(waiting["run_id"]) if op["step"] == "plan"
+    )
     assert recovered["deadline_at"] == operation["deadline_at"]
     assert recovered["execution_id"] == operation["execution_id"]
     assert recovered["dispatch_count"] == 1
@@ -284,17 +288,26 @@ async def test_connection_retry_budget_survives_restart(tmp_path: Path, factory_
     engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
     result = await engine.run("Write the answer", "fct_retry_budget")
     assert result["status"] == "recovery_needed"
-    before = (await engine.store.operations(result["run_id"]))[0]
+    before = next(
+        op for op in await engine.store.operations(result["run_id"]) if op["step"] == "plan"
+    )
     assert before["retry_count"] == 2
 
     resumed_engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
     still_offline = await resumed_engine.resume(result["run_id"])
     assert still_offline["status"] == "recovery_needed"
-    assert (await engine.store.operations(result["run_id"]))[0]["retry_count"] == 2
+    assert (
+        next(op for op in await engine.store.operations(result["run_id"]) if op["step"] == "plan")[
+            "retry_count"
+        ]
+        == 2
+    )
     bb.offline = False
     recovered = await resumed_engine.resume(result["run_id"])
-    assert recovered["status"] == "accepted"
-    after = (await engine.store.operations(result["run_id"]))[0]
+    assert recovered["status"] == "ready_for_review"
+    after = next(
+        op for op in await engine.store.operations(result["run_id"]) if op["step"] == "plan"
+    )
     assert after["deadline_at"] == before["deadline_at"]
     assert after["retry_count"] == 2 and after["dispatch_count"] == 1
     assert bb.spawn_counts == {"planner": 1, "builder": 1, "reviewer": 1}

@@ -15,6 +15,7 @@ from software_factory.bb.client import BBError, RecoveryNeeded, WaitingForInput
 from software_factory.cleanup import stop_owned_work
 from software_factory.config import FactoryConfig, Selection, load_config
 from software_factory.events import EventSink, null_event_sink
+from software_factory.evidence import EVIDENCE_VERSION
 from software_factory.graph import build_graph
 from software_factory.ownership import OwnershipBusy, OwnershipError, RunOwnership
 from software_factory.persistence import RunStore
@@ -68,8 +69,9 @@ class FactoryEngine:
         )
         await self.store.initialize()
         initial: FactoryState = {
+            "evidence_version": EVIDENCE_VERSION,
             "run_id": run_id,
-            "request": request.strip(),
+            "request": request,
             "status": "pending",
             "bb_parent_thread_id": self.context.parent_thread_id,
             "bb_project_id": self.context.project_id,
@@ -151,6 +153,11 @@ class FactoryEngine:
                 "run_id": run_id,
                 "status": record["status"],
                 "error": record["error"],
+                "evidence_status": "legacy_unverified"
+                if record["status"] == "accepted"
+                else "verified"
+                if record["status"] == "ready_for_review"
+                else "incomplete",
                 "interactions": [
                     item.model_dump(mode="json") for item in await self.store.interactions(run_id)
                 ],
@@ -180,6 +187,9 @@ class FactoryEngine:
             if interaction_id is not None:
                 await self.store.answer_interaction(run_id, interaction_id, answers or {})
             return await self.inspect(run_id)
+        saved = json.loads(record["result_json"] or "{}")
+        if saved.get("evidence_version") != EVIDENCE_VERSION:
+            raise ValueError("legacy run lacks Phase 1 evidence; cancel it and start a new run")
         if record["control_version"] != 2:
             raise ValueError(
                 "legacy run cannot resume safely: execution identities and ownership were not recorded"

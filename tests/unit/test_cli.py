@@ -12,7 +12,7 @@ from software_factory.persistence import RunStore
 def test_graph_command_prints_topology() -> None:
     result = CliRunner().invoke(app, ["graph", "--format", "mermaid"])
     assert result.exit_code == 0
-    assert "bootstrap --> plan --> build --> test" in result.stdout
+    assert "bootstrap --> baseline --> plan --> build --> test" in result.stdout
 
 
 def test_help_exposes_operational_commands() -> None:
@@ -22,7 +22,7 @@ def test_help_exposes_operational_commands() -> None:
         assert command in result.stdout
 
 
-@pytest.mark.parametrize("status", ["accepted", "failed", "blocked", "cancelled"])
+@pytest.mark.parametrize("status", ["ready_for_review", "failed", "blocked", "cancelled"])
 def test_resume_exit_code_and_printed_result_match_the_stored_outcome(
     tmp_path: Path, status: str
 ) -> None:
@@ -48,7 +48,7 @@ def test_resume_exit_code_and_printed_result_match_the_stored_outcome(
             "BB_THREAD_STORAGE": str(storage),
         },
     )
-    assert result.exit_code == (0 if status == "accepted" else 1), result.output
+    assert result.exit_code == (0 if status == "ready_for_review" else 1), result.output
     printed = json.loads(result.stdout)
     assert printed["status"] == status
     assert printed["changed_files"] == ["answer.txt"]

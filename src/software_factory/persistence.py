@@ -193,7 +193,8 @@ class RunStore:
             record = dict(row)
             current = str(record["status"])
             if current in FINAL_STATUSES or (
-                record["stop_target"] and status in {"accepted", "running", "waiting_for_input"}
+                record["stop_target"]
+                and status in {"accepted", "ready_for_review", "running", "waiting_for_input"}
             ):
                 return record
             if status != current and status not in TRANSITIONS[current]:
@@ -675,7 +676,7 @@ class RunStore:
                 """UPDATE factory_interactions SET state = 'delivered'
                    WHERE run_id = ? AND interaction_id = ? AND state = 'answered'
                    AND EXISTS (SELECT 1 FROM factory_runs WHERE run_id = ? AND stop_target IS NULL
-                               AND status NOT IN ('accepted', 'blocked', 'failed', 'cancelled'))
+                               AND status NOT IN ('accepted', 'ready_for_review', 'blocked', 'failed', 'cancelled'))
                    RETURNING interaction_id""",
                 (run_id, interaction_id, run_id),
             )

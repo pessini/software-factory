@@ -156,7 +156,7 @@ async def test_invalid_json_gets_one_correction_in_same_thread(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
     bb = FakeBB(
         tmp_path,
@@ -173,7 +173,7 @@ async def test_invalid_json_gets_one_correction_in_same_thread(
         database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", "fct_correction")
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert bb.spawn_counts["planner"] == 1
 
 

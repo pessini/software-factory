@@ -130,7 +130,12 @@ class ProtectedBBClient(BBClient):
         if status == "prepared" or (status == "completed" and not receipt.stopped):
             status = "running"
         return BBExecution(
-            receipt.execution_id, status, receipt.output, receipt.reported, receipt.interaction_id
+            receipt.execution_id,
+            status,
+            receipt.output,
+            receipt.reported,
+            receipt.interaction_id,
+            receipt.usage,
         )
 
     async def reconcile_operation(self, thread_id: str, operation_id: str) -> BBExecution | None:

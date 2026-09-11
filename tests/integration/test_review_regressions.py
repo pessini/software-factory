@@ -13,7 +13,7 @@ async def test_cancel_finds_repair_child_after_lost_creation_reply(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nassert Path('answer.txt').read_text() == 'good'\n",
+        "from pathlib import Path\nassert not Path('answer.txt').exists() or Path('answer.txt').read_text() == 'good'\n",
     )
 
     class LostRepairReply(FakeBB):

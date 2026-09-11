@@ -112,6 +112,4 @@ class WorktreePolicy:
                 "Builder report does not match Git diff: "
                 f"reported={sorted(reported)!r}, actual={actual!r}"
             )
-        if not actual:
-            raise WorktreePolicyError("Builder completed without changing repository files")
         return actual

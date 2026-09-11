@@ -45,6 +45,8 @@ async def test_check_repeats_after_controller_crash_only_under_its_saved_rule(
     counter = tmp_path.parent / f"{tmp_path.name}-check-count"
     check_script = f"""import os, signal, time
 from pathlib import Path
+if not Path("answer.txt").exists():
+    raise SystemExit(0)
 counter = Path({str(counter)!r})
 attempt = int(counter.read_text()) + 1 if counter.exists() else 1
 counter.write_text(str(attempt))
@@ -75,7 +77,7 @@ if attempt == 1:
         groups = [record["process_group"] for record in await store.processes("fct_check_crash")]
         assert groups
         before = next(
-            op for op in await store.operations("fct_check_crash") if op["kind"] == "check"
+            op for op in await store.operations("fct_check_crash") if op["step"] == "test:tests"
         )
         if expired:
             await asyncio.sleep(max(0, before["deadline_at"] - time.time()) + 0.05)
@@ -93,13 +95,13 @@ if attempt == 1:
         )
         result = await engine.resume("fct_check_crash")
         expected_status = (
-            "blocked" if expired else "accepted" if repeat_allowed else "recovery_needed"
+            "blocked" if expired else "ready_for_review" if repeat_allowed else "recovery_needed"
         )
         assert result["status"] == expected_status
         assert counter.read_text() == ("2" if repeat_allowed and not expired else "1")
         assert not bb.spawn_counts.get("planner") and not bb.spawn_counts.get("builder")
         after = next(
-            op for op in await store.operations("fct_check_crash") if op["kind"] == "check"
+            op for op in await store.operations("fct_check_crash") if op["step"] == "test:tests"
         )
         assert after["deadline_at"] == before["deadline_at"]
         assert after["dispatch_count"] == (2 if repeat_allowed and not expired else 1)

@@ -38,6 +38,7 @@ def build_graph(runtime: FactoryRuntime, checkpointer: Any = None) -> Any:
     graph = StateGraph(FactoryState)
     for name in (
         "bootstrap",
+        "baseline",
         "plan",
         "build",
         "test",
@@ -49,7 +50,8 @@ def build_graph(runtime: FactoryRuntime, checkpointer: Any = None) -> Any:
     ):
         graph.add_node(name, nodes.guarded(name, getattr(nodes, name)))
     graph.add_edge(START, "bootstrap")
-    graph.add_conditional_edges("bootstrap", after_ok, {"next": "plan", "failed": "failed"})
+    graph.add_conditional_edges("bootstrap", after_ok, {"next": "baseline", "failed": "failed"})
+    graph.add_conditional_edges("baseline", after_ok, {"next": "plan", "failed": "failed"})
     graph.add_conditional_edges("plan", after_ok, {"next": "build", "failed": "failed"})
     graph.add_conditional_edges("build", after_ok, {"next": "test", "failed": "failed"})
     graph.add_conditional_edges("test", after_tests)
@@ -62,7 +64,7 @@ def build_graph(runtime: FactoryRuntime, checkpointer: Any = None) -> Any:
 
 
 MERMAID = """flowchart TD
-    START --> bootstrap --> plan --> build --> test
+    START --> bootstrap --> baseline --> plan --> build --> test
     test -->|pass| review
     test -->|fail, budget remains| repair --> test
     test -->|fail, exhausted| failed

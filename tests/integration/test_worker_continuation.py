@@ -11,7 +11,7 @@ from software_factory.bb.client import BBExecution, BBThreadState
 from software_factory.engine import FactoryEngine
 from software_factory.worker import WorkerAgent
 from software_factory.worker_records import WorkerMessage
-from tests.conftest import FakeBB, init_repository
+from tests.conftest import FakeBB, init_repository, render_review
 from tests.integration.test_factory_engine import build_output, context, plan_output, review_output
 
 
@@ -50,6 +50,7 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
             output = {"plan": plan_output(), "build": build_output(), "review": review_output()}[
                 self.step
             ]
+            output = render_review(output, self.prompt)
             await self.notifications.put(
                 {
                     "method": "turn/completed",
@@ -68,6 +69,7 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
             if method in {"thread/start", "thread/resume"}:
                 return {"thread": {"id": self.step}, "model": "model-a", "reasoningEffort": "high"}
             assert method == "turn/start"
+            self.prompt = params["input"][0]["text"]
             if self.step == "build":
                 if action == "near_timeout":
                     await asyncio.sleep(0.8)
@@ -214,7 +216,7 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
                 result = await restarted.answer(
                     waiting["run_id"], question["interaction_id"], {"format": "Text"}
                 )
-                assert result["status"] == "accepted", result.get("error")
+                assert result["status"] == "ready_for_review", result.get("error")
                 await restarted.answer(
                     waiting["run_id"], question["interaction_id"], {"format": "Text"}
                 )

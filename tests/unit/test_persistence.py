@@ -50,7 +50,7 @@ async def test_initialize_migrates_existing_run_table(tmp_path: Path) -> None:
         bb=bb,
         database_path=database,
     )
-    with pytest.raises(ValueError, match="legacy run cannot resume safely"):
+    with pytest.raises(ValueError, match="legacy run lacks Phase 1 evidence"):
         await engine.resume("old-run")
     assert not bb.spawn_counts
 
@@ -67,25 +67,25 @@ async def test_independent_writers_cannot_replace_an_accepted_stop_or_final_resu
     result = {"run_id": "race", "changed_files": ["answer.txt"], "test_attempt_count": 1}
     if first == "cancellation":
         await other.request_stop("race")
-        await store.set_status("race", "accepted", result=result)
+        await store.set_status("race", "ready_for_review", result=result)
     elif first == "acceptance":
-        await store.set_status("race", "accepted", result=result)
+        await store.set_status("race", "ready_for_review", result=result)
         await other.request_stop("race")
     else:
         await asyncio.gather(
-            other.request_stop("race"), store.set_status("race", "accepted", result=result)
+            other.request_stop("race"), store.set_status("race", "ready_for_review", result=result)
         )
     record = await store.get_run("race")
     assert record is not None
     if record["status"] == "stopping":
         assert first != "acceptance"
         assert record["stop_target"] == "cancelled"
-        await store.set_status("race", "accepted")
+        await store.set_status("race", "ready_for_review")
         final = await other.set_status("race", "cancelled")
         assert final["status"] == "cancelled"
     else:
         assert first != "cancellation"
-        assert record["status"] == "accepted" and record["error"] is None
+        assert record["status"] == "ready_for_review" and record["error"] is None
         assert json.loads(record["result_json"])["changed_files"] == ["answer.txt"]
     events = await store.events("race")
     assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))

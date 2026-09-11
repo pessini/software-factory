@@ -30,6 +30,8 @@ from tests.integration.test_factory_engine import (
 def question_output():
     return json.dumps(
         {
+            "version": 2,
+            "test_strategy": "Need the answer before choosing behavior tests",
             "status": "needs_input",
             "summary": "The output format is required before implementation.",
             "acceptance_criteria": [],
@@ -100,7 +102,7 @@ async def test_planner_question_survives_restart_and_answer_continues_once(tmp_p
     result = await restarted.answer(
         waiting["run_id"], question["interaction_id"], {"format": "Text"}
     )
-    assert result["status"] == "accepted", result.get("error")
+    assert result["status"] == "ready_for_review", result.get("error")
     assert result["run_id"] == waiting["run_id"]
     assert result["interactions"][0]["answers"] == {"format": "Text"}
     assert (tmp_path / "answer.txt").read_text() == "good"
@@ -135,7 +137,7 @@ async def test_retry_only_recovers_supported_states_and_preserves_failure_histor
     run_id, failure_report = client.run_id, client.messages[-1]
     bb.offline = False
     await send(agent, session.session_id, "/retry")
-    assert client.run_id == run_id and "accepted" in client.messages[-1]
+    assert client.run_id == run_id and "ready_for_review" in client.messages[-1]
     assert failure_report in client.messages
     assert bb.spawn_counts == {"planner": 1, "builder": 1, "reviewer": 1}
     with pytest.raises(ValueError, match="retry supports recovery_needed"):
@@ -153,7 +155,7 @@ async def test_completed_session_replays_history_and_status_never_starts_work(
     session = await agent.new_session(str(tmp_path))
     await send(agent, session.session_id, "Write the answer")
     run_id = client.run_id
-    assert "accepted" in client.messages[-1]
+    assert "ready_for_review" in client.messages[-1]
     first_messages = client.messages[:]
     first_tools = [item for item in client.updates if item["sessionUpdate"].startswith("tool_call")]
     call_ids = [item["toolCallId"] for item in first_tools if item["sessionUpdate"] == "tool_call"]
@@ -242,7 +244,7 @@ async def test_waiting_time_preserves_work_budget_but_overall_expiry_stops_run(
         waiting["run_id"], waiting["interactions"][0]["interaction_id"], {"format": "Text"}
     )
     if elapsed == 3600:
-        assert result["status"] == "accepted", result.get("error")
+        assert result["status"] == "ready_for_review", result.get("error")
         assert len(bb.answers_sent) == 1
     else:
         assert result["status"] == "failed"
@@ -288,7 +290,7 @@ async def test_restart_during_build_reuses_run_settings_and_child_operations(
     assert bb.spawn_counts == {"planner": 1, "builder": 1}
     await send(restarted, session.session_id, "/continue")
     assert replay.run_id == run_id
-    assert "accepted" in replay.messages[-1]
+    assert "ready_for_review" in replay.messages[-1]
     assert bb.spawn_counts == {"planner": 1, "builder": 1, "reviewer": 1}
     assert not bb.answers_sent
     builder = next(choice for role, choice in bb.choices if role == "builder")
@@ -329,7 +331,7 @@ async def test_old_session_records_load_without_repeating_unrecorded_work(
     if status == "accepted":
         await send(agent, "old-session", "/continue")
     else:
-        with pytest.raises(ValueError, match="legacy run cannot resume safely"):
+        with pytest.raises(ValueError, match="legacy run lacks Phase 1 evidence"):
             await send(agent, "old-session", "/continue")
     assert not bb.spawn_counts and not bb.answers_sent
 
@@ -365,7 +367,7 @@ async def test_duplicate_answer_is_harmless_while_the_first_answer_is_running(
     finally:
         release.set()
         result = await first
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert len(bb.answers_sent) == 1
 
 
@@ -403,7 +405,7 @@ async def test_duplicate_acp_answer_during_active_prompt_returns_saved_run(tmp_p
         release.set()
         await first
     assert len(bb.answers_sent) == 1
-    assert (await engine.inspect(run_id))["status"] == "accepted"
+    assert (await engine.inspect(run_id))["status"] == "ready_for_review"
 
 
 async def test_acp_process_replays_saved_history_before_load_response(tmp_path, factory_yaml):
@@ -440,7 +442,7 @@ asyncio.run(acp.run_agent(SoftwareFactoryAgent(context(root), FakeBB(root, {})))
             session_id=session.session_id, prompt=[TextContentBlock(type="text", text="/continue")]
         )
         assert result.stop_reason == "end_turn"
-        assert "accepted" in replay.messages[-1]
+        assert "ready_for_review" in replay.messages[-1]
 
 
 @pytest.mark.parametrize("interface", ["acp", "engine"])
@@ -471,5 +473,5 @@ async def test_simultaneous_answers_are_accepted_once(tmp_path, factory_yaml, in
         ]
     results = await asyncio.gather(*submissions, return_exceptions=True)
     assert all(not isinstance(result, BaseException) for result in results), results
-    assert (await engine.inspect(run_id))["status"] == "accepted"
+    assert (await engine.inspect(run_id))["status"] == "ready_for_review"
     assert len(bb.answers_sent) == 1

@@ -36,6 +36,7 @@ class BBExecution:
     output: str | None = None
     reported_choice: AgentConfig | None = None
     interaction_id: str | None = None
+    usage: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)

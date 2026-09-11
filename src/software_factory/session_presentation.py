@@ -10,7 +10,17 @@ from acp.helpers import SessionUpdate
 from software_factory.events import FactoryEvent
 from software_factory.state import FINAL_STATUSES
 
-PHASES = ("bootstrap", "plan", "build", "test", "repair", "review", "revise", "finalize")
+PHASES = (
+    "bootstrap",
+    "baseline",
+    "plan",
+    "build",
+    "test",
+    "repair",
+    "review",
+    "revise",
+    "finalize",
+)
 
 
 class EventPresentation:
@@ -28,14 +38,14 @@ class EventPresentation:
                     self.phases[phase] = "unused"
                 elif current in {"started", "waiting", "recovery_needed"}:
                     self.phases[phase] = (
-                        "completed" if run_status == "accepted" else str(run_status)
+                        "completed" if run_status == "ready_for_review" else str(run_status)
                     )
             for name, call_id in self.open_calls.items():
                 updates.append(
                     update_tool_call(
                         call_id,
                         title=f"{name.title()}: {run_status}",
-                        status="completed" if run_status == "accepted" else "failed",
+                        status="completed" if run_status == "ready_for_review" else "failed",
                     )
                 )
             self.open_calls.clear()

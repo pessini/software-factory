@@ -25,6 +25,9 @@ from tests.integration.test_factory_engine import (
     [
         ("bootstrap", "started"),
         ("bootstrap", "completed"),
+        ("baseline", "started"),
+        ("baseline", "completed"),
+        ("finalize", "started"),
         ("plan", "started"),
         ("plan", "completed"),
         ("build", "started"),
@@ -47,7 +50,7 @@ async def test_cancellation_at_a_node_boundary_cannot_become_accepted(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
     bb = FakeBB(
         tmp_path,
@@ -82,7 +85,7 @@ async def test_cancellation_at_a_node_boundary_cannot_become_accepted(
     summary = Path(result["final_report_path"]).with_name("run-summary.json")
     assert json.loads(summary.read_text())["status"] == "cancelled"
     assert not any(
-        event["metadata"].get("status") == "accepted"
+        event["metadata"].get("status") == "ready_for_review"
         for event in await engine.store.events(result["run_id"])
     )
 
@@ -93,7 +96,7 @@ async def test_resume_after_repair_dispatch_does_not_send_the_repair_twice(
     init_repository(
         tmp_path,
         factory_yaml,
-        "from pathlib import Path\nraise SystemExit(Path('answer.txt').read_text() != 'good')\n",
+        "from pathlib import Path\nraise SystemExit(Path('answer.txt').exists() and Path('answer.txt').read_text() != 'good')\n",
     )
 
     class InterruptedRepairBB(FakeBB):
@@ -125,7 +128,7 @@ async def test_resume_after_repair_dispatch_does_not_send_the_repair_twice(
         await engine.run("Write the answer", "fct_repair_restart")
     result = await engine.resume("fct_repair_restart")
 
-    assert result["status"] == "accepted"
+    assert result["status"] == "ready_for_review"
     assert bb.tell_count == 1
     assert result["test_repair_count"] == 1
     assert result["test_attempt_count"] == 2
@@ -180,7 +183,7 @@ async def test_cancel_after_acceptance_returns_the_existing_result(
     result = await engine.run("Write the answer", "fct_already_accepted")
     resumed = await engine.resume(result["run_id"])
 
-    assert result["status"] == cancellations[0]["status"] == resumed["status"] == "accepted"
+    assert result["status"] == cancellations[0]["status"] == resumed["status"] == "ready_for_review"
     assert result["changed_files"] == resumed["changed_files"] == ["answer.txt"]
     assert resumed["test_attempt_count"] == 1
     assert bb.stopped == []

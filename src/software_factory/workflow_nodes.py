@@ -7,10 +7,12 @@ from typing import Any, Protocol
 from software_factory.artifacts import ArtifactIntegrityError
 from software_factory.bb.client import RecoveryNeeded, WaitingForInput
 from software_factory.contracts import BuildEnvelope, PlanEnvelope, ReviewEnvelope
+from software_factory.evidence import check_passed, compare_check
 from software_factory.git import capture_snapshot, changed_files, repository_root
 from software_factory.interactions import Interaction
 from software_factory.prompts import (
     builder_prompt,
+    data_block,
     planner_prompt,
     repair_prompt,
     reviewer_prompt,
@@ -83,6 +85,7 @@ class WorkflowNodes:
             await runtime.bb.check_protection(runtime.artifacts.root)
             await runtime.bb.validate_workspace(runtime.workspace)
             runtime.artifacts.write_text("request.md", state["request"].rstrip() + "\n")
+            await runtime.evidence.prepare(state["request"], runtime.config)
             await runtime.store.set_status(runtime.run_id, "running")
             await runtime.emit("bootstrap", "completed", "repository and policy validated")
             return {"status": "running", "baseline_files": baseline, "error": None}
@@ -92,6 +95,23 @@ class WorkflowNodes:
             await runtime.emit("bootstrap", "failed", str(exc))
             return {"status": "failed", "error": str(exc)}
 
+    async def baseline(self, state: FactoryState) -> FactoryState:
+        runtime = self.runtime
+        await runtime.emit(
+            "baseline", "started", "checking the starting files before Builder edits"
+        )
+        try:
+            payload = await self._checks("baseline", 1)
+            path = runtime.artifacts.write_json("baseline.json", payload)
+            await runtime.emit(
+                "baseline", "completed", "baseline results saved, including existing failures"
+            )
+            return {"baseline_result_path": str(path), "error": None}
+        except RecoveryNeeded, WaitingForInput, FactoryCancelled:
+            raise
+        except Exception as exc:
+            return {"status": "blocked", "error": str(exc)}
+
     async def plan(self, state: FactoryState) -> FactoryState:
         runtime = self.runtime
         await runtime.emit("plan", "started", "Planner analyzing request")
@@ -99,7 +119,9 @@ class WorkflowNodes:
             async with self.worktree.read_only("Planner") as check_workspace:
                 thread_id, output = await runtime.get_or_spawn(
                     "planner",
-                    planner_prompt(runtime.run_id, state["request"], runtime.workspace),
+                    planner_prompt(
+                        runtime.run_id, state["request"], runtime.workspace, runtime.artifacts.root
+                    ),
                     runtime.config.agents.planner,
                     step="plan",
                 )
@@ -129,7 +151,7 @@ class WorkflowNodes:
                     thread_id, output = await runtime.get_or_spawn(
                         "planner",
                         "Continue the same plan using these saved answers. Return the PlanEnvelope JSON.\n"
-                        + json.dumps(
+                        + data_block(
                             {
                                 "questions": [q.model_dump() for q in interaction.questions],
                                 "answers": interaction.answers,
@@ -187,6 +209,8 @@ class WorkflowNodes:
                 "builder_thread_id": thread_id,
                 "build_report_path": str(report),
                 "changed_files": actual,
+                "review_approved": False,
+                "test_passed": False,
                 "error": None,
             }
         except FactoryCancelled as exc:
@@ -201,13 +225,14 @@ class WorkflowNodes:
         runtime = self.runtime
         attempt = state.get("test_attempt_count", 0) + 1
         await runtime.emit("test", "started", "running trusted quality commands", attempt=attempt)
-        results: list[dict[str, Any]] = []
         try:
-            for command in runtime.config.quality.commands:
-                results.append(await runtime.run_quality_command(command, attempt))
-            passed = all(result["exit_code"] == 0 and not result["timed_out"] for result in results)
-            payload = {"attempt": attempt, "passed": passed, "commands": results}
+            payload = await self._checks("tests", attempt)
+            passed = payload["passed"]
             path = runtime.artifacts.write_json(f"tests/attempt-{attempt:02d}.json", payload)
+            failures = [item for item in payload["commands"] if not check_passed(item)]
+            baseline_only = bool(failures) and all(
+                item["comparison"] != "new_failure" for item in failures
+            )
             await runtime.emit(
                 "test",
                 "completed" if passed else "failed",
@@ -219,7 +244,14 @@ class WorkflowNodes:
                 "test_attempt_count": attempt,
                 "test_passed": passed,
                 "test_result_path": str(path),
-                "error": None if passed else "configured quality commands failed",
+                "content_version": payload["content_version"],
+                "review_approved": False,
+                "status": "blocked" if baseline_only else "running",
+                "error": None
+                if passed
+                else "baseline failures require user action; changed output alone does not establish a new failure"
+                if baseline_only
+                else "configured quality commands failed",
             }
         except FactoryCancelled as exc:
             return await self._cancelled("test", exc)
@@ -230,6 +262,7 @@ class WorkflowNodes:
             return {
                 "test_attempt_count": attempt,
                 "test_passed": False,
+                "review_approved": False,
                 "status": "blocked",
                 "error": str(exc),
             }
@@ -247,7 +280,11 @@ class WorkflowNodes:
             result = json.loads(
                 runtime.artifacts.read_text(f"tests/attempt-{state['test_attempt_count']:02d}.json")
             )
-            logs = [item["log_path"] for item in result["commands"]]
+            logs = [
+                item["log_path"]
+                for item in result["commands"]
+                if item["comparison"] == "new_failure"
+            ]
             thread_id, envelope, actual = await self._builder_handoff(
                 repair_prompt(
                     runtime.run_id,
@@ -261,15 +298,17 @@ class WorkflowNodes:
                 step="repair",
                 attempt=repair_count,
             )
-            runtime.artifacts.write_json(f"build-repair-{repair_count:02d}.json", envelope)
+            report = runtime.artifacts.write_json(f"build-repair-{repair_count:02d}.json", envelope)
             await runtime.emit(
                 "repair", "completed", "Builder repair completed", attempt=repair_count
             )
             return {
                 "builder_thread_id": thread_id,
                 "test_repair_count": repair_count,
+                "build_report_path": str(report),
                 "changed_files": actual,
                 "test_passed": False,
+                "review_approved": False,
                 "error": None,
             }
         except FactoryCancelled as exc:
@@ -287,6 +326,8 @@ class WorkflowNodes:
             "review", "started", "Reviewer assessing verified changes", attempt=attempt
         )
         try:
+            bundle = await runtime.evidence.review_bundle(state["test_attempt_count"])
+            history = runtime.evidence.history(attempt)
             async with self.worktree.read_only("Reviewer") as check_workspace:
                 prompt = reviewer_prompt(
                     runtime.run_id,
@@ -294,6 +335,8 @@ class WorkflowNodes:
                     runtime.workspace / state["plan_markdown_path"],
                     state["changed_files"],
                     runtime.workspace / state["test_result_path"],
+                    bundle=bundle,
+                    history=history,
                 )
                 existing = await runtime.store.child(runtime.run_id, "reviewer")
                 thread_id, output = await runtime.get_or_spawn(
@@ -312,7 +355,12 @@ class WorkflowNodes:
                     check_workspace=check_workspace,
                     step="review",
                     attempt=attempt,
+                    validate=lambda review: runtime.evidence.validate_review(
+                        review, bundle, attempt
+                    ),
                 )
+            history = runtime.evidence.validate_review(envelope, bundle, attempt)
+            runtime.artifacts.write_json(f"review/findings-{attempt:02d}.json", history)
             path = runtime.artifacts.write_json(f"review/attempt-{attempt:02d}.json", envelope)
             await runtime.emit(
                 "review",
@@ -325,6 +373,9 @@ class WorkflowNodes:
                 "review_attempt_count": attempt,
                 "review_approved": envelope.approved,
                 "review_path": str(path),
+                "status": "blocked"
+                if not envelope.approved and not envelope.blocking_findings
+                else "running",
                 "error": None if envelope.approved else review_findings(envelope),
             }
         except FactoryCancelled as exc:
@@ -333,7 +384,14 @@ class WorkflowNodes:
             raise
         except Exception as exc:
             await runtime.emit("review", "failed", str(exc), attempt=attempt)
-            return {"review_attempt_count": attempt, "status": "blocked", "error": str(exc)}
+            return {
+                "review_attempt_count": attempt,
+                "review_approved": False,
+                "test_passed": state.get("test_passed", False)
+                and not isinstance(exc, (ArtifactIntegrityError, WorktreePolicyError)),
+                "status": "blocked",
+                "error": str(exc),
+            }
 
     async def revise(self, state: FactoryState) -> FactoryState:
         runtime = self.runtime
@@ -359,11 +417,12 @@ class WorkflowNodes:
                 step="revise",
                 attempt=count,
             )
-            runtime.artifacts.write_json(f"build-revision-{count:02d}.json", envelope)
+            report = runtime.artifacts.write_json(f"build-revision-{count:02d}.json", envelope)
             await runtime.emit("revise", "completed", "review revision completed", attempt=count)
             return {
                 "builder_thread_id": thread_id,
                 "review_revision_count": count,
+                "build_report_path": str(report),
                 "changed_files": actual,
                 "test_passed": False,
                 "review_approved": False,
@@ -379,12 +438,45 @@ class WorkflowNodes:
 
     async def finalize(self, state: FactoryState) -> FactoryState:
         runtime = self.runtime
+        await runtime.emit(
+            "finalize", "started", "verifying current files against checks and review"
+        )
         try:
             await runtime.verify_repository()
-        except (ArtifactIntegrityError, WorktreePolicyError) as exc:
-            return await self.failed({**state, "status": "blocked", "error": str(exc)})
+            await runtime.verify_handoff(state)
+        except (ArtifactIntegrityError, WorktreePolicyError, ValueError, KeyError) as exc:
+            return await self.failed(
+                {
+                    **state,
+                    "status": "blocked",
+                    "test_passed": False,
+                    "review_approved": False,
+                    "error": str(exc),
+                }
+            )
         await runtime.check_cancelled()
-        return await runtime.finish({**state, "error": None}, "accepted")
+        return await runtime.finish({**state, "error": None}, "ready_for_review")
+
+    async def _checks(self, phase: str, attempt: int) -> dict[str, Any]:
+        runtime = self.runtime
+        snapshot = await runtime.evidence.begin_checks(phase, attempt)
+        baseline = runtime.evidence.read("baseline.json")["commands"] if phase == "tests" else []
+        results = []
+        for index, command in enumerate(runtime.config.quality.commands):
+            await runtime.evidence.require_current(snapshot)
+            result = await runtime.run_quality_command(
+                command, attempt, phase=phase, content_version=snapshot["content_version"]
+            )
+            await runtime.evidence.require_current(snapshot)
+            if baseline:
+                result = {**result, "comparison": compare_check(result, baseline[index])}
+            results.append(result)
+        return {
+            "attempt": attempt,
+            "passed": all(check_passed(item) for item in results),
+            "content_version": snapshot["content_version"],
+            "commands": results,
+        }
 
     async def failed(self, state: FactoryState) -> FactoryState:
         current = state.get("status", "failed")

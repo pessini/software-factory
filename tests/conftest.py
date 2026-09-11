@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import subprocess
 from collections import defaultdict, deque
@@ -20,6 +21,35 @@ def ownership_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 def run(command: list[str], cwd: Path) -> None:
     subprocess.run(command, cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def render_review(output: str, prompt: str) -> str:
+    """The scripted provider echoes the supplied content identity, like a real Reviewer."""
+    if "__CONTENT_VERSION__" not in output:
+        return output
+    block = re.search(r"<factory_data>\n(.*?)\n</factory_data>", prompt, re.DOTALL)
+    assert block is not None, prompt
+    data = json.loads(block[1])
+    review = json.loads(output)
+    review["content_version"] = data["bundle"]["content_version"]
+    active = {item["id"] for item in review["findings"]}
+    review.setdefault(
+        "resolutions",
+        [
+            {
+                "finding_id": key,
+                "status": "reopened"
+                if item["status"] == "fixed" and key in active
+                else "unresolved"
+                if key in active
+                else "fixed",
+                "evidence": "Inspected the current answer",
+                "evidence_refs": ["source:answer.txt"],
+            }
+            for key, item in data["previous_findings"].items()
+        ],
+    )
+    return json.dumps(review)
 
 
 def init_repository(path: Path, factory_yaml: str, test_script: str) -> None:
@@ -113,6 +143,7 @@ class FakeBB:
         self.execution_count = 0
         self.choices: list[tuple[str, AgentConfig]] = []
         self.prompts: list[tuple[str, str]] = []
+        self.thread_prompts: dict[str, str] = {}
 
     async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
         self.choices.append((role, agent))
@@ -122,7 +153,7 @@ class FakeBB:
             f"-{self.spawn_counts[role]}" if self.spawn_counts[role] > 1 else ""
         )
         self.thread_roles[thread_id] = role
-        await self._advance(thread_id)
+        await self._advance(thread_id, prompt)
         self._record_execution(thread_id, prompt)
         self.remote_threads[(role, spawn_key)] = thread_id
         if self.spawn_error_after_create is not None:
@@ -143,7 +174,8 @@ class FakeBB:
         return self.outputs[thread_id]
 
     async def tell(self, thread_id: str, message: str) -> str:
-        await self._advance(thread_id)
+        self.prompts.append((self.thread_roles[thread_id], message))
+        await self._advance(thread_id, message)
         self._record_execution(thread_id, message)
         return self.execution_ids[thread_id]
 
@@ -170,7 +202,7 @@ class FakeBB:
         current = self.execution_ids[thread_id]
         return BBExecution(current, "completed", self.outputs[thread_id])
 
-    async def _advance(self, thread_id: str) -> None:
+    async def _advance(self, thread_id: str, prompt: str) -> None:
         role = self.thread_roles[thread_id]
         item = self.scripts[role].popleft()
         action = item.get("action")
@@ -178,4 +210,6 @@ class FakeBB:
             result = action(self.workspace)
             if asyncio.iscoroutine(result):
                 await result
-        self.outputs[thread_id] = str(item["output"])
+        if '"bundle":' in prompt or thread_id not in self.thread_prompts:
+            self.thread_prompts[thread_id] = prompt
+        self.outputs[thread_id] = render_review(str(item["output"]), self.thread_prompts[thread_id])

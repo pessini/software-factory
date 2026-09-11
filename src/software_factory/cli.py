@@ -106,7 +106,7 @@ def run_command(
     engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
     result = asyncio.run(engine.run(request))
     console.print_json(json.dumps(result))
-    if result.get("status") != "accepted":
+    if result.get("status") != "ready_for_review":
         raise typer.Exit(1)
 
 
@@ -119,7 +119,7 @@ def resume_command(
     engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
     result = asyncio.run(engine.resume(run_id))
     console.print_json(json.dumps(result))
-    if result.get("status") != "accepted":
+    if result.get("status") != "ready_for_review":
         raise typer.Exit(1)
 
 
@@ -161,7 +161,7 @@ def answer_command(
         raise typer.BadParameter("answers must be a JSON object")
     result = asyncio.run(engine.answer(run_id, interaction_id, payload))
     console.print_json(json.dumps(result))
-    if result.get("status") != "accepted":
+    if result.get("status") != "ready_for_review":
         raise typer.Exit(1)
 
 
@@ -174,7 +174,7 @@ def retry_command(
     engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
     result = asyncio.run(engine.retry(run_id))
     console.print_json(json.dumps(result))
-    if result.get("status") != "accepted":
+    if result.get("status") != "ready_for_review":
         raise typer.Exit(1)
 
 

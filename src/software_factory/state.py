@@ -7,18 +7,27 @@ RunStatus = Literal[
     "recovery_needed",
     "stopping",
     "accepted",
+    "ready_for_review",
     "failed",
     "blocked",
     "cancelled",
 ]
 
-FINAL_STATUSES = frozenset({"accepted", "failed", "blocked", "cancelled"})
+FINAL_STATUSES = frozenset({"accepted", "ready_for_review", "failed", "blocked", "cancelled"})
 TRANSITIONS: dict[str, frozenset[str]] = {
     "pending": frozenset(
         {"running", "waiting_for_input", "stopping", "recovery_needed", "failed", "blocked"}
     ),
     "running": frozenset(
-        {"waiting_for_input", "recovery_needed", "stopping", "accepted", "failed", "blocked"}
+        {
+            "waiting_for_input",
+            "recovery_needed",
+            "stopping",
+            "accepted",
+            "ready_for_review",
+            "failed",
+            "blocked",
+        }
     ),
     "waiting_for_input": frozenset({"running", "recovery_needed", "stopping"}),
     "recovery_needed": frozenset({"running", "waiting_for_input", "stopping"}),
@@ -28,6 +37,8 @@ TRANSITIONS: dict[str, frozenset[str]] = {
 
 
 class FactoryState(TypedDict, total=False):
+    evidence_version: int
+    evidence_status: str
     run_id: str
     request: str
     status: RunStatus
@@ -58,3 +69,7 @@ class FactoryState(TypedDict, total=False):
     active_child_thread_id: str | None
     error: str | None
     interactions: list[dict[str, Any]]
+    baseline_result_path: str
+    content_version: str
+    handoff: dict[str, Any]
+    execution_summary: dict[str, Any]

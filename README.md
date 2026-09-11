@@ -15,10 +15,17 @@ rules, [live acceptance evidence](docs/live-worker-acceptance.json) for the
 verified run, and the [issues 1–4 review](docs/issues-1-4-review.md) for the
 remaining dependency order.
 
+The [single-reviewer evidence workflow](docs/review-evidence.md) records baseline
+checks, structured criterion results and findings, and the exact tested file
+version. Successful runs finish at `ready_for_review`. Old `accepted` results
+remain available as unverified historical records. Issue #6 verifies this complete
+Phase 1 workflow with a real provider; the earlier live evidence does not establish
+that acceptance result.
+
 The MVP provides:
 
 - an ACP agent registered as **Software Factory** in BB;
-- a resumable LangGraph with Planner, Builder, deterministic tests, repair,
+- a resumable LangGraph with baseline checks, Planner, Builder, deterministic tests, repair,
   Reviewer, revision, finalization, and terminal failure nodes;
 - visible, reusable BB child threads for every specialist;
 - a SQLite LangGraph checkpointer plus a durable spawn-intent ledger and
