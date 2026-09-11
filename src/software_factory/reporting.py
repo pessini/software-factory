@@ -60,7 +60,11 @@ def final_report(state: FactoryState, outcome: str) -> str:
     details = ""
     handoff = state.get("handoff")
     if handoff:
-        details += f"\n## Change\n\n{handoff['change']}\n\n"
+        details += f"\n## Builder change summary\n\n{handoff['change']}\n\n"
+        details += (
+            "The Builder wrote this summary before the controller checks and review. "
+            "Their final results are recorded below.\n\n"
+        )
         details += f"Tested and reviewed content version: `{handoff['content_version']}`\n\n"
         details += "## Completion criteria\n\n"
         for criterion in handoff["criteria"]:
@@ -79,7 +83,7 @@ def final_report(state: FactoryState, outcome: str) -> str:
             or "None."
         )
         details += (
-            "\n\n## Manual work\n\n"
+            "\n\n## Reported manual work\n\n"
             + ("\n".join(f"- {item}" for item in handoff["manual_work"]) or "None reported.")
             + "\n"
         )

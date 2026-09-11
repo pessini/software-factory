@@ -25,6 +25,7 @@ from software_factory.bb.protected import ProtectedBBClient
 from software_factory.config import ModelChoice, Selection
 from software_factory.engine import FactoryEngine
 from software_factory.evidence import RunEvidence
+from software_factory.processes import finish_process, start_process
 from software_factory.worker_container import WORKER_IMAGE, container_command
 from software_factory.worker_records import WorkerRecords
 
@@ -85,14 +86,11 @@ SCENARIOS = (
 
 
 async def bb_command(*args):
-    process = await asyncio.create_subprocess_exec(
-        *resolve_bb_command(),
-        *args,
-        "--json",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await asyncio.wait_for(process.communicate(), 60)
+    process, identity = await start_process([*resolve_bb_command(), *args, "--json"], Path.cwd())
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), 60)
+    finally:
+        await asyncio.shield(finish_process(process, identity))
     if process.returncode:
         raise RuntimeError(stderr.decode() or stdout.decode())
     return json.loads(stdout)
@@ -110,9 +108,26 @@ class InterruptedBB(ProtectedBBClient):
         self.scenario = scenario
         self.dispatched = asyncio.Event()
         self.injected = False
+        self.observed = None
 
     async def spawn_child(self, role, prompt, agent, spawn_key):
         child = await super().spawn_child(role, prompt, agent, spawn_key)
+        if not self.injected and self.scenario in {
+            "restart_after_dispatch",
+            "connection_loss",
+            "cancel",
+        }:
+            records = WorkerRecords(await thread_storage(child))
+            async with asyncio.timeout(90):
+                while self.observed is None:
+                    for receipt in records.all():
+                        if receipt.execution_id and receipt.status == "running":
+                            self.observed = {"thread_id": child, **receipt.model_dump(mode="json")}
+                            break
+                        if receipt.status in {"failed", "stopped"}:
+                            raise RuntimeError(receipt.error or "provider did not start")
+                    if self.observed is None:
+                        await asyncio.sleep(0.1)
         self.dispatched.set()
         if not self.injected and self.scenario in {"restart_after_dispatch", "connection_loss"}:
             self.injected = True
@@ -214,6 +229,19 @@ async def test_real_provider_workflow(tmp_path, scenario):
             and event.status == "completed"
             and not interrupted
         ):
+            operation = next(
+                item
+                for item in await engine.store.operations(run_id)
+                if item["step"] == "plan" and item["kind"] == "create"
+            )
+            receipts = WorkerRecords(await thread_storage(operation["thread_id"])).all()
+            receipt = next(
+                item for item in receipts if item.operation_id == operation["operation_id"]
+            )
+            client.observed = {
+                "thread_id": operation["thread_id"],
+                **receipt.model_dump(mode="json"),
+            }
             interrupted = True
             raise asyncio.CancelledError()
 
@@ -253,6 +281,7 @@ async def test_real_provider_workflow(tmp_path, scenario):
                 state = await engine.answer(
                     run_id, interaction["interaction_id"], {"prefix": "Item: "}
                 )
+            record["before_interruption"] = client.observed
             record["state"] = state
             assert state["status"] == (
                 "cancelled" if scenario == "cancel" else "ready_for_review"
@@ -289,11 +318,38 @@ async def test_real_provider_workflow(tmp_path, scenario):
             record["operations"] = operations
             assert all(item["dispatch_count"] == 1 for item in operations)
             children = await engine.store.list_children(run_id)
+            actual_children = await bb_command("thread", "list", "--parent-thread", parent["id"])
+            assert {item["id"] for item in actual_children} == set(children.values())
             record["workers"] = []
             for child_id in children.values():
                 assert (await client.inspect_thread(child_id)).stopped
                 receipts = WorkerRecords(await thread_storage(child_id)).all()
                 record["workers"].extend(item.model_dump(mode="json") for item in receipts)
+            provider_operations = [item for item in operations if item["kind"] != "check"]
+            assert sorted(item["operation_id"] for item in record["workers"]) == sorted(
+                item["operation_id"] for item in provider_operations
+            )
+            if client.observed:
+                before = client.observed
+                same_request = [
+                    item
+                    for item in record["workers"]
+                    if item["operation_id"] == before["operation_id"]
+                ]
+                assert len(same_request) == 1
+                assert same_request[0]["execution_id"] == before["execution_id"]
+                assert same_request[0]["stopped"]
+                assert children["planner"] == before["thread_id"]
+                assert (
+                    len(
+                        [
+                            item
+                            for item in provider_operations
+                            if item["step"] == "plan" and item["kind"] == "create"
+                        ]
+                    )
+                    == 1
+                )
             record["result"] = "passed"
     except BaseException as exc:
         record["result"] = "failed"

@@ -90,11 +90,11 @@ that contains user work: pytest clears its base directory when a run starts.
 | `no_change` | Existing greeting behavior verified, with no file changes. |
 | `repair` | Deliberately incorrect first build fails tests; the real Builder repairs it and checks pass. |
 | `revision` | First build omits a required export; real review rejects it, revision fixes it, and review records the finding as fixed. |
-| `restart_after_dispatch` | Controller interruption after real child creation; a new engine recovers the saved operation without another dispatch. |
+| `restart_after_dispatch` | Controller interruption during an observed provider execution; a new engine recovers the same child and execution ID without another dispatch. |
 | `restart_after_result` | Controller interruption after a real Planner result; a new engine continues from the saved result. |
 | `connection_loss` | The test drops a BB creation response; the controller recovers the real child without resending. |
 | `question_restart` | Real Planner asks a blocking question; a new engine reloads it, accepts the answer, and completes the same run. |
-| `cancel` | Cancellation after child creation stops owned work and preserves the workspace. |
+| `cancel` | Cancellation during an observed provider execution stops owned work and preserves the workspace. |
 
 Transport faults are deliberately introduced at the BB API boundary. The restart
 cases replace the controller engine in the same test process; they do not prove

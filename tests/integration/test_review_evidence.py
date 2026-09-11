@@ -88,7 +88,11 @@ async def test_handoff_records_original_request_rules_baseline_and_untracked_con
     (tmp_path / "AGENTS.md").write_text("Keep the answer as plain text.\n")
     commit_fixture(tmp_path)
     request = "  Write the answer. https://github.com/pessini/software-factory/issues/1\n"
-    engine = scripted_engine(tmp_path)
+    build = json.loads(build_output())
+    build["manual_work"] = ["Run the controller checks and review."]
+    review = json.loads(review_output())
+    review["manual_work"] = ["Choose a delivery date."]
+    engine = scripted_engine(tmp_path, build=json.dumps(build), review=json.dumps(review))
     result = await engine.run(request)
     assert result["status"] == "ready_for_review", result.get("error")
     handoff = result["handoff"]
@@ -115,7 +119,12 @@ async def test_handoff_records_original_request_rules_baseline_and_untracked_con
     assert result["execution_summary"]["steps"]["review"]["provider_usage"] == "unavailable"
     inspected = await engine.inspect(result["run_id"])
     assert inspected["handoff"] == handoff
-    assert handoff["content_version"] in Path(result["final_report_path"]).read_text()
+    report = Path(result["final_report_path"]).read_text()
+    assert handoff["content_version"] in report
+    assert "Tests: passed" in report and "Review: approved" in report
+    assert "before the controller checks and review" in report
+    assert "Builder, before controller checks: Run the controller checks and review." in report
+    assert "Reviewer, after controller checks: Choose a delivery date." in report
 
 
 async def test_already_satisfied_request_finishes_without_artificial_changes(

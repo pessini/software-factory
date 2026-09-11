@@ -633,7 +633,10 @@ class FactoryRuntime:
             "baseline": self.evidence.read("baseline.json"),
             "checks": self.evidence.read(bundle["checks"]),
             "findings": history,
-            "manual_work": [*build.manual_work, *review.manual_work],
+            "manual_work": [
+                *(f"Builder, before controller checks: {item}" for item in build.manual_work),
+                *(f"Reviewer, after controller checks: {item}" for item in review.manual_work),
+            ],
             "limits": self.config.limits.model_dump(mode="json"),
         }
 
