@@ -5,6 +5,9 @@ the implementations of #2–#5. Later reviewer phases and PR delivery (#7) are
 outside this acceptance check. An open dependency ticket does not, by itself,
 mean its code is missing.
 
+See [the recorded local results](acceptance-results.md) and
+[versioned evidence](phase1-acceptance.json).
+
 The release remains **unverified** until clean CI, every live scenario below,
 and the BB parent display check pass. The older `accepted` run in
 `live-worker-acceptance.json` predates Phase 1 and is not a release pass.
@@ -79,7 +82,9 @@ Use a new result directory for each acceptance series. The JSON records contain
 the factory commit and local diff hash, platform, versions, image identity,
 actual model catalog, requested and reported settings, run state, operation IDs,
 provider turn IDs, and cleanup results. Failed assertions remain failed results.
-Keep the disposable clone and BB storage until the evidence has been reviewed.
+Keep the factory checkout unchanged until the full series finishes. A source
+change detected before or after a case makes that case fail. Keep the disposable
+clone and BB storage until the evidence has been reviewed.
 Pytest can remove older temporary directories; use a fresh, explicitly chosen
 `--basetemp` directory if longer retention is required. Never reuse a directory
 that contains user work: pytest clears its base directory when a run starts.
@@ -139,3 +144,63 @@ been established. A simulated interruption is not evidence of this check.
 
 Record every untested capability as unverified. Issue #6 stays open if CI,
 any required scenario, the display check, or process recovery remains unverified.
+
+### Reproduce a real controller process restart
+
+Use a new disposable demo clone, with dependencies installed and the selected
+model settings saved. Create a Software Factory BB parent in that clone with
+`/status`. Set `BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, and
+`BB_THREAD_STORAGE` from that parent's actual BB metadata. Keep the same values
+for the commands below. Do not attach these commands to a normal project task.
+
+First, from the factory checkout, capture its installed Python path:
+
+```bash
+export FACTORY_ACCEPTANCE_PYTHON="$(uv run --frozen python -c 'import sys; print(sys.executable)')"
+```
+
+In the disposable clone, start one controller process whose ID you own:
+
+```bash
+export FACTORY_RESTART_RUN="fct_restart_$(date +%s)"
+"$FACTORY_ACCEPTANCE_PYTHON" - <<'PY' > "/tmp/$FACTORY_RESTART_RUN-before.log" 2>&1 &
+import asyncio
+import os
+from pathlib import Path
+from software_factory.bb import BBContext
+from software_factory.engine import FactoryEngine
+
+engine = FactoryEngine(workspace=Path.cwd(), context=BBContext.from_environment())
+asyncio.run(engine.run(
+    "Add and export is_even with tests for positive, negative, zero, even and odd integers.",
+    os.environ["FACTORY_RESTART_RUN"],
+))
+PY
+factory_controller_pid=$!
+```
+
+Inspect from a second terminal with the same BB variables and `FACTORY_RESTART_RUN`.
+Save the output
+outside the disposable workspace so the log does not change the files being
+tested:
+
+```bash
+software-factory inspect "$FACTORY_RESTART_RUN" > "/tmp/$FACTORY_RESTART_RUN-dispatch.json"
+```
+
+Wait until the Planner operation has a nonempty `thread_id` and `execution_id`
+and state `dispatched`. Record those values. In the first terminal, stop only
+the process saved above and continue the same run. Confirm that `jobs -l` still
+lists that PID as the running controller before sending the signal:
+
+```bash
+kill -KILL "$factory_controller_pid"
+wait "$factory_controller_pid"  # A killed-process exit is expected here.
+software-factory resume "$FACTORY_RESTART_RUN"
+software-factory inspect "$FACTORY_RESTART_RUN" > "/tmp/$FACTORY_RESTART_RUN-resumed.json"
+```
+
+Confirm `ready_for_review`, the same Planner child and execution ID, one dispatch
+per operation, and stopped owned workers. Compare the report's content version
+with its saved check and review records. If any check fails, preserve the output
+and workspace; do not count the run as passed.

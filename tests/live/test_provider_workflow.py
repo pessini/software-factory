@@ -100,14 +100,17 @@ def git(workspace, *args):
     return subprocess.check_output(["git", *args], cwd=workspace, text=True).strip()
 
 
-@pytest.fixture(scope="module")
-def acceptance_source():
-    # Record once: later cases still use the modules loaded by this test process.
-    factory = Path(__file__).resolve().parents[2]
+def source_identity(factory):
     return {
         "factory_commit": git(factory, "rev-parse", "HEAD"),
         "factory_diff_sha256": hashlib.sha256(git(factory, "diff", "HEAD").encode()).hexdigest(),
     }
+
+
+@pytest.fixture(scope="module")
+def acceptance_source():
+    # Record once: later cases still use the modules loaded by this test process.
+    return source_identity(Path(__file__).resolve().parents[2])
 
 
 class InterruptedBB(ProtectedBBClient):
@@ -258,6 +261,9 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
     record["run_id"] = run_id
     task = None
     try:
+        assert source_identity(Path(__file__).resolve().parents[2]) == acceptance_source, (
+            "factory source changed before this live case"
+        )
         record["bb_version"] = await bb_command("settings", "version")
         record["image"] = json.loads(await container_command("image", "inspect", WORKER_IMAGE))
         record["container_version"] = (await container_command("--version")).strip()
@@ -365,6 +371,10 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
                     )
                     == 1
                 )
+            assert source_identity(Path(__file__).resolve().parents[2]) == acceptance_source, (
+                "factory source changed during live acceptance"
+            )
+            record["source_verified_at_end"] = True
             record["result"] = "passed"
     except BaseException as exc:
         record["result"] = "failed"

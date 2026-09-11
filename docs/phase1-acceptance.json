@@ -1,0 +1,669 @@
+{
+  "version": 1,
+  "recorded_at": "2026-09-11T18:15:16.760902+00:00",
+  "issue": "https://github.com/pessini/software-factory/issues/6",
+  "tracking_issue": "https://github.com/pessini/software-factory/issues/1",
+  "scope": "Phase 1 after issues 2-5; later reviewer phases and PR delivery excluded",
+  "tested_commit": "7f1d622c4e4e5dc295e07250fa95260e37dc853e",
+  "tracked_checkout_unchanged_during_final_series": true,
+  "release_gate": "awaiting GitHub-hosted CI on macOS and Linux",
+  "environment": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7",
+    "uv": "0.12.13",
+    "bb": "0.42.1",
+    "container": "container CLI version 1.0.0 (build: release, commit: ee848e3)",
+    "provider_cli": "0.154.0 (checked by the worker initialize response)",
+    "worker_image": "software-factory-worker:0.154.0",
+    "image_digest": "sha256:ff479eb93f97ee797e43a50d1dca76695f532127e35f8cb8a4dd9dddd6cbb81f",
+    "model": "gpt-5.6-luna",
+    "requested_effort": {
+      "plan": "low",
+      "build": "low",
+      "repair": "medium",
+      "review": "medium",
+      "revision": "high"
+    },
+    "reported_settings": "Every completed provider step matched the requested model, effort, and permission mode",
+    "provider_usage": "unavailable"
+  },
+  "clean_checks": {
+    "command": "bash scripts/check.sh",
+    "checkout": "/private/tmp/factory-issue-6-clean-7f1d622",
+    "result": "passed",
+    "passed": 227,
+    "skipped": 11,
+    "duration_seconds": 402.424,
+    "ruff_lint": "passed",
+    "ruff_format": "passed",
+    "mypy": "passed",
+    "credentials_required": false,
+    "logs": {
+      "format.log": "e5d285e654af339bd79aedd43f7389a16ff483c0cdb5376a5926eb5a93d4a4d4",
+      "install.log": "0ec98ac1c24639e62a1820c6addd9efafa1b79268ffe30193da54cd65e00ae19",
+      "lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "tests.log": "80e99fad71930ca358d7a591e9e541615db7ed6c97bc385f7df572fa566724b6",
+      "tests.xml": "017207586ba8a4edc918c6982873d78e1caa8450e8c0cd20e808fe8b8d7d8ba3",
+      "types.log": "34df9cf38736563d4bb02e64b66effac851acb546ad0a3c3761547e25bbe3570",
+      "versions.log": "0366d77cc1f1ac88ea458231ba4f639323d5caf34de0d50b7618277fd4395f1f"
+    }
+  },
+  "container_protection": {
+    "result": "passed",
+    "cases": 2,
+    "provider_calls": 0,
+    "checks": [
+      "existing source visible",
+      "allowed writes reach host",
+      "Planner and Reviewer workspace read-only",
+      "controller evidence read-only",
+      "protected file writes, deletion, rename, chmod, and link writes denied",
+      "ordinary Python import creates no bytecode"
+    ],
+    "raw_log": "/private/tmp/factory-issue-6-ttai6aze/protection-final.log"
+  },
+  "scenarios": [
+    {
+      "scenario": "feature",
+      "result": "passed",
+      "parent": "thr_wife6kjuzr",
+      "run_id": "fct_live_49cf9dd20f82",
+      "workspace": "/private/tmp/factory-issue-6-final-a/test_real_provider_workflow_fe0/demo",
+      "status": "ready_for_review",
+      "content_version": "4f467b7b59c66b915924520e93208ef8a708b656b0530cb890e948341184a7a3",
+      "test_attempts": 1,
+      "repair_attempts": 0,
+      "review_attempts": 1,
+      "revision_attempts": 0,
+      "changed_files": [
+        "src/demo_target/__init__.py",
+        "src/demo_target/core.py",
+        "tests/test_core.py"
+      ],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_49cf9dd20f82:build:1:create",
+          "execution_id": "01a091a6-6d97-7b10-9c6d-0f8106f44bfb",
+          "provider_thread_id": "01a091a6-6d28-73e1-9da6-5b20f7f9d44e",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_49cf9dd20f82:plan:1:create",
+          "execution_id": "01a091a5-e69d-7842-b582-972cc0589a10",
+          "provider_thread_id": "01a091a5-e623-7943-846e-d3419e66cd83",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_49cf9dd20f82:review:1:create",
+          "execution_id": "01a091a7-2394-7790-995e-0a4837c595c9",
+          "provider_thread_id": "01a091a7-232c-7ee0-beb3-3b64660d23fb",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/feature-15079798.json",
+      "raw_record_sha256": "4eedd4cb67924a263101957da298bd24c82ed6f817bf9d0758be6196484214f8"
+    },
+    {
+      "scenario": "no_change",
+      "result": "passed",
+      "parent": "thr_zrga95fd3r",
+      "run_id": "fct_live_7d8e90fb8e4d",
+      "workspace": "/private/tmp/factory-issue-6-final-a/test_real_provider_workflow_no0/demo",
+      "status": "ready_for_review",
+      "content_version": "c7c1a5086cd845348426b6cc14e9a00863e3e2e16e61a524f31856c83774d8fa",
+      "test_attempts": 1,
+      "repair_attempts": 0,
+      "review_attempts": 1,
+      "revision_attempts": 0,
+      "changed_files": [],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_7d8e90fb8e4d:build:1:create",
+          "execution_id": "01a091a8-31e8-7ee3-9470-812ec6ad25a4",
+          "provider_thread_id": "01a091a8-3175-73d2-b714-43c8d30b3eb4",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_7d8e90fb8e4d:plan:1:create",
+          "execution_id": "01a091a7-b84f-7c12-8e33-7fd7cad52595",
+          "provider_thread_id": "01a091a7-b7fe-75f0-8a84-cd91433d2037",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_7d8e90fb8e4d:review:1:create",
+          "execution_id": "01a091aa-1a8e-7c40-8063-685e3962c405",
+          "provider_thread_id": "01a091aa-1a12-7be1-91a3-5ad082843723",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/no_change-562eb081.json",
+      "raw_record_sha256": "b9f0d9528a9eb7142f9a3c92a671bf7e07c3b60f9e3b80d3f9cdd8645e47c7aa"
+    },
+    {
+      "scenario": "repair",
+      "result": "passed",
+      "parent": "thr_qmhjpg4hhr",
+      "run_id": "fct_live_2bddc6600bc4",
+      "workspace": "/private/tmp/factory-issue-6-final-a/test_real_provider_workflow_re0/demo",
+      "status": "ready_for_review",
+      "content_version": "5c395179bcd75681c981971078b3782cac7fb61dda95699ae9922ce92ce2670c",
+      "test_attempts": 2,
+      "repair_attempts": 1,
+      "review_attempts": 1,
+      "revision_attempts": 0,
+      "changed_files": [
+        "src/demo_target/__init__.py",
+        "src/demo_target/core.py",
+        "tests/test_core.py"
+      ],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_2bddc6600bc4:build:1:create",
+          "execution_id": "01a091ab-5bb0-72a2-81a1-61fdfbc76267",
+          "provider_thread_id": "01a091ab-5b35-7f63-9e95-b9ba73b93b4a",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_2bddc6600bc4:plan:1:create",
+          "execution_id": "01a091aa-b319-7851-9988-9a2cda69b75a",
+          "provider_thread_id": "01a091aa-b2ab-7410-81a0-595508d6022a",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_2bddc6600bc4:repair:1:follow_up",
+          "execution_id": "01a091ac-0186-7203-ba87-449739a6e23c",
+          "provider_thread_id": "01a091ac-0123-7362-886f-d075f5533206",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_2bddc6600bc4:review:1:create",
+          "execution_id": "01a091ac-f843-7723-8736-bb828c9b1d57",
+          "provider_thread_id": "01a091ac-f7d8-7ee0-9195-1f67b6562338",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/repair-ec8562f0.json",
+      "raw_record_sha256": "a4be7503faea8be803cb8772ea5b34ea5d673a99223b15bf816a401bb73683f0"
+    },
+    {
+      "scenario": "revision",
+      "result": "passed",
+      "parent": "thr_sxws92f6ni",
+      "run_id": "fct_live_8920ea779dbf",
+      "workspace": "/private/tmp/factory-issue-6-final-b/test_real_provider_workflow_re0/demo",
+      "status": "ready_for_review",
+      "content_version": "9cd64b5b95f41a7e6d940f366555f1aed023ee011c907f507066b1cf0ff64ba6",
+      "test_attempts": 2,
+      "repair_attempts": 0,
+      "review_attempts": 2,
+      "revision_attempts": 1,
+      "changed_files": [
+        "src/demo_target/__init__.py",
+        "src/demo_target/core.py",
+        "tests/test_core.py"
+      ],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_8920ea779dbf:build:1:create",
+          "execution_id": "01a091a6-7c4d-79e0-aa58-1b6252dc3722",
+          "provider_thread_id": "01a091a6-7be3-7841-bfe4-c83498a93305",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_8920ea779dbf:plan:1:create",
+          "execution_id": "01a091a5-fc23-7402-8e6a-fd66354bcc74",
+          "provider_thread_id": "01a091a5-fbb1-7d00-ac90-7e80022eebde",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_8920ea779dbf:review:1:create",
+          "execution_id": "01a091a7-862e-7b20-b221-bd9e07e0e71a",
+          "provider_thread_id": "01a091a7-85bd-7792-90c4-5ead3e4fcd14",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_8920ea779dbf:review:2:follow_up",
+          "execution_id": "01a091a9-ae52-7ff0-81cd-e4a00d30cc0b",
+          "provider_thread_id": "01a091a7-85bd-7792-90c4-5ead3e4fcd14",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_8920ea779dbf:revise:1:follow_up",
+          "execution_id": "01a091a8-1b16-7ec1-8e25-65d835705435",
+          "provider_thread_id": "01a091a8-1a7c-7a22-93f9-68e30071749c",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "high",
+            "permission_mode": "accept-edits"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/revision-eddf0e3f.json",
+      "raw_record_sha256": "3bb2448b0cfb4d0ee38493a81061bdd57c21ec63b3dbb5a54139eafe3284396c"
+    },
+    {
+      "scenario": "restart_after_dispatch",
+      "result": "passed",
+      "parent": "thr_89vvit748z",
+      "run_id": "fct_live_a7555e9667e2",
+      "workspace": "/private/tmp/factory-issue-6-final-b/test_real_provider_workflow_re1/demo",
+      "status": "ready_for_review",
+      "content_version": "d8e92415003017b237dd6f67945709e2fb31d85dece1eb941e7aa56ddff32c18",
+      "test_attempts": 1,
+      "repair_attempts": 0,
+      "review_attempts": 1,
+      "revision_attempts": 0,
+      "changed_files": [
+        "src/demo_target/__init__.py",
+        "src/demo_target/core.py",
+        "tests/test_core.py"
+      ],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_a7555e9667e2:build:1:create",
+          "execution_id": "01a091aa-bbbc-7a23-a1e4-4bc2e95e6aac",
+          "provider_thread_id": "01a091aa-bb4b-7cf2-b37c-473d92339d6d",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_a7555e9667e2:plan:1:create",
+          "execution_id": "01a091aa-4128-72a3-a263-bd551c787b91",
+          "provider_thread_id": "01a091aa-40ae-7da1-8b1b-692765f3d268",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_a7555e9667e2:review:1:create",
+          "execution_id": "01a091ab-a38d-7873-a435-e7651d3fd349",
+          "provider_thread_id": "01a091ab-a333-7763-a1be-73f3567ae580",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/restart_after_dispatch-56d91d0a.json",
+      "raw_record_sha256": "ea6258797dafb973cf8037a113c65b0857b8ba223de842558f0ad09dae885096",
+      "before_interruption": {
+        "operation_id": "fct_live_a7555e9667e2:plan:1:create",
+        "thread_id": "thr_jpfew92xkf",
+        "execution_id": "01a091aa-4128-72a3-a263-bd551c787b91",
+        "status": "running"
+      }
+    },
+    {
+      "scenario": "restart_after_result",
+      "result": "passed",
+      "parent": "thr_tcrjzyck58",
+      "run_id": "fct_live_2d4a269b4c18",
+      "workspace": "/private/tmp/factory-issue-6-final-b/test_real_provider_workflow_re2/demo",
+      "status": "ready_for_review",
+      "content_version": "fa550f1170ac58ddc4799818625eadeca392ea7853a2554c30a5ff66f0a8f5a6",
+      "test_attempts": 1,
+      "repair_attempts": 0,
+      "review_attempts": 1,
+      "revision_attempts": 0,
+      "changed_files": [
+        "src/demo_target/__init__.py",
+        "src/demo_target/core.py",
+        "tests/test_core.py"
+      ],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_2d4a269b4c18:build:1:create",
+          "execution_id": "01a091ac-ad7f-7d20-a59b-fb124e6daf9a",
+          "provider_thread_id": "01a091ac-ad20-7ce2-9273-090947218d2c",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_2d4a269b4c18:plan:1:create",
+          "execution_id": "01a091ac-34b7-7681-895b-02e53d2f07a6",
+          "provider_thread_id": "01a091ac-345a-7e71-b964-39013a9cfd08",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_2d4a269b4c18:review:1:create",
+          "execution_id": "01a091ad-73f6-7d13-9237-d57ee682ceea",
+          "provider_thread_id": "01a091ad-7391-7432-92f9-6bc9eebdbb98",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/restart_after_result-04339a64.json",
+      "raw_record_sha256": "319748b1c197bf77a4aac158130f1da77a58fc3b154f7acb9750a49607704a0a",
+      "before_interruption": {
+        "operation_id": "fct_live_2d4a269b4c18:plan:1:create",
+        "thread_id": "thr_5u9ygvkzyt",
+        "execution_id": "01a091ac-34b7-7681-895b-02e53d2f07a6",
+        "status": "completed"
+      }
+    },
+    {
+      "scenario": "connection_loss",
+      "result": "passed",
+      "parent": "thr_bvb2x25qdq",
+      "run_id": "fct_live_01991a087375",
+      "workspace": "/private/tmp/factory-issue-6-final-c/test_real_provider_workflow_co0/demo",
+      "status": "ready_for_review",
+      "content_version": "0fa9e8302b2093bf63c006b9d969b4d6b4b9422be2b142e92958b8ec426263d2",
+      "test_attempts": 1,
+      "repair_attempts": 0,
+      "review_attempts": 1,
+      "revision_attempts": 0,
+      "changed_files": [
+        "src/demo_target/__init__.py",
+        "src/demo_target/core.py",
+        "tests/test_core.py"
+      ],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_01991a087375:build:1:create",
+          "execution_id": "01a091a6-90c8-7260-a5f0-ffac4d51c235",
+          "provider_thread_id": "01a091a6-905f-7970-9ade-0a4ab3563730",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_01991a087375:plan:1:create",
+          "execution_id": "01a091a6-1095-78a2-a2b1-8b26d0b92d12",
+          "provider_thread_id": "01a091a6-1024-7f13-800d-7c24cde7df83",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_01991a087375:review:1:create",
+          "execution_id": "01a091a7-85da-7001-a5c3-11dddef62b21",
+          "provider_thread_id": "01a091a7-8552-7df0-8e5e-ecf59e906606",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/connection_loss-225e2beb.json",
+      "raw_record_sha256": "ceeb8b574142c249ce3dd4a4efdf8c444683220fc5c6bccd90657700f5c83ce7",
+      "before_interruption": {
+        "operation_id": "fct_live_01991a087375:plan:1:create",
+        "thread_id": "thr_2w3t3pfeeq",
+        "execution_id": "01a091a6-1095-78a2-a2b1-8b26d0b92d12",
+        "status": "running"
+      }
+    },
+    {
+      "scenario": "question_restart",
+      "result": "passed",
+      "parent": "thr_w4up7jdwpx",
+      "run_id": "fct_live_da04d63ef882",
+      "workspace": "/private/tmp/factory-issue-6-final-c/test_real_provider_workflow_qu0/demo",
+      "status": "ready_for_review",
+      "content_version": "6c1661cc4947139fe319396c98f76bb2affa019ade70eeb44fe2c6a6a761e52a",
+      "test_attempts": 1,
+      "repair_attempts": 0,
+      "review_attempts": 1,
+      "revision_attempts": 0,
+      "changed_files": [
+        "src/demo_target/__init__.py",
+        "src/demo_target/core.py",
+        "tests/test_core.py"
+      ],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_da04d63ef882:build:1:create",
+          "execution_id": "01a091aa-259d-7181-ae58-2b2c9056a381",
+          "provider_thread_id": "01a091aa-2529-70e3-ba79-f5d89d547735",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "accept-edits"
+          }
+        },
+        {
+          "operation_id": "fct_live_da04d63ef882:plan:1:create",
+          "execution_id": "01a091a8-4158-7243-b2b4-5ed10948d4b4",
+          "provider_thread_id": "01a091a8-40dc-7141-9ed8-f9634ec4970c",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_da04d63ef882:plan:2:clarification",
+          "execution_id": "01a091a8-dad6-7fd1-b7d5-a844311ca006",
+          "provider_thread_id": "01a091a8-40dc-7141-9ed8-f9634ec4970c",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        },
+        {
+          "operation_id": "fct_live_da04d63ef882:review:1:create",
+          "execution_id": "01a091aa-ecc3-70a0-99b4-df4dd778182d",
+          "provider_thread_id": "01a091aa-ec6d-7363-90ae-3137ce613c81",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "medium",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/question_restart-ffbb2020.json",
+      "raw_record_sha256": "0b12355c93086cd8cde4fa9161b7471f076d8ffb0436d5eb72002050e4ba352c"
+    },
+    {
+      "scenario": "cancel",
+      "result": "passed",
+      "parent": "thr_q8i5mejddz",
+      "run_id": "fct_live_de64afe46f66",
+      "workspace": "/private/tmp/factory-issue-6-final-c/test_real_provider_workflow_ca0/demo",
+      "status": "cancelled",
+      "content_version": null,
+      "test_attempts": 0,
+      "repair_attempts": 0,
+      "review_attempts": 0,
+      "revision_attempts": 0,
+      "changed_files": [],
+      "all_owned_work_stopped": true,
+      "one_dispatch_per_operation": true,
+      "git_head_index_and_unrelated_files_preserved": true,
+      "provider_executions": [
+        {
+          "operation_id": "fct_live_de64afe46f66:plan:1:create",
+          "execution_id": "01a091ab-814c-7790-a019-c272922efe95",
+          "provider_thread_id": "01a091ab-80e8-7320-b7d0-7127ba83d64e",
+          "reported": {
+            "provider": "codex",
+            "model": "gpt-5.6-luna",
+            "reasoning_level": "low",
+            "permission_mode": "auto"
+          }
+        }
+      ],
+      "raw_record": "/private/tmp/factory-issue-6-ttai6aze/results-final/cancel-9ffca93a.json",
+      "raw_record_sha256": "3faf63cdf3571a851da035b52b1e8386548e4cf12d8f8b02a8368b9710523782",
+      "before_interruption": {
+        "operation_id": "fct_live_de64afe46f66:plan:1:create",
+        "thread_id": "thr_q9urhj2fis",
+        "execution_id": "01a091ab-814c-7790-a019-c272922efe95",
+        "status": "running"
+      }
+    }
+  ],
+  "process_restart": {
+    "result": "passed",
+    "parent": "thr_mvsbtkz33i",
+    "run_id": "fct_process_recovery_issue6",
+    "before": {
+      "operation_id": "fct_process_recovery_issue6:plan:1:create",
+      "thread_id": "thr_k2hs5v5pq3",
+      "execution_id": "01a09195-7a90-7a41-aa5d-dd586ebaf335",
+      "dispatch_count": 1,
+      "state": "dispatched"
+    },
+    "killed_controller_pid": 83392,
+    "killed_exit_code": -9,
+    "resumed_controller_pid": 83947,
+    "controller_source": "54b55cd with the reviewed acceptance-helper changes; before later report and prompt clarifications",
+    "same_execution_id_after_restart": true,
+    "final_status": "ready_for_review",
+    "raw_record": "/private/tmp/factory-issue-6-ttai6aze/process-recovery-result.json",
+    "raw_record_sha256": "87feebf7e7929d9149d580f54bd4631e0ac5b29662132f11d8084fd97fbba009"
+  },
+  "bb_display": {
+    "scenario": "bb_parent_display",
+    "result": "passed",
+    "parent": "thr_njsis5ee9j",
+    "run_id": "fct_dd96acc664d0",
+    "workspace": "/private/tmp/factory-issue-6-ttai6aze/ui-proof",
+    "status": "ready_for_review",
+    "content_version": "16658687af44904f93bee607114af1a1c5c066a8ce4f3efe75d7d5623da750c4",
+    "report_sha256": "7de49a50d0589754155a80756dd5063add261a5250641cb98770fba4d07dd7a0",
+    "display_contains_exact_saved_report": true,
+    "runtime_reopened": true,
+    "reopened_display_matches": true,
+    "source_note": "Observed after the mount fix and before later report and prompt clarifications"
+  },
+  "limits": [
+    "GitHub CI has not run for these local commits; issue 6 is not release-complete.",
+    "Live execution is verified only on this local macOS, BB, provider CLI, image, and model combination.",
+    "Transport loss is injected at the BB API boundary; a complete BB server outage was not exercised.",
+    "Raw records and disposable workspaces are local evidence; reproduce using docs/acceptance.md.",
+    "Earlier failed runs remain preserved and are not counted as final passes.",
+    "No commit or push is performed by the demo workflows. This implementation task separately commits factory changes."
+  ]
+}
