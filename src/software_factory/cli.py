@@ -139,11 +139,43 @@ def inspect_command(run_id: str) -> None:
             "children": await store.list_children(run_id),
             "events": await store.events(run_id),
             "operations": await store.operations(run_id),
+            "interactions": [item.model_dump() for item in await store.interactions(run_id)],
             "processes": await store.processes(run_id),
             "artifacts": str(context.thread_storage / "factory" / "artifacts" / run_id),
         }
 
     console.print_json(json.dumps(asyncio.run(inspect()), default=str))
+
+
+@app.command("answer")
+def answer_command(
+    run_id: str,
+    interaction_id: str,
+    answers: Annotated[str, typer.Argument(help="JSON object mapping question IDs to answers")],
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Save an answer and continue the same run."""
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    payload = json.loads(answers)
+    if not isinstance(payload, dict):
+        raise typer.BadParameter("answers must be a JSON object")
+    result = asyncio.run(engine.answer(run_id, interaction_id, payload))
+    console.print_json(json.dumps(result))
+    if result.get("status") != "accepted":
+        raise typer.Exit(1)
+
+
+@app.command("retry")
+def retry_command(
+    run_id: str,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Retry recovery of saved operations in a supported state."""
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    result = asyncio.run(engine.retry(run_id))
+    console.print_json(json.dumps(result))
+    if result.get("status") != "accepted":
+        raise typer.Exit(1)
 
 
 @app.command("cancel")

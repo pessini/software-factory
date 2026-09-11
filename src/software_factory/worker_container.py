@@ -259,6 +259,11 @@ class ContainerProvider:
         )
         await self.process.stdin.drain()
 
+    async def respond(self, request_id: Any, result: dict[str, Any]) -> None:
+        assert self.process is not None and self.process.stdin is not None
+        self.process.stdin.write((json.dumps({"id": request_id, "result": result}) + "\n").encode())
+        await self.process.stdin.drain()
+
     async def close(self) -> None:
         stopped = await stop_container(self.name, self.operation_id)
         if self.process is not None:

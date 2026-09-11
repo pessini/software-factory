@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-EventStatus = Literal["started", "completed", "failed", "cancelled", "info"]
+EventStatus = Literal["started", "completed", "failed", "cancelled", "waiting", "info"]
 
 
 class FactoryEvent(BaseModel):

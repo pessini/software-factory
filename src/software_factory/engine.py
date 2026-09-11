@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -16,7 +16,7 @@ from software_factory.cleanup import stop_owned_work
 from software_factory.config import FactoryConfig, Selection, load_config
 from software_factory.events import EventSink, null_event_sink
 from software_factory.graph import build_graph
-from software_factory.ownership import OwnershipError, RunOwnership
+from software_factory.ownership import OwnershipBusy, OwnershipError, RunOwnership
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
@@ -93,9 +93,14 @@ class FactoryEngine:
         try:
             if await self.store.get_run(run_id) is not None:
                 raise ValueError(f"run already exists; use resume: {run_id}")
-            deadline_at = time.time() + config.limits.total_run_timeout_seconds
+            created_at = time.time()
+            deadline_at = created_at + config.limits.total_run_timeout_seconds
             await self.store.create_run(
-                run_id, self.workspace, self.context.parent_thread_id, deadline_at=deadline_at
+                run_id,
+                self.workspace,
+                self.context.parent_thread_id,
+                deadline_at=deadline_at,
+                overall_expires_at=created_at + config.limits.overall_run_timeout_seconds,
             )
             ownership.publish_claim()
             await self.store.save_result(run_id, dict(initial))
@@ -126,7 +131,7 @@ class FactoryEngine:
         finally:
             ownership.close()
 
-    async def resume(self, run_id: str) -> FactoryState:
+    async def _record(self, run_id: str) -> dict[str, Any]:
         await self.store.initialize()
         record = await self.store.get_run(run_id)
         if record is None:
@@ -135,22 +140,73 @@ class FactoryEngine:
             raise ValueError("run belongs to a different workspace")
         if record["parent_thread_id"] != self.context.parent_thread_id:
             raise ValueError("run belongs to a different parent task")
+        return record
+
+    async def inspect(self, run_id: str) -> FactoryState:
+        record = await self._record(run_id)
+        return cast(
+            FactoryState,
+            {
+                **json.loads(record["result_json"] or "{}"),
+                "run_id": run_id,
+                "status": record["status"],
+                "error": record["error"],
+                "interactions": [
+                    item.model_dump(mode="json") for item in await self.store.interactions(run_id)
+                ],
+            },
+        )
+
+    async def answer(
+        self, run_id: str, interaction_id: str, answers: dict[str, str]
+    ) -> FactoryState:
+        return await self.resume(run_id, interaction_id=interaction_id, answers=answers)
+
+    async def retry(self, run_id: str) -> FactoryState:
+        record = await self._record(run_id)
+        if record["status"] != "recovery_needed" or record["stop_target"]:
+            raise ValueError("retry supports recovery_needed runs without a pending stop only")
+        return await self.resume(run_id)
+
+    async def resume(
+        self,
+        run_id: str,
+        *,
+        interaction_id: str | None = None,
+        answers: dict[str, str] | None = None,
+    ) -> FactoryState:
+        record = await self._record(run_id)
+        if record["status"] in FINAL_STATUSES:
+            if interaction_id is not None:
+                await self.store.answer_interaction(run_id, interaction_id, answers or {})
+            return await self.inspect(run_id)
         if record["control_version"] != 2:
             raise ValueError(
                 "legacy run cannot resume safely: execution identities and ownership were not recorded"
             )
-        if record["status"] in FINAL_STATUSES:
-            return cast(
-                FactoryState,
-                {
-                    **json.loads(record["result_json"] or "{}"),
-                    "run_id": run_id,
-                    "status": record["status"],
-                    "error": record["error"],
-                },
-            )
         ownership = RunOwnership(self.workspace, run_id, self.database_path)
-        await ownership.acquire()
+        while True:
+            try:
+                await ownership.acquire()
+                break
+            except OwnershipError as exc:
+                if interaction_id is None:
+                    raise
+                interaction = await self.store.interaction(run_id, interaction_id)
+                if interaction is None:
+                    raise
+                interaction.validate_answers(answers or {})
+                if interaction.answers is not None:
+                    if interaction.answers != answers:
+                        raise ValueError(
+                            "this interaction already has a different saved answer"
+                        ) from None
+                    return await self.inspect(run_id)
+                if isinstance(exc, OwnershipBusy) and interaction.state == "waiting":
+                    # A competing answer may hold the lock before saving its value.
+                    await asyncio.sleep(0.01)
+                    continue
+                raise
         try:
             try:
                 runtime = self._runtime(run_id, create=False)
@@ -159,6 +215,17 @@ class FactoryEngine:
                 if result["status"] in FINAL_STATUSES:
                     ownership.release_claim()
                 return result
+            if interaction_id is not None:
+                try:
+                    await self.store.answer_interaction(run_id, interaction_id, answers or {})
+                except TimeoutError as exc:
+                    result = await runtime.finish(
+                        {**await self.inspect(run_id), "error": str(exc)}, "failed"
+                    )
+                    if result["status"] in FINAL_STATUSES:
+                        ownership.release_claim()
+                    return result
+            record = await self._record(run_id)
             return await self._execute_owned(runtime, None, float(record["deadline_at"]), ownership)
         finally:
             ownership.close()
@@ -198,11 +265,29 @@ class FactoryEngine:
         if record["stop_target"]:
             return await runtime.finish(saved, str(record["stop_target"]))
         try:
+            now = time.time()
+            if record["overall_expires_at"] and now >= float(record["overall_expires_at"]):
+                raise TimeoutError("overall run expiry exceeded")
+            unanswered = [
+                item
+                for item in await self.store.interactions(runtime.run_id)
+                if item.state == "waiting"
+            ]
+            if unanswered:
+                if float(record["wait_started_at"] or now) >= deadline_at:
+                    raise TimeoutError("active work timeout exceeded")
+                return await self.inspect(runtime.run_id)
+            if now >= deadline_at:
+                raise TimeoutError("total run timeout exceeded")
             if value is None:
-                await runtime.recover(deadline_at)
+                await runtime.recover(
+                    min(deadline_at, record["overall_expires_at"] or float("inf"))
+                )
             await self.store.set_status(runtime.run_id, "running")
             await runtime.check_cancelled()
-            return await self._invoke_before_deadline(runtime, value, deadline_at)
+            return await self._invoke_before_deadline(
+                runtime, value, min(deadline_at, record["overall_expires_at"] or float("inf"))
+            )
         except (RecoveryNeeded, WaitingForInput, CleanupUncertain) as exc:
             return await runtime.pause(
                 saved,
@@ -217,13 +302,12 @@ class FactoryEngine:
             if exc.kind == "connection":
                 return await runtime.pause(saved, "recovery_needed", str(exc))
             return await runtime.finish({**saved, "error": f"{exc.kind}: {exc}"}, "blocked")
-        except TimeoutError:
-            stopped = await self.store.request_stop(
-                runtime.run_id, "failed", "total run timeout exceeded"
-            )
+        except TimeoutError as exc:
+            error = str(exc) or "total run timeout exceeded"
+            stopped = await self.store.request_stop(runtime.run_id, "failed", error)
             if stopped["status"] in FINAL_STATUSES:
                 return cast(FactoryState, json.loads(stopped["result_json"]))
-            return await runtime.finish({**saved, "error": "total run timeout exceeded"}, "failed")
+            return await runtime.finish({**saved, "error": error}, "failed")
 
     async def _invoke_before_deadline(
         self, runtime: FactoryRuntime, value: FactoryState | None, deadline_at: float
@@ -240,6 +324,9 @@ class FactoryEngine:
         async with AsyncSqliteSaver.from_conn_string(str(self.database_path)) as saver:
             graph = build_graph(runtime, saver)
             config = {"configurable": {"thread_id": thread_id}}
+            if value is None and not (await graph.aget_state(config)).values:
+                record = await self._record(runtime.run_id)
+                value = cast(FactoryState, json.loads(record["result_json"] or "{}"))
             try:
                 result = await graph.ainvoke(value, config)
             except (RecoveryNeeded, WaitingForInput) as exc:

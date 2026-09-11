@@ -7,13 +7,30 @@ class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BlockingQuestion(Contract):
+    id: str = Field(min_length=1)
+    question: str = Field(min_length=1)
+    options: list[str] = Field(default_factory=list)
+
+
 class PlanEnvelope(Contract):
-    status: Literal["ready", "blocked"]
+    status: Literal["ready", "blocked", "needs_input"]
     summary: str = Field(min_length=1)
     acceptance_criteria: list[str]
     implementation_steps: list[str]
     risks: list[str] = Field(default_factory=list)
     advisory_test_commands: list[str] = Field(default_factory=list)
+    questions: list[BlockingQuestion] = Field(default_factory=list, max_length=3)
+
+    @model_validator(mode="after")
+    def consistent_questions(self) -> PlanEnvelope:
+        if self.status == "needs_input" and not self.questions:
+            raise ValueError("needs_input requires a blocking question")
+        if self.status == "ready" and self.questions:
+            raise ValueError("a ready plan cannot have unanswered questions")
+        if len({question.id for question in self.questions}) != len(self.questions):
+            raise ValueError("question IDs must be unique")
+        return self
 
 
 class BuildEnvelope(Contract):

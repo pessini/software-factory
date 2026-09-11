@@ -1,4 +1,4 @@
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 RunStatus = Literal[
     "pending",
@@ -14,7 +14,9 @@ RunStatus = Literal[
 
 FINAL_STATUSES = frozenset({"accepted", "failed", "blocked", "cancelled"})
 TRANSITIONS: dict[str, frozenset[str]] = {
-    "pending": frozenset({"running", "stopping", "recovery_needed", "failed", "blocked"}),
+    "pending": frozenset(
+        {"running", "waiting_for_input", "stopping", "recovery_needed", "failed", "blocked"}
+    ),
     "running": frozenset(
         {"waiting_for_input", "recovery_needed", "stopping", "accepted", "failed", "blocked"}
     ),
@@ -55,3 +57,4 @@ class FactoryState(TypedDict, total=False):
     baseline_files: list[str]
     active_child_thread_id: str | None
     error: str | None
+    interactions: list[dict[str, Any]]

@@ -12,6 +12,8 @@ def planner_prompt(run_id: str, request: str, workspace: Path) -> str:
 Work read-only in {workspace}. Analyze the repository and the request below. Do not edit files.
 Return exactly one JSON object matching the schema, with observable acceptance criteria.
 Do not wrap it in prose or Markdown fences. Advisory commands are never executed by the factory.
+Ask questions only when missing information prevents this work. Use status needs_input
+and structured questions. Do not request routine plan approval for authorized work.
 
 REQUEST:
 {request}

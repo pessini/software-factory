@@ -19,6 +19,10 @@ class OwnershipError(RuntimeError):
     pass
 
 
+class OwnershipBusy(OwnershipError):
+    """Another live executor holds a required lock."""
+
+
 @contextmanager
 def session_lease(database: Path, session_id: str) -> Iterator[None]:
     """Protect startup claims until the run exists; the OS releases this on crash."""
@@ -27,7 +31,7 @@ def session_lease(database: Path, session_id: str) -> Iterator[None]:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise OwnershipError("this session already has an active prompt") from exc
+            raise OwnershipBusy("this session already has an active prompt") from exc
         yield
 
 
@@ -56,7 +60,7 @@ class RunOwnership:
                 try:
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError as exc:
-                    raise OwnershipError("the run or workspace already has an executor") from exc
+                    raise OwnershipBusy("the run or workspace already has an executor") from exc
             if self.claim_path.exists():
                 previous = json.loads(self.claim_path.read_text())
                 if previous != self.claim:

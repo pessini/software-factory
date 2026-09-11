@@ -8,6 +8,7 @@ from software_factory.artifacts import ArtifactIntegrityError
 from software_factory.bb.client import RecoveryNeeded, WaitingForInput
 from software_factory.contracts import BuildEnvelope, PlanEnvelope, ReviewEnvelope
 from software_factory.git import capture_snapshot, changed_files, repository_root
+from software_factory.interactions import Interaction
 from software_factory.prompts import (
     builder_prompt,
     planner_prompt,
@@ -110,6 +111,48 @@ class WorkflowNodes:
                     check_workspace=check_workspace,
                     step="plan",
                 )
+                round_number = 1
+                while envelope.questions:
+                    interaction = await runtime.store.save_interaction(
+                        Interaction(
+                            interaction_id=f"{runtime.run_id}:plan:{round_number}",
+                            run_id=runtime.run_id,
+                            source="planner",
+                            questions=envelope.questions,
+                        )
+                    )
+                    if interaction.answers is None:
+                        await runtime.emit("plan", "waiting", interaction.display())
+                        raise WaitingForInput(interaction.display())
+                    await runtime.check_cancelled()
+                    round_number += 1
+                    thread_id, output = await runtime.get_or_spawn(
+                        "planner",
+                        "Continue the same plan using these saved answers. Return the PlanEnvelope JSON.\n"
+                        + json.dumps(
+                            {
+                                "questions": [q.model_dump() for q in interaction.questions],
+                                "answers": interaction.answers,
+                            }
+                        ),
+                        runtime.config.agents.planner,
+                        step="plan",
+                        attempt=round_number,
+                        operation_kind="clarification",
+                        tell_existing=True,
+                    )
+                    await runtime.store.deliver_interaction(
+                        runtime.run_id, interaction.interaction_id
+                    )
+                    envelope = await runtime.parse_with_correction(
+                        "planner",
+                        thread_id,
+                        output,
+                        PlanEnvelope,
+                        check_workspace=check_workspace,
+                        step="plan",
+                        attempt=round_number,
+                    )
                 if envelope.status == "blocked" or not envelope.acceptance_criteria:
                     raise ValueError(envelope.summary or "Planner blocked")
             json_path = runtime.artifacts.write_json("plan.json", envelope)

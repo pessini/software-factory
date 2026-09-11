@@ -80,7 +80,27 @@ class SessionSettings:
     async def options(self, session_id: str) -> list[SessionConfigOptionSelect]:
         await self.recover_start(session_id)
         config, selection = await self.read(session_id)
-        return self.controls(config, selection, await self.bb.model_catalog())
+        controls = self.controls(config, selection, await self.bb.model_catalog())
+        await self.cache_options(session_id, config, selection, controls)
+        return controls
+
+    async def cache_options(
+        self,
+        session_id: str,
+        config: FactoryConfig,
+        selection: Selection,
+        controls: list[SessionConfigOptionSelect],
+    ) -> None:
+        await self.store.save_session_options(
+            session_id,
+            json.dumps(
+                {
+                    "config": config.model_dump(mode="json"),
+                    "selection": selection.model_dump(mode="json"),
+                }
+            ),
+            json.dumps([control.model_dump(mode="json", by_alias=True) for control in controls]),
+        )
 
     @staticmethod
     def controls(
@@ -170,4 +190,5 @@ class SessionSettings:
             raise ValueError(f"unknown setting: {config_id}")
         controls = self.controls(config, selection, catalog, strict=True)
         await self.save(session_id, config, selection)
+        await self.cache_options(session_id, config, selection, controls)
         return controls

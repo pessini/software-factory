@@ -207,12 +207,12 @@ class FactoryRuntime:
         )
         await self.check_cancelled()
         if execution.status == "waiting_for_input":
-            raise WaitingForInput(f"{role} is waiting for user input in {thread_id}")
+            await self._require_saved_answer(execution, thread_id)
         completed = await self._wait_execution(thread_id, execution.execution_id, operation)
         if completed.execution_id != execution.execution_id:
             raise RecoveryNeeded(f"stale or unrelated output for {operation_id}")
         if completed.status == "waiting_for_input":
-            raise WaitingForInput(f"{role} is waiting for user input in {thread_id}")
+            await self._require_saved_answer(completed, thread_id)
         if completed.status != "completed" or completed.output is None:
             raise BBError(f"{role} execution ended with status {completed.status}")
         reported = completed.reported_choice
@@ -255,25 +255,40 @@ class FactoryRuntime:
     ) -> BBExecution:
         waiter = asyncio.create_task(self._read_retry(lambda: self.bb.wait(thread_id), operation))
         try:
-            while not waiter.done():
+            while True:
                 current = await self._read_retry(
                     lambda: self.bb.execution(thread_id, execution_id), operation
                 )
                 if current.execution_id != execution_id:
                     raise RecoveryNeeded("execution changed while waiting")
                 if current.status == "waiting_for_input":
-                    raise WaitingForInput(f"child is waiting for user input in {thread_id}")
+                    await self._require_saved_answer(current, thread_id)
                 if current.status in {"failed", "stopped"}:
                     raise BBError(f"child execution {current.status}")
-                await asyncio.wait({waiter}, timeout=0.1)
-            await waiter
-            return await self._read_retry(
-                lambda: self.bb.execution(thread_id, execution_id), operation
-            )
+                if waiter.done() and current.status != "waiting_for_input":
+                    await waiter
+                    return current
+                if waiter.done():
+                    await waiter
+                    await self._controlled(partial(asyncio.sleep, 0.1), operation)
+                else:
+                    await asyncio.wait({waiter}, timeout=0.1)
         finally:
             if not waiter.done():
                 waiter.cancel()
             await asyncio.gather(waiter, return_exceptions=True)
+
+    async def _require_saved_answer(self, execution: BBExecution, thread_id: str) -> None:
+        if execution.interaction_id:
+            interaction = await self.store.interaction(self.run_id, execution.interaction_id)
+            if interaction is not None:
+                if interaction.answers is not None and interaction.state in {
+                    "answered",
+                    "delivered",
+                }:
+                    return
+                raise WaitingForInput(interaction.display())
+        raise WaitingForInput(f"child is waiting for user input in {thread_id}")
 
     @staticmethod
     def _remaining_seconds(operation: dict[str, Any]) -> float:
@@ -562,6 +577,9 @@ class FactoryRuntime:
         record = await self.store.get_run(self.run_id)
         saved = json.loads(record["result_json"] or "{}") if record else {}
         result: dict[str, Any] = {**saved, **state}
+        result["interactions"] = [
+            item.model_dump(mode="json") for item in await self.store.interactions(self.run_id)
+        ]
         for operation in await self.store.operations(self.run_id):
             if not operation["dispatch_count"]:
                 continue

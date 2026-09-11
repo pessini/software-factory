@@ -35,6 +35,7 @@ class BBExecution:
     status: Literal["running", "completed", "waiting_for_input", "failed", "stopped"]
     output: str | None = None
     reported_choice: AgentConfig | None = None
+    interaction_id: str | None = None
 
 
 @dataclass(frozen=True)

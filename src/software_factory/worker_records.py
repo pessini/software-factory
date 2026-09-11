@@ -39,6 +39,7 @@ class WorkerReceipt(ConfigModel):
     stopped: bool = False
     usage: dict[str, int] | None = None
     question: str | None = None
+    interaction_id: str | None = None
 
 
 def request_key(operation_id: str) -> str:

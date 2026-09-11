@@ -27,7 +27,9 @@ from software_factory.bb.acp_input import request_text
 from software_factory.bb.client import BBError, RecoveryNeeded, _child_title
 from software_factory.bb.local_api import read_bb, thread_storage
 from software_factory.config import FactoryConfig, Step
+from software_factory.contracts.models import BlockingQuestion
 from software_factory.git import git
+from software_factory.interactions import Interaction
 from software_factory.ownership import session_lease
 from software_factory.persistence import RunStore
 from software_factory.state import FINAL_STATUSES
@@ -194,7 +196,9 @@ class WorkerAgent:
                 read_only=str(operation["role"]).split(":")[0] != "builder",
             )
             try:
-                async with asyncio.timeout(max(0, float(operation["deadline_at"]) - time.time())):
+                async with asyncio.timeout(
+                    max(0, float(operation["deadline_at"]) - time.time())
+                ) as deadline_scope:
                     if self.records.stop_requested or self.cancelled.is_set():
                         raise asyncio.CancelledError()
 
@@ -261,7 +265,7 @@ class WorkerAgent:
                     receipt.execution_id = started["turn"]["id"]
                     receipt.status = "running"
                     self.records.save(receipt)
-                    await self._complete(provider, receipt)
+                    await self._complete(provider, receipt, store, deadline_scope)
             except asyncio.CancelledError:
                 receipt.status, receipt.error = "stopped", "worker cancelled"
                 self.cancelled.set()
@@ -276,11 +280,65 @@ class WorkerAgent:
                     self.records.save(receipt)
             return receipt.output or receipt.error or "Provider stopped without output"
 
-    async def _complete(self, provider: ContainerProvider, receipt: WorkerReceipt) -> None:
+    async def _complete(
+        self,
+        provider: ContainerProvider,
+        receipt: WorkerReceipt,
+        store: RunStore,
+        deadline_scope: asyncio.Timeout,
+    ) -> None:
         output: list[str] = []
+        pending_request: Any = None
+        run_id = receipt.operation_id.split(":")[0]
         while True:
-            if self.cancelled.is_set():
+            run = await store.get_run(run_id)
+            if (
+                self.cancelled.is_set()
+                or self.records.stop_requested
+                or run is None
+                or run["stop_target"]
+            ):
                 raise asyncio.CancelledError()
+            operation = next(
+                op
+                for op in await store.operations(run_id)
+                if op["operation_id"] == receipt.operation_id
+            )
+            now = time.time()
+            active_deadline = min(float(operation["deadline_at"]), float(run["deadline_at"]))
+            overall_deadline = run["overall_expires_at"] or float("inf")
+            if run["wait_started_at"] is not None:
+                if float(run["wait_started_at"]) >= active_deadline:
+                    raise TimeoutError("worker work timeout exceeded before input wait")
+                deadline = overall_deadline
+            else:
+                deadline = min(active_deadline, overall_deadline)
+            if now >= deadline:
+                raise TimeoutError("worker work timeout or overall run expiry exceeded")
+            deadline_scope.reschedule(
+                None
+                if deadline == float("inf")
+                else asyncio.get_running_loop().time() + deadline - now
+            )
+            if pending_request is not None and receipt.interaction_id:
+                interaction = await store.interaction(run_id, receipt.interaction_id)
+                if interaction is None:
+                    raise RecoveryNeeded("saved provider question is unavailable")
+                if interaction.answers is not None:
+                    if not await store.deliver_interaction(run_id, interaction.interaction_id):
+                        raise RecoveryNeeded("answer delivery is stopped or was already attempted")
+                    await provider.respond(
+                        pending_request,
+                        {
+                            "answers": {
+                                key: {"answers": [answer]}
+                                for key, answer in interaction.answers.items()
+                            }
+                        },
+                    )
+                    pending_request = None
+                    receipt.status = "running"
+                    self.records.save(receipt)
             try:
                 event = await asyncio.wait_for(provider.notifications.get(), 0.25)
             except TimeoutError:
@@ -296,17 +354,36 @@ class WorkerAgent:
                 method == "item/tool/requestUserInput"
                 and params.get("turnId") == receipt.execution_id
             ):
+                if pending_request is not None or "id" not in event:
+                    raise BBError(
+                        "provider sent an overlapping or unidentified question", "protocol"
+                    )
+                questions = [
+                    BlockingQuestion(
+                        id=question["id"],
+                        question=question["question"],
+                        options=[option["label"] for option in question.get("options") or []],
+                    )
+                    for question in params.get("questions", [])
+                ]
+                interaction = await store.save_interaction(
+                    Interaction(
+                        interaction_id=f"{receipt.operation_id}:input:{params['itemId']}",
+                        run_id=run_id,
+                        source="child",
+                        operation_id=receipt.operation_id,
+                        questions=questions,
+                    )
+                )
+                pending_request = event["id"]
                 receipt.status = "waiting_for_input"
-                receipt.question = str(params.get("questions", []))
+                receipt.question = interaction.display()
+                receipt.interaction_id = interaction.interaction_id
                 self.records.save(receipt)
                 if self.connection is not None:
                     await self.connection.session_update(
                         self.context.parent_thread_id,
-                        update_agent_message_text(
-                            "Provider is waiting for input: "
-                            + receipt.question
-                            + ". The question is saved, but this worker cannot accept an answer yet."
-                        ),
+                        update_agent_message_text(receipt.question),
                     )
                 continue
             if "id" in event:

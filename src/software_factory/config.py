@@ -134,6 +134,7 @@ class LimitsConfig(ConfigModel):
     max_test_repairs: int = Field(default=2, ge=0, le=10)
     max_review_revisions: int = Field(default=1, ge=0, le=10)
     total_run_timeout_seconds: int = Field(default=7200, ge=60, le=86400)
+    overall_run_timeout_seconds: int = Field(default=604800, ge=60, le=2592000)
     step_timeout_seconds: int = Field(default=900, ge=1, le=7200)
     connection_retries: int = Field(default=2, ge=0, le=10)
 

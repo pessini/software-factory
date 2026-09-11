@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from software_factory.contracts import PlanEnvelope, ReviewEnvelope
+from software_factory.interactions import Interaction
 from software_factory.state import FactoryState
 
 
@@ -25,6 +26,7 @@ def run_summary(state: FactoryState, status: str) -> dict[str, Any]:
         "review_attempts": state.get("review_attempt_count", 0),
         "changed_files": state.get("changed_files", []),
         "error": state.get("error"),
+        "interactions": state.get("interactions", []),
     }
 
 
@@ -33,12 +35,17 @@ def final_report(state: FactoryState, outcome: str) -> str:
     error = f"\nError: {state['error']}\n" if state.get("error") else ""
     action = {
         "accepted": "inspect the BB diff and commit/open a PR manually.",
-        "waiting_for_input": "answer the child task's question, then resume this run.",
+        "waiting_for_input": "answer the saved question with /answer INTERACTION_ID ANSWER.",
         "recovery_needed": "inspect recorded operations and active work before resuming; the workspace remains reserved.",
         "stopping": "wait for confirmed cleanup; external work may still be active.",
     }.get(
         state.get("status", "failed"),
         "inspect the failure and preserved workspace before starting new work.",
+    )
+    questions = "\n\n".join(
+        Interaction.model_validate(item).display()
+        for item in state.get("interactions", [])
+        if item["state"] == "waiting"
     )
     return f"""# Factory run {state["run_id"]}: {outcome}
 
@@ -47,6 +54,7 @@ Build: {"completed" if state.get("build_report_path") else "not completed"}
 Tests: {"passed" if state.get("test_passed") else "not passed"} on attempt {state.get("test_attempt_count", 0)}
 Review: {"approved" if state.get("review_approved") else "not approved"} on attempt {state.get("review_attempt_count", 0)}
 {error}
+{questions}
 ## Changed files
 
 {changed}

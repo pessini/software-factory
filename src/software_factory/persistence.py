@@ -8,6 +8,7 @@ from typing import Any
 import aiosqlite
 
 from software_factory.events import FactoryEvent
+from software_factory.interactions import Interaction
 from software_factory.state import FINAL_STATUSES, TRANSITIONS
 
 
@@ -66,6 +67,29 @@ class RunStore:
                     cwd TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS factory_session_history (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    entry_key TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    UNIQUE (session_id, entry_key)
+                );
+                CREATE TABLE IF NOT EXISTS factory_session_runs (
+                    session_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    PRIMARY KEY (session_id, run_id)
+                );
+                CREATE TABLE IF NOT EXISTS factory_interactions (
+                    interaction_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    operation_id TEXT,
+                    questions_json TEXT NOT NULL,
+                    answers_json TEXT,
+                    state TEXT NOT NULL DEFAULT 'waiting',
+                    created_at REAL NOT NULL,
+                    answered_at REAL
+                );
                 CREATE TABLE IF NOT EXISTS factory_operations (
                     operation_id TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL,
@@ -102,12 +126,20 @@ class RunStore:
                 ("control_version", "INTEGER NOT NULL DEFAULT 1"),
                 ("stop_target", "TEXT"),
                 ("result_json", "TEXT"),
+                ("wait_started_at", "REAL"),
+                ("overall_expires_at", "REAL"),
             ):
                 if name not in columns:
                     await db.execute(f"ALTER TABLE factory_runs ADD COLUMN {name} {definition}")
             cursor = await db.execute("PRAGMA table_info(factory_sessions)")
-            if "settings_json" not in {str(row[1]) for row in await cursor.fetchall()}:
-                await db.execute("ALTER TABLE factory_sessions ADD COLUMN settings_json TEXT")
+            session_columns = {str(row[1]) for row in await cursor.fetchall()}
+            for column in ("settings_json", "config_options_json"):
+                if column not in session_columns:
+                    await db.execute(f"ALTER TABLE factory_sessions ADD COLUMN {column} TEXT")
+            await db.execute(
+                """INSERT OR IGNORE INTO factory_session_runs (session_id, run_id)
+                   SELECT session_id, run_id FROM factory_sessions WHERE run_id IS NOT NULL"""
+            )
             await db.commit()
 
     async def create_run(
@@ -117,13 +149,20 @@ class RunStore:
         parent_thread_id: str,
         *,
         deadline_at: float | None = None,
+        overall_expires_at: float | None = None,
     ) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.execute(
                 """INSERT INTO factory_runs
-                   (run_id, status, workspace, parent_thread_id, deadline_at, control_version)
-                   VALUES (?, 'pending', ?, ?, ?, 2)""",
-                (run_id, str(workspace.resolve()), parent_thread_id, deadline_at),
+                   (run_id, status, workspace, parent_thread_id, deadline_at, overall_expires_at, control_version)
+                   VALUES (?, 'pending', ?, ?, ?, ?, 2)""",
+                (
+                    run_id,
+                    str(workspace.resolve()),
+                    parent_thread_id,
+                    deadline_at,
+                    overall_expires_at,
+                ),
             )
             await db.commit()
 
@@ -222,6 +261,10 @@ class RunStore:
             await db.execute(
                 "UPDATE factory_runs SET status = 'stopping', stop_target = ?, error = ? WHERE run_id = ?",
                 (target, error, run_id),
+            )
+            await db.execute(
+                "UPDATE factory_interactions SET state = 'cancelled' WHERE run_id = ? AND state IN ('waiting', 'answered')",
+                (run_id,),
             )
             if record["status"] != "stopping" or record["stop_target"] != target:
                 await self._append_event(
@@ -462,6 +505,185 @@ class RunStore:
             )
             return [json.loads(payload) for (payload,) in await cursor.fetchall()]
 
+    async def interactions(self, run_id: str) -> list[Interaction]:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM factory_interactions WHERE run_id = ? ORDER BY rowid", (run_id,)
+            )
+            return [Interaction.from_record(dict(row)) for row in await cursor.fetchall()]
+
+    async def interaction(self, run_id: str, interaction_id: str) -> Interaction | None:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM factory_interactions WHERE run_id = ? AND interaction_id = ?",
+                (run_id, interaction_id),
+            )
+            row = await cursor.fetchone()
+            return Interaction.from_record(dict(row)) if row else None
+
+    async def save_interaction(self, interaction: Interaction) -> Interaction:
+        """Save a question and the start of its waiting interval together."""
+        questions_json = json.dumps([q.model_dump() for q in interaction.questions])
+        if not interaction.questions or len({q.id for q in interaction.questions}) != len(
+            interaction.questions
+        ):
+            raise ValueError("an interaction requires questions with unique IDs")
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                "SELECT * FROM factory_interactions WHERE interaction_id = ?",
+                (interaction.interaction_id,),
+            )
+            previous = await cursor.fetchone()
+            if previous is not None:
+                saved = Interaction.from_record(dict(previous))
+                if (saved.run_id, saved.source, saved.operation_id, saved.questions) != (
+                    interaction.run_id,
+                    interaction.source,
+                    interaction.operation_id,
+                    interaction.questions,
+                ):
+                    raise ValueError("saved interaction differs from this question")
+                return saved
+            cursor = await db.execute(
+                "SELECT * FROM factory_runs WHERE run_id = ?", (interaction.run_id,)
+            )
+            run = await cursor.fetchone()
+            if run is None or run["stop_target"] or run["status"] in FINAL_STATUSES:
+                raise ValueError("cannot ask a question for a stopped or unknown run")
+            cursor = await db.execute(
+                "SELECT 1 FROM factory_interactions WHERE run_id = ? AND state = 'waiting'",
+                (interaction.run_id,),
+            )
+            if await cursor.fetchone():
+                raise ValueError("answer the existing interaction before asking another")
+            now = time.time()
+            await db.execute(
+                """INSERT INTO factory_interactions
+                   (interaction_id, run_id, source, operation_id, questions_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    interaction.interaction_id,
+                    interaction.run_id,
+                    interaction.source,
+                    interaction.operation_id,
+                    questions_json,
+                    now,
+                ),
+            )
+            await db.execute(
+                "UPDATE factory_runs SET wait_started_at = COALESCE(wait_started_at, ?) WHERE run_id = ?",
+                (now, interaction.run_id),
+            )
+            if run["status"] != "waiting_for_input":
+                await db.execute(
+                    "UPDATE factory_runs SET status = 'waiting_for_input', error = NULL WHERE run_id = ?",
+                    (interaction.run_id,),
+                )
+                await self._append_event(
+                    db,
+                    FactoryEvent(
+                        run_id=interaction.run_id,
+                        node="state",
+                        status="info",
+                        message="run state: waiting_for_input",
+                        metadata={"previous_status": run["status"], "status": "waiting_for_input"},
+                    ),
+                )
+            await self._append_event(
+                db,
+                FactoryEvent(
+                    run_id=interaction.run_id,
+                    node="input",
+                    status="waiting",
+                    message=interaction.display(),
+                    metadata={"interaction_id": interaction.interaction_id},
+                ),
+            )
+            await db.commit()
+            return interaction
+
+    async def answer_interaction(
+        self, run_id: str, interaction_id: str, answers: dict[str, str]
+    ) -> bool:
+        """Accept one immutable answer; duplicate submissions leave the clocks alone."""
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                "SELECT * FROM factory_interactions WHERE run_id = ? AND interaction_id = ?",
+                (run_id, interaction_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                raise ValueError("unknown interaction for this run")
+            interaction = Interaction.from_record(dict(row))
+            interaction.validate_answers(answers)
+            if interaction.answers is not None:
+                if interaction.answers != answers:
+                    raise ValueError("this interaction already has a different saved answer")
+                return False
+            cursor = await db.execute("SELECT * FROM factory_runs WHERE run_id = ?", (run_id,))
+            run = await cursor.fetchone()
+            assert run is not None
+            if (
+                run["stop_target"]
+                or run["status"] in FINAL_STATUSES
+                or interaction.state != "waiting"
+            ):
+                raise ValueError("this interaction is no longer waiting for an answer")
+            now = time.time()
+            if run["overall_expires_at"] and now >= float(run["overall_expires_at"]):
+                raise TimeoutError("overall run expiry exceeded")
+            if run["deadline_at"] and float(run["wait_started_at"]) >= float(run["deadline_at"]):
+                raise TimeoutError("active work timeout exceeded")
+            interval = max(0, now - float(run["wait_started_at"] or now))
+            await db.execute(
+                """UPDATE factory_runs SET deadline_at = deadline_at + ?, wait_started_at = NULL
+                   WHERE run_id = ?""",
+                (interval, run_id),
+            )
+            await db.execute(
+                """UPDATE factory_operations SET deadline_at = deadline_at + ?
+                   WHERE run_id = ? AND state NOT IN ('completed', 'stopped')""",
+                (interval, run_id),
+            )
+            await db.execute(
+                """UPDATE factory_interactions SET answers_json = ?, state = 'answered', answered_at = ?
+                   WHERE interaction_id = ?""",
+                (json.dumps(answers), now, interaction_id),
+            )
+            await self._append_event(
+                db,
+                FactoryEvent(
+                    run_id=run_id,
+                    node="input",
+                    status="completed",
+                    message="User answer saved",
+                    metadata={"interaction_id": interaction_id},
+                ),
+            )
+            await db.commit()
+            return True
+
+    async def deliver_interaction(self, run_id: str, interaction_id: str) -> bool:
+        async with aiosqlite.connect(self.path) as db:
+            cursor = await db.execute(
+                """UPDATE factory_interactions SET state = 'delivered'
+                   WHERE run_id = ? AND interaction_id = ? AND state = 'answered'
+                   AND EXISTS (SELECT 1 FROM factory_runs WHERE run_id = ? AND stop_target IS NULL
+                               AND status NOT IN ('accepted', 'blocked', 'failed', 'cancelled'))
+                   RETURNING interaction_id""",
+                (run_id, interaction_id, run_id),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            await db.commit()
+            return row is not None
+
     async def save_session(self, session_id: str, cwd: Path, run_id: str | None = None) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.execute(
@@ -476,7 +698,7 @@ class RunStore:
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT session_id, cwd, run_id, settings_json FROM factory_sessions WHERE session_id = ?",
+                "SELECT * FROM factory_sessions WHERE session_id = ?",
                 (session_id,),
             )
             row = await cursor.fetchone()
@@ -501,8 +723,22 @@ class RunStore:
                         "settings cannot change while a run is active; finish or cancel it first"
                     )
             await db.execute(
-                "UPDATE factory_sessions SET settings_json = ? WHERE session_id = ?",
+                "UPDATE factory_sessions SET settings_json = ?, config_options_json = NULL WHERE session_id = ?",
                 (settings_json, session_id),
+            )
+            await db.commit()
+
+    async def save_session_options(
+        self,
+        session_id: str,
+        settings_json: str | None,
+        options_json: str,
+    ) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """UPDATE factory_sessions SET config_options_json = ?
+                   WHERE session_id = ? AND settings_json IS ?""",
+                (options_json, session_id, settings_json),
             )
             await db.commit()
 
@@ -550,12 +786,49 @@ class RunStore:
             await db.execute(
                 "UPDATE factory_sessions SET run_id = ? WHERE session_id = ?", (run_id, session_id)
             )
+            await db.execute(
+                "INSERT INTO factory_session_runs (session_id, run_id) VALUES (?, ?)",
+                (session_id, run_id),
+            )
             await db.commit()
+
+    async def session_runs(self, session_id: str) -> list[str]:
+        async with aiosqlite.connect(self.path) as db:
+            cursor = await db.execute(
+                "SELECT run_id FROM factory_session_runs WHERE session_id = ? ORDER BY rowid",
+                (session_id,),
+            )
+            return [str(row[0]) for row in await cursor.fetchall()]
+
+    async def append_session_update(
+        self, session_id: str, entry_key: str, update: dict[str, Any]
+    ) -> bool:
+        async with aiosqlite.connect(self.path) as db:
+            cursor = await db.execute(
+                """INSERT OR IGNORE INTO factory_session_history (session_id, entry_key, payload)
+                   VALUES (?, ?, ?)""",
+                (session_id, entry_key, json.dumps(update)),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
+
+    async def session_history(self, session_id: str) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.path) as db:
+            cursor = await db.execute(
+                "SELECT payload FROM factory_session_history WHERE session_id = ? ORDER BY sequence",
+                (session_id,),
+            )
+            return [json.loads(row[0]) for row in await cursor.fetchall()]
 
     async def release_unstarted_session_run(self, session_id: str, run_id: str) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.execute(
-                """UPDATE factory_sessions SET run_id = NULL WHERE session_id = ? AND run_id = ?
+                """UPDATE factory_sessions SET run_id = (
+                       SELECT history.run_id FROM factory_session_runs AS history
+                       JOIN factory_runs AS runs ON runs.run_id = history.run_id
+                       WHERE history.session_id = factory_sessions.session_id
+                       ORDER BY history.rowid DESC LIMIT 1
+                   ) WHERE session_id = ? AND run_id = ?
                    AND NOT EXISTS (SELECT 1 FROM factory_runs WHERE run_id = ?)
                    AND NOT EXISTS (SELECT 1 FROM factory_operations WHERE run_id = ?)
                    AND NOT EXISTS (SELECT 1 FROM factory_processes WHERE run_id = ?)

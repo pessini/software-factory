@@ -8,9 +8,9 @@ outcome. Use `inspect` to see the current status, operations, processes, and eve
 
 | State | Meaning | Permitted next states |
 | --- | --- | --- |
-| `pending` | The run is saved but has not started work. | `running`, `stopping`, `recovery_needed`, `failed`, `blocked` |
+| `pending` | The run is saved but has not started work. | `running`, `waiting_for_input`, `stopping`, `recovery_needed`, `failed`, `blocked` |
 | `running` | The executor is doing work or waiting for an external operation. | `waiting_for_input`, `recovery_needed`, `stopping`, `accepted`, `failed`, `blocked` |
-| `waiting_for_input` | A child needs a user's answer. | `running`, `recovery_needed`, `stopping` |
+| `waiting_for_input` | The Planner or a child needs a user's answer. | `running`, `recovery_needed`, `stopping` |
 | `recovery_needed` | The outcome of external work or cleanup is not known. | `running`, `waiting_for_input`, `stopping` |
 | `stopping` | A stop was accepted; cleanup is incomplete. | `recovery_needed`, `cancelled`, `failed`, `blocked` |
 | `accepted`, `cancelled`, `failed`, `blocked` | A final outcome. | None |
@@ -81,8 +81,13 @@ check retains its original deadline.
 `limits.step_timeout_seconds` defaults to 900 seconds. Each operation saves a
 deadline limited by the run's original total deadline. Check commands also use
 their configured timeout. `limits.connection_retries` defaults to 2. Restart does
-not reset these deadlines or retry counts. Waiting for user input does not extend
-the total deadline; answering questions through the factory is a separate feature.
+not reset these deadlines or retry counts. A saved blocking question pauses the
+remaining run and unfinished-operation time. Accepting its first answer shifts
+those deadlines by the time spent waiting. Duplicate answers do not extend them.
+The separate `limits.overall_run_timeout_seconds` limit defaults to seven days
+and includes time waiting for input. The controller checks this expiry when work
+resumes or an answer arrives; a live worker also checks it while waiting.
+See [saved sessions and questions](session-continuation.md) for the commands.
 
 Check commands and BB CLI commands run in new process groups. A pipe gate prevents
 the command from executing until the group and its process identity are saved.
