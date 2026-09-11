@@ -5,10 +5,15 @@ were already present at `24628bf`; this work verifies that combined workflow.
 Later reviewer phases and PR delivery (#7) remain outside this work.
 
 The final local series tested unchanged commit `7f1d622` on 2026-09-11.
-**The release still awaits GitHub CI on macOS and Linux.** No hosted CI pass
-or issue closure is claimed.
+**The recorded Phase 1 release passed local and hosted acceptance.**
+[GitHub CI](https://github.com/pessini/software-factory/actions/runs/34643097838)
+passed on macOS and Linux at commit `1772d18`. This result applies to the tested
+setup and commits; later reviewer phases remain outside this acceptance.
 
 ## Results
+
+- Hosted CI: 227 tests passed and 11 live cases were skipped on each of
+  `macos-15` and `ubuntu-24.04`. Both jobs published all seven check logs.
 
 - Fresh clone, frozen dependencies: Ruff lint and format, Mypy, and 227 tests
   passed; 11 opt-in live cases were skipped. The suite took 402 seconds.

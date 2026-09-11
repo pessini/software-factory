@@ -8,9 +8,11 @@ mean its code is missing.
 See [the recorded local results](acceptance-results.md) and
 [versioned evidence](phase1-acceptance.json).
 
-The release remains **unverified** until clean CI, every live scenario below,
-and the BB parent display check pass. The older `accepted` run in
-`live-worker-acceptance.json` predates Phase 1 and is not a release pass.
+Each release requires clean CI, every live scenario below, and the BB parent
+display check to pass. The recorded Phase 1 acceptance passed these checks;
+See the linked results for its exact commits and supported setup. The older
+`accepted` run in `live-worker-acceptance.json` predates Phase 1 and is not a
+release pass.
 
 ## Normal checks
 

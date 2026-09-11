@@ -6,7 +6,7 @@
   "scope": "Phase 1 after issues 2-5; later reviewer phases and PR delivery excluded",
   "tested_commit": "7f1d622c4e4e5dc295e07250fa95260e37dc853e",
   "tracked_checkout_unchanged_during_final_series": true,
-  "release_gate": "awaiting GitHub-hosted CI on macOS and Linux",
+  "release_gate": "passed for the recorded Phase 1 commits and supported setup",
   "environment": {
     "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
     "python": "3.14.7",
@@ -659,11 +659,57 @@
     "source_note": "Observed after the mount fix and before later report and prompt clarifications"
   },
   "limits": [
-    "GitHub CI has not run for these local commits; issue 6 is not release-complete.",
     "Live execution is verified only on this local macOS, BB, provider CLI, image, and model combination.",
     "Transport loss is injected at the BB API boundary; a complete BB server outage was not exercised.",
     "Raw records and disposable workspaces are local evidence; reproduce using docs/acceptance.md.",
     "Earlier failed runs remain preserved and are not counted as final passes.",
     "No commit or push is performed by the demo workflows. This implementation task separately commits factory changes."
-  ]
+  ],
+  "hosted_ci": {
+    "commit": "1772d18339e4482fa667b2664f94577628ad6d86",
+    "run_id": 34643097838,
+    "url": "https://github.com/pessini/software-factory/actions/runs/34643097838",
+    "result": "passed",
+    "completed_at": "2026-09-11T20:17:42Z",
+    "jobs": [
+      {
+        "platform": "macos-15",
+        "job_id": 103407324523,
+        "url": "https://github.com/pessini/software-factory/actions/runs/34643097838/job/103407324523",
+        "result": "passed",
+        "tests_passed": 227,
+        "tests_skipped": 11,
+        "test_duration_seconds": 202.38,
+        "artifact": "checks-macos-15",
+        "log_sha256": {
+          "format.log": "38f0dfe1a7daff274f5b6f83c4ee23fa63c25f59af378bb179f62bf8ce90eaf8",
+          "install.log": "85c96c12f3d3c8ec8fcbb0c1ea96c51575c92e6c3084a4a67da7edf76091f292",
+          "lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+          "tests.log": "d1b02e6611aea854505c943083853a84fbeb6fd28300465cf16ed678ebf29f6d",
+          "tests.xml": "40deeeb98104c7d836fa72eaa89698132f04604236bb6bba0ab0f05a496e975c",
+          "types.log": "34df9cf38736563d4bb02e64b66effac851acb546ad0a3c3761547e25bbe3570",
+          "versions.log": "0366d77cc1f1ac88ea458231ba4f639323d5caf34de0d50b7618277fd4395f1f"
+        }
+      },
+      {
+        "platform": "ubuntu-24.04",
+        "job_id": 103407324887,
+        "url": "https://github.com/pessini/software-factory/actions/runs/34643097838/job/103407324887",
+        "result": "passed",
+        "tests_passed": 227,
+        "tests_skipped": 11,
+        "test_duration_seconds": 127.297,
+        "artifact": "checks-ubuntu-24.04",
+        "log_sha256": {
+          "format.log": "38f0dfe1a7daff274f5b6f83c4ee23fa63c25f59af378bb179f62bf8ce90eaf8",
+          "install.log": "1ee80f14990305ac86ac653431e46c55cae3411b905f3da7e0dcb770b90573ca",
+          "lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+          "tests.log": "69ef525ce3da3f5aee0607879a1e668448ab87491297d964db5b83612cbafe9c",
+          "tests.xml": "8b4c554cf02b23bd2137c6d2f7d9ce2d123c9f2cc223ce24382c902f1c7d93fc",
+          "types.log": "34df9cf38736563d4bb02e64b66effac851acb546ad0a3c3761547e25bbe3570",
+          "versions.log": "0366d77cc1f1ac88ea458231ba4f639323d5caf34de0d50b7618277fd4395f1f"
+        }
+      }
+    ]
+  }
 }
