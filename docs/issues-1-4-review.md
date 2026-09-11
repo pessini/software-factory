@@ -4,6 +4,12 @@ Updated on 10 September 2026 after the user-authorized live tests. The code for
 #2–#4 has passed local and authenticated worker verification. No GitHub issue
 was closed during this review.
 
+Update on 11 September: issue #5 was implemented in `de2aeba` and issue #1 Phase 1
+in `24628bf`. The table below preserves the earlier review result. Those code
+dependencies are ready for [issue #6 acceptance](acceptance.md); later phases of
+issue #1 are not prerequisites. GitHub issues #2–#5 still show open, so their
+tracker state alone is not evidence that their implementation is missing.
+
 | Issue | Current result | Remaining boundary |
 | --- | --- | --- |
 | #1: verification pipeline | Reviewed; Phase 1 and the later phases remain incomplete. | The issue puts Phase 1 after #2, #3, #4, and #5. It still requires baseline checks, stable criteria, structured findings, evidence coverage, content-bound review, and `ready_for_review`. Later phases follow #6. |

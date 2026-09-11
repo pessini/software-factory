@@ -100,6 +100,9 @@ Report concrete defects introduced or exposed by this change with evidence.
 Exclude unrelated defects and personal style preferences. Critical and warning
 findings block; suggestions do not. Confidence does not change blocking policy.
 Return one result for every criterion ID: satisfied, unmet, or not_verified.
+The bundle's context supplies the saved plan, project rules, baseline, and checks.
+Use the exact criterion IDs from context.plan.acceptance_criteria. Context defines
+what to verify; cite current implementation or check evidence to prove completion.
 Use only evidence_refs from the bundle. A source: reference means inspect that
 file at the saved version; a patch/check reference is relative to the evidence directory.
 Do not claim that a passing command proves behavior it did not test. Missing
@@ -108,7 +111,7 @@ Reuse finding IDs despite wording or line changes. Give a resolution for EVERY
 previous finding: fixed, unresolved, or reopened. Active findings must also occur
 in findings with the same ID. Only confirm a fix from current evidence.
 Approve a verified no-change result when the original request is already satisfied.
-{data_block({"original_request": request, "plan": str(plan_path), "changed_files": changed, "test_result": str(test_result_path), "bundle": bundle, "previous_findings": history})}
+{data_block({"original_request": request, "evidence_directory": str(plan_path.parent), "plan": str(plan_path), "changed_files": changed, "test_result": str(test_result_path), "bundle": bundle, "previous_findings": history})}
 Return exactly one JSON object matching this schema:
 {json.dumps(ReviewEnvelope.model_json_schema(), indent=2)}
 """

@@ -152,9 +152,9 @@ class ProtectedBBClient(BBClient):
                         receipt.error or "Provider dispatch could not be established"
                     )
             child = await read_bb(f"threads/{quote(thread_id, safe='')}")
-            if child.get("status") not in {"active", "running", "starting"} and not child.get(
-                "queuedMessageCount"
-            ):
+            # BB can still report the previous idle turn after accepting a
+            # follow-up. Wait for its receipt under the caller's saved deadline.
+            if child.get("status") == "error" and not child.get("queuedMessageCount"):
                 return None
             await asyncio.sleep(0.1)
 

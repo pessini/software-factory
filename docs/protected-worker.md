@@ -18,8 +18,11 @@ environment, repository, and any previously saved child ID before dispatch.
 
 Each operation gets a named container and a saved creation record. Planner and
 Reviewer get a read-only workspace. Builder gets a writable workspace with
-read-only mounts for Git metadata, existing configured protected paths, existing ignored
-files, and controller evidence. The provider's command permissions also enforce
+read-only mounts for Git metadata, existing protected and ignored directories,
+and controller evidence. Protected individual files use the provider's read-only
+file rules: mounting them separately with Apple Container can hide the containing
+workspace. Live checks cover source visibility and host-visible allowed writes,
+as well as denied protected-file operations. The provider's command permissions also enforce
 these restrictions and disable command network access. Provider communication
 with OpenAI still requires network access outside the command sandbox. Creation
 of a new protected path is detected and rejected by the controller after the
@@ -51,7 +54,8 @@ without a container. An uncertain creation remains in recovery and retains
 ownership.
 
 Questions from the matching provider turn are saved and reported as waiting for
-input. Answering and continuing them remains part of issue #5. Other providers,
+input. Issue #5 implements saved answers and continuation; see
+[session continuation](session-continuation.md). Other providers,
 remote BB environments, and automatic model substitution are not supported by
 this worker.
 
@@ -112,6 +116,6 @@ The demo and generated policy now use `uv run --no-sync python -B -m pytest -q
 then verifies code without synchronizing dependencies or writing Python/pytest
 caches into the protected checkout.
 
-This proves the current single-Reviewer workflow and worker contract. It does
-not complete issue #1's evidence-based review design, question continuation in
-#5, or the later first-release acceptance work in #6.
+These historical runs prove the earlier worker contract. They predate the
+implemented issue #5 continuation and issue #1 Phase 1 evidence review. The
+current first-release acceptance is tracked separately in [issue #6](acceptance.md).

@@ -209,6 +209,13 @@ class RunEvidence:
         ]
         bundle = {
             "content_version": snapshot["content_version"],
+            "context": {
+                "plan": self.read("plan.json"),
+                "project": self.read("project.json"),
+                "baseline": self.read("baseline.json"),
+                "checks": checks,
+                "review_rules": self.artifacts.read_text("review-rules.md"),
+            },
             "changed_files": changed,
             "patches": patches,
             "evidence_refs": refs,

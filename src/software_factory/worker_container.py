@@ -105,7 +105,10 @@ class ContainerProvider:
         ]
         if self.authenticate:
             mounts.append((auth, "/factory/provider/auth.json", True))
-        mounts.extend((path, str(path), True) for path in self.protected if path.exists())
+        # Apple Container's nested file volumes can hide the surrounding
+        # workspace. Mount directories only; the provider's read-only file
+        # rules below still deny edits, unlink, rename, and link-based writes.
+        mounts.extend((path, str(path), True) for path in self.protected if path.is_dir())
         rules = {
             ":root": "read",
             str(self.workspace): "read" if self.read_only else "write",

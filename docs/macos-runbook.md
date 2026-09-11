@@ -46,10 +46,7 @@ it into factory configuration, Git objects, or evidence.
 From this repository:
 
 ```bash
-uv sync
-uv run ruff check .
-uv run mypy src
-uv run pytest -q
+bash scripts/check.sh
 uv run software-factory graph --format mermaid
 ```
 
@@ -131,7 +128,9 @@ The demo fixture already contains the policy, hook, and `.worktreeinclude`.
 
 The parent thread shows graph phases and tool activity. Planner, Builder, and
 Reviewer appear as visible child threads in the same managed worktree. The
-final result is one of `accepted`, `failed`, `blocked`, or `cancelled`.
+successful result is `ready_for_review`. A run can also finish as `failed`,
+`blocked`, or `cancelled`, or pause as `waiting_for_input` or `recovery_needed`.
+Old `accepted` records do not prove Phase 1 acceptance.
 
 Version-2 artifacts are written to `$BB_THREAD_STORAGE/factory/artifacts/<run-id>/`; durable checkpoints and the
 side-effect ledger are written to
@@ -145,8 +144,17 @@ Inside the owning BB thread environment:
 software-factory doctor
 software-factory inspect fct_...
 software-factory resume fct_...
+software-factory answer fct_... INTERACTION_ID '{"question-id":"answer"}'
+software-factory retry fct_...
 software-factory cancel fct_...
 ```
+
+In the BB parent task, use `/status`, `/continue`, `/retry`,
+`/answer INTERACTION_ID ANSWER`, or `/cancel`. Use `/new REQUEST` only after the
+current run ends. Set model choices through the Factory panel; `/settings` is
+not a supported task command. Stop the parent task to release a connection that
+BB still shows as active after cancellation; inspect its queue before sending
+anything again.
 
 `resume` reuses persisted specialist thread IDs, preserves the original absolute
 run deadline, and reconciles a child by its
@@ -161,6 +169,7 @@ Automated tests cover clean success, deterministic repair, bounded routing,
 invalid-envelope correction, preservation of unexpected file/index/reference
 changes, ignored-file checks without Git object writes, evidence integrity, in-process and cross-process
 cancellation (including spawn races), and crash-after-spawn reconciliation. A
-real-provider smoke run first requires the missing isolation adapter, then a running
-BB server and the user's authenticated provider; the factory deliberately does
-not manage those credentials.
+real-provider run requires the installed protected worker, a running local BB
+server, and an existing provider login. Follow [issue #6 acceptance](acceptance.md)
+to run and record those checks. Passing the simulated suite alone does not mark
+the release usable.

@@ -101,6 +101,13 @@ async def test_handoff_records_original_request_rules_baseline_and_untracked_con
     assert handoff["checks"]["commands"][0]["comparison"] == "baseline_fixed"
     assert handoff["checks"]["content_version"] == handoff["content_version"]
     assert handoff["bundle"]["changed_files"] == ["answer.txt"]
+    review_context = handoff["bundle"]["context"]
+    assert review_context["plan"]["acceptance_criteria"][0]["id"] == "criterion-001"
+    assert review_context["checks"]["passed"] is True
+    assert (
+        review_context["project"]["instructions"][-1]["content"]
+        == "Keep the answer as plain text.\n"
+    )
     patch = Path(result["final_report_path"]).parent / handoff["bundle"]["patches"]["answer.txt"]
     assert "+good" in patch.read_text()
     assert handoff["criteria"][0]["criterion_id"] == "criterion-001"

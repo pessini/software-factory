@@ -28,6 +28,7 @@ async def test_real_container_enforces_role_and_evidence_permissions(
     for directory in [workspace / ".factory", workspace / ".git", evidence]:
         directory.mkdir(parents=True)
     (workspace / ".env").write_text("dummy secret")
+    (workspace / "source.txt").write_text("existing source")
     (evidence / "result.json").write_text("original evidence")
     operation = "permission-proof-" + uuid4().hex
     provider = ContainerProvider(
@@ -44,6 +45,10 @@ async def test_real_container_enforces_role_and_evidence_permissions(
         """import json, os
 from pathlib import Path
 out={}
+try:
+ out['source-read']=Path('source.txt').read_text()
+except OSError:
+ out['source-read']='missing'
 for target in ['answer.txt','.factory/settings.json','.git/index','.env', """
         + repr(str(evidence / "result.json"))
         + """]:
@@ -69,6 +74,10 @@ print(json.dumps(out))
     )
     try:
         await provider.start()
+        assert (
+            await container_command("exec", provider.name, "cat", str(workspace / "source.txt"))
+            == "existing source"
+        )
         assert not (workspace / ".bb").exists()
         result = await provider.request(
             "command/exec",
@@ -81,7 +90,10 @@ print(json.dumps(out))
         )
         assert result["exitCode"] == 0, result
         outcomes = json.loads(result["stdout"])
+        assert outcomes.pop("source-read") == "existing source"
         assert outcomes.pop("answer.txt") == ("denied" if read_only else "wrote")
+        if not read_only:
+            assert (workspace / "answer.txt").read_text() == "probe"
         assert set(outcomes.values()) == {"denied"}
         assert (evidence / "result.json").read_text() == "original evidence"
         assert (workspace / ".env").read_text() == "dummy secret"

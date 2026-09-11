@@ -140,6 +140,29 @@ async def test_reconcile_waits_for_receipt_while_bb_reports_active(bridge, monke
     assert execution.execution_id == "actual-turn"
 
 
+async def test_followup_waits_for_receipt_before_bb_reports_active(bridge, monkeypatch):
+    from software_factory.bb import protected
+
+    client, records, receipt, calls = bridge
+    original = protected.read_bb
+    reads = 0
+
+    async def delayed_start(path):
+        nonlocal reads
+        value = await original(path)
+        if isinstance(value, dict):
+            reads += 1
+            if reads == 3:
+                receipt.execution_id, receipt.status = "followup-turn", "running"
+                records.save(receipt)
+        return value
+
+    monkeypatch.setattr(protected, "read_bb", delayed_start)
+    execution = await client.reconcile_operation("child", receipt.operation_id)
+    assert execution is not None
+    assert execution.execution_id == "followup-turn"
+
+
 async def test_stopped_bb_task_can_retain_its_previous_error_status(bridge, monkeypatch):
     from software_factory.bb import protected
 

@@ -42,12 +42,14 @@ See [`docs/macos-runbook.md`](docs/macos-runbook.md) for the macOS setup and the
 ## Development
 
 ```bash
-uv sync
-uv run ruff check .
-uv run mypy src
-uv run pytest
+bash scripts/check.sh
 uv run software-factory graph --format mermaid
 ```
+
+The same checks run in CI on macOS and Linux with Python 3.14 and a frozen
+`uv.lock`. Logs and test results are saved under `.checks/`. Normal checks make
+no model requests. The separate [acceptance runbook](docs/acceptance.md) covers
+opt-in real-provider runs and the remaining release checks for issue #6.
 
 No command proposed by an agent is executed. Only reviewed `argv` arrays from
 `.factory/factory.yaml` are eligible for deterministic execution. Factory agents
