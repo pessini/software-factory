@@ -105,6 +105,20 @@ async def test_handoff_records_original_request_rules_baseline_and_untracked_con
     assert handoff["checks"]["commands"][0]["comparison"] == "baseline_fixed"
     assert handoff["checks"]["content_version"] == handoff["content_version"]
     assert handoff["bundle"]["changed_files"] == ["answer.txt"]
+    for key in ("repository_content", "starting_repository_content"):
+        assert handoff["bundle"][key] in handoff["bundle"]["evidence_refs"]
+    evidence_root = Path(result["final_report_path"]).parent
+    current_repository = json.loads(
+        (evidence_root / handoff["bundle"]["repository_content"]).read_text()
+    )
+    starting_repository = json.loads(
+        (evidence_root / handoff["bundle"]["starting_repository_content"]).read_text()
+    )
+    assert current_repository["head"] == starting_repository["head"]
+    assert current_repository["index"] == starting_repository["index"]
+    assert current_repository["content_version"] == handoff["content_version"]
+    assert "answer.txt" in current_repository["files"]
+    assert "answer.txt" not in starting_repository["files"]
     review_context = handoff["bundle"]["context"]
     assert review_context["plan"]["acceptance_criteria"][0]["id"] == "criterion-001"
     assert review_context["checks"]["passed"] is True

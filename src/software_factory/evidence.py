@@ -161,8 +161,9 @@ class RunEvidence:
 
     async def review_bundle(self, attempt: int) -> dict[str, Any]:
         checks_path = f"tests/attempt-{attempt:02d}.json"
+        content_path = f"tests/attempt-{attempt:02d}-content.json"
         checks = self.read(checks_path)
-        snapshot = self.read(f"tests/attempt-{attempt:02d}-content.json")
+        snapshot = self.read(content_path)
         await self.require_current(snapshot)
         self.validate_checks(checks, snapshot)
         bundle_path = f"tests/attempt-{attempt:02d}-bundle.json"
@@ -200,6 +201,8 @@ class RunEvidence:
         # An existing, unchanged source file can prove a no-change result.
         refs = [
             checks_path,
+            content_path,
+            "baseline/attempt-01-content.json",
             *patches.values(),
             *(
                 f"source:{path}"
@@ -220,6 +223,8 @@ class RunEvidence:
             "patches": patches,
             "evidence_refs": refs,
             "checks": checks_path,
+            "repository_content": content_path,
+            "starting_repository_content": "baseline/attempt-01-content.json",
         }
         await self.require_current(snapshot)
         self.artifacts.write_json(bundle_path, bundle)

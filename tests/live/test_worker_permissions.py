@@ -29,6 +29,7 @@ async def test_real_container_enforces_role_and_evidence_permissions(
         directory.mkdir(parents=True)
     (workspace / ".env").write_text("dummy secret")
     (workspace / "source.txt").write_text("existing source")
+    (workspace / "source.py").write_text("VALUE = 42\n")
     (evidence / "result.json").write_text("original evidence")
     operation = "permission-proof-" + uuid4().hex
     provider = ContainerProvider(
@@ -44,7 +45,8 @@ async def test_real_container_enforces_role_and_evidence_permissions(
     script = (
         """import json, os
 from pathlib import Path
-out={}
+import source
+out={'python-import': source.VALUE}
 try:
  out['source-read']=Path('source.txt').read_text()
 except OSError:
@@ -90,6 +92,8 @@ print(json.dumps(out))
         )
         assert result["exitCode"] == 0, result
         outcomes = json.loads(result["stdout"])
+        assert outcomes.pop("python-import") == 42
+        assert not (workspace / "__pycache__").exists()
         assert outcomes.pop("source-read") == "existing source"
         assert outcomes.pop("answer.txt") == ("denied" if read_only else "wrote")
         if not read_only:

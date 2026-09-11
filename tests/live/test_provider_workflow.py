@@ -100,6 +100,16 @@ def git(workspace, *args):
     return subprocess.check_output(["git", *args], cwd=workspace, text=True).strip()
 
 
+@pytest.fixture(scope="module")
+def acceptance_source():
+    # Record once: later cases still use the modules loaded by this test process.
+    factory = Path(__file__).resolve().parents[2]
+    return {
+        "factory_commit": git(factory, "rev-parse", "HEAD"),
+        "factory_diff_sha256": hashlib.sha256(git(factory, "diff", "HEAD").encode()).hexdigest(),
+    }
+
+
 class InterruptedBB(ProtectedBBClient):
     """Lose only a transport response, never substitute a provider result."""
 
@@ -138,19 +148,17 @@ class InterruptedBB(ProtectedBBClient):
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
-async def test_real_provider_workflow(tmp_path, scenario):
+async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
     project = os.environ["FACTORY_ACCEPTANCE_PROJECT"]
     model = os.environ["FACTORY_ACCEPTANCE_MODEL"]
     output = Path(os.environ["FACTORY_ACCEPTANCE_OUTPUT"]).resolve()
     output.mkdir(parents=True, exist_ok=True)
     case_id = f"{scenario}-{uuid4().hex[:8]}"
-    factory = Path(__file__).resolve().parents[2]
     record = {
+        **acceptance_source,
         "scenario": scenario,
         "result": "incomplete",
         "case_id": case_id,
-        "factory_commit": git(factory, "rev-parse", "HEAD"),
-        "factory_diff_sha256": hashlib.sha256(git(factory, "diff", "HEAD").encode()).hexdigest(),
         "platform": platform.platform(),
         "python": platform.python_version(),
         "worker_image": WORKER_IMAGE,
@@ -319,9 +327,15 @@ async def test_real_provider_workflow(tmp_path, scenario):
             assert all(item["dispatch_count"] == 1 for item in operations)
             children = await engine.store.list_children(run_id)
             actual_children = await bb_command("thread", "list", "--parent-thread", parent["id"])
-            assert {item["id"] for item in actual_children} == set(children.values())
+            owned_children = set(children.values()) | {
+                item["thread_id"] for item in operations if item["thread_id"]
+            }
+            if client.observed:
+                # Cancellation can precede the role binding after a real dispatch.
+                owned_children.add(client.observed["thread_id"])
+            assert {item["id"] for item in actual_children} == owned_children
             record["workers"] = []
-            for child_id in children.values():
+            for child_id in owned_children:
                 assert (await client.inspect_thread(child_id)).stopped
                 receipts = WorkerRecords(await thread_storage(child_id)).all()
                 record["workers"].extend(item.model_dump(mode="json") for item in receipts)
@@ -339,7 +353,8 @@ async def test_real_provider_workflow(tmp_path, scenario):
                 assert len(same_request) == 1
                 assert same_request[0]["execution_id"] == before["execution_id"]
                 assert same_request[0]["stopped"]
-                assert children["planner"] == before["thread_id"]
+                if scenario != "cancel":
+                    assert children["planner"] == before["thread_id"]
                 assert (
                     len(
                         [
