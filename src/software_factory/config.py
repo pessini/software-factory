@@ -19,14 +19,41 @@ class AgentConfig(ConfigModel):
     permission_mode: Literal["accept-edits", "auto", "full"] = "auto"
 
 
-Step = Literal["plan", "build", "repair", "review", "revision"]
+ReviewMode = Literal["single", "focused"]
+Step = Literal[
+    "plan",
+    "build",
+    "repair",
+    "review",
+    "revision",
+    "request_review",
+    "code_review",
+    "security_review",
+    "judge",
+]
 STEP_ROLES: dict[Step, str] = {
     "plan": "planner",
     "build": "builder",
     "repair": "builder",
     "review": "reviewer",
     "revision": "builder",
+    "request_review": "request_reviewer",
+    "code_review": "code_reviewer",
+    "security_review": "security_reviewer",
+    "judge": "judge",
 }
+
+
+def review_steps(mode: ReviewMode) -> dict[Step, str]:
+    return {
+        step: role
+        for step, role in STEP_ROLES.items()
+        if (
+            step != "review"
+            if mode == "focused"
+            else step in {"plan", "build", "repair", "review", "revision"}
+        )
+    }
 
 
 class ModelChoice(ConfigModel):
@@ -64,6 +91,11 @@ class AgentsConfig(ConfigModel):
     planner: AgentConfig
     builder: AgentConfig
     reviewer: AgentConfig
+
+    def for_role(self, role: str) -> AgentConfig:
+        if role in {"request_reviewer", "code_reviewer", "security_reviewer", "judge"}:
+            return self.reviewer.model_copy(update={"permission_mode": "auto"})
+        return {"planner": self.planner, "builder": self.builder, "reviewer": self.reviewer}[role]
 
     @model_validator(mode="after")
     def restricted_permissions(self) -> AgentsConfig:
@@ -157,6 +189,8 @@ class SafetyConfig(ConfigModel):
 class FactoryConfig(ConfigModel):
     version: Literal[1]
     workflow: Literal["simple-sdlc"]
+    # Omitted in Phase 1 configurations, including saved active runs.
+    review_mode: ReviewMode = "single"
     agents: AgentsConfig
     quality: QualityConfig
     settings: Selection = Field(default_factory=Selection)
@@ -185,6 +219,7 @@ def load_config(workspace: Path, config_path: Path | None = None) -> FactoryConf
 def default_config() -> str:
     return """version: 1
 workflow: simple-sdlc
+review_mode: focused
 
 agents:
   planner:

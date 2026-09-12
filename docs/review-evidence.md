@@ -1,8 +1,9 @@
 # Single-reviewer evidence
 
 Issue #1, Phase 1 completes the Planner → Builder → checks → Reviewer workflow.
-The real-provider acceptance run belongs to issue #6. Additional reviewers belong
-to later phases of issue #1.
+The real-provider acceptance run passed in issue #6. Phase 2 adds the
+[focused reviewers and judge](focused-review.md) using the same evidence rules.
+This page describes the common evidence rules and the retained single-reviewer mode.
 
 ## Completion policy
 

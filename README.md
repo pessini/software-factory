@@ -2,7 +2,7 @@
 
 A macOS-first MVP that exposes a deterministic, resumable software-development
 workflow to [BB](https://github.com/get-bb/bb). LangGraph owns routing and durable
-state; BB owns visible Planner, Builder, and Reviewer threads; Python owns all
+state; BB owns visible Planner, Builder, review, and judge threads; Python owns all
 quality gates.
 
 Live runs use the [protected local BB worker](docs/protected-worker.md), tested
@@ -15,12 +15,14 @@ rules, [live acceptance evidence](docs/live-worker-acceptance.json) for the
 verified run, and the [issues 1–4 review](docs/issues-1-4-review.md) for the
 remaining dependency order.
 
-The [single-reviewer evidence workflow](docs/review-evidence.md) records baseline
+The [evidence workflow](docs/review-evidence.md) records baseline
 checks, structured criterion results and findings, and the exact tested file
 version. Successful runs finish at `ready_for_review`. Old `accepted` results
-remain available as unverified historical records. Issue #6 verifies this complete
-Phase 1 workflow with a real provider; the earlier live evidence does not establish
-that acceptance result.
+remain available as unverified historical records.
+[Phase 1 acceptance passed](docs/acceptance-results.md) with a real provider in issue #6.
+The [focused review workflow](docs/focused-review.md) adds Request, Code, and
+Security reviews followed by a read-only judge. New configurations select it;
+existing configurations and saved runs keep their single-reviewer mode.
 
 The MVP provides:
 
@@ -76,7 +78,8 @@ command. It stops on unexpected file, index, or reference changes and preserves 
 Operator-reviewed quality programs are outside that guarantee and must not publish
 or mutate repository metadata indirectly.
 
-Model and effort choices for Plan, Build, Repair, Review, and Revision are
+Model and effort choices for every active step, including the focused reviewers
+and judge, are
 available through the [BB Factory panel](bb-plugin-factory-controls/README.md).
 See [model settings](docs/model-settings.md) for saved settings and presets,
 and [BB compatibility](docs/bb-settings-compatibility.md) for the tested interface

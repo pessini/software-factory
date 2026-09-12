@@ -82,6 +82,18 @@ def final_report(state: FactoryState, outcome: str) -> str:
             )
             or "None."
         )
+        if handoff.get("reviews"):
+            details += "\n\n## Required reviews and judge\n\n"
+            for role, review in handoff["reviews"].items():
+                details += f"- {role.title()} review: {review['summary']}\n"
+            details += f"- Judge: {handoff['judge']['summary']}\n"
+            for assessment in handoff["judge"]["assessments"]:
+                target = (
+                    f" → {assessment['retained_finding_id']}"
+                    if assessment["retained_finding_id"]
+                    else ""
+                )
+                details += f"- {assessment['reviewer']}/{assessment['finding_id']}: {assessment['disposition']}{target} — {assessment['reason']} (references: {', '.join(assessment['evidence_refs'])})\n"
         details += (
             "\n\n## Reported manual work\n\n"
             + ("\n".join(f"- {item}" for item in handoff["manual_work"]) or "None reported.")

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from software_factory.config import (
-    STEP_ROLES,
     AgentConfig,
     ModelChoice,
     ModelOption,
+    ReviewMode,
     Selection,
     SettingsSnapshot,
     Step,
+    review_steps,
 )
 
 
@@ -20,13 +21,14 @@ def resolve_choices(
     selected: Selection,
     catalog: list[ModelOption],
     config_version: int,
+    review_mode: ReviewMode = "single",
 ) -> SettingsSnapshot:
     preset_name = selected.preset or project.preset
     if preset_name and preset_name not in presets:
         raise ValueError(f"unknown settings preset: {preset_name}")
     preset = presets[preset_name] if preset_name else Selection()
     effective: dict[Step, AgentConfig] = {}
-    for step, role in STEP_ROLES.items():
+    for step, role in review_steps(review_mode).items():
         values = roles[role].model_dump()
         # Each layer overrides lower-priority layers. Within a layer a step
         # choice overrides that layer's shared default.

@@ -18,6 +18,7 @@ from software_factory.config import (
     SettingsSnapshot,
     Step,
     load_config,
+    review_steps,
 )
 from software_factory.ownership import OwnershipError, session_lease
 from software_factory.persistence import RunStore
@@ -69,12 +70,16 @@ class SessionSettings:
         config: FactoryConfig, selection: Selection, catalog: list[ModelOption]
     ) -> SettingsSnapshot:
         return resolve_choices(
-            {role: getattr(config.agents, role) for role in set(STEP_ROLES.values())},
+            {
+                role: config.agents.for_role(role)
+                for role in set(review_steps(config.review_mode).values())
+            },
             config.settings,
             config.presets,
             selection,
             catalog,
             config.version,
+            config.review_mode,
         )
 
     async def options(self, session_id: str) -> list[SessionConfigOptionSelect]:
@@ -128,9 +133,10 @@ class SessionSettings:
                 + [SessionConfigSelectOption(value=name, name=name) for name in config.presets],
             )
         ]
-        for name in ("shared", *STEP_ROLES):
-            roles = set(STEP_ROLES.values()) if name == "shared" else {STEP_ROLES[cast(Step, name)]}
-            permissions = {getattr(config.agents, role).permission_mode for role in roles}
+        steps = review_steps(config.review_mode)
+        for name in ("shared", *steps):
+            roles = set(steps.values()) if name == "shared" else {steps[cast(Step, name)]}
+            permissions = {config.agents.for_role(role).permission_mode for role in roles}
             options = [SessionConfigSelectOption(value="inherit", name="Use inherited settings")]
             for model in catalog:
                 if not permissions.issubset(model.permission_modes):
@@ -150,7 +156,7 @@ class SessionSettings:
                 if name == "shared"
                 else selection.steps.get(cast(Step, name), ModelChoice())
             )
-            description = "Default for all five steps. Step choices take priority."
+            description = "Default for all steps. Step choices take priority."
             if name != "shared" and resolved is not None:
                 agent = resolved.effective[cast(Step, name)]
                 description = (
@@ -161,7 +167,7 @@ class SessionSettings:
             controls.append(
                 SessionConfigOptionSelect(
                     id=name,
-                    name=name.title(),
+                    name=name.replace("_", " ").title(),
                     type="select",
                     description=description,
                     current_value=choice.model_dump_json()

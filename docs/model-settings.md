@@ -8,8 +8,10 @@ Install the panel using `bb-plugin-factory-controls/README.md`.
 ## Project defaults and presets
 
 Version 1 role settings remain valid. Planner supplies Plan; Builder supplies
-Build, Repair, and Revision; Reviewer supplies Review. The roles continue to
-control permissions. A model selection cannot grant full access.
+Build, Repair, and Revision; Reviewer supplies Review in single mode. In focused
+mode, Reviewer supplies the starting model and effort for Request Review, Code
+Review, Security Review, and Judge. These four roles always use read-only worker
+access and `auto` permission mode. A model selection cannot grant full access.
 
 Optional `settings` and `presets` entries use this structure:
 
@@ -41,7 +43,7 @@ reported defaults. Unsupported explicit choices fail; there is no fallback.
 
 ## Saved runs and sessions
 
-At run creation, `config.json` saves the requested session choices, all five
+At run creation, `config.json` saves the requested session choices, all active
 effective choices, the catalog used, settings version, prompt version, and the
 complete project configuration. Resume reads this saved file. The current YAML
 cannot change the run's settings. Existing repository protection still blocks
@@ -63,3 +65,14 @@ report a choice, the event says `unverified`.
 `doctor` checks the actual BB environment, models, command executables, and
 SQLite storage. It also reports the existing child-isolation limit. See
 `bb-settings-compatibility.md` for live evidence and limitations.
+
+## Focused review settings
+
+Set `review_mode: focused` in the project configuration before starting a new
+session. The separate step keys are `request_review`, `code_review`,
+`security_review`, and `judge`. They use the same shared defaults, presets,
+session controls, validation, and saved snapshot as other steps. The old `review`
+key applies only to single mode. Move its choices to the four focused steps when
+changing mode. The panel shows the steps active in the saved session configuration.
+Resume keeps the saved review mode and choices. It does not consult a new catalog
+or silently select another model.

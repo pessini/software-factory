@@ -21,7 +21,7 @@ from software_factory.ownership import OwnershipBusy, OwnershipError, RunOwnersh
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
-from software_factory.settings import resolve_choices
+from software_factory.session_settings import SessionSettings
 from software_factory.state import FINAL_STATUSES, FactoryState
 
 
@@ -112,16 +112,10 @@ class FactoryEngine:
                 async with asyncio.timeout(config.limits.total_run_timeout_seconds):
                     await self.bb.check_protection(runtime.artifacts.root)
                     await self.bb.validate_workspace(self.workspace)
-                    config.resolved_settings = resolve_choices(
-                        {
-                            role: getattr(config.agents, role)
-                            for role in ("planner", "builder", "reviewer")
-                        },
-                        config.settings,
-                        config.presets,
+                    config.resolved_settings = SessionSettings.resolve(
+                        config,
                         selection or Selection(),
                         await self.bb.model_catalog(),
-                        config.version,
                     )
                     runtime.artifacts.write_json("config.json", config)
             except (BBError, ValueError, TimeoutError) as exc:
