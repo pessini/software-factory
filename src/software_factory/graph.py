@@ -65,7 +65,7 @@ def build_graph(runtime: FactoryRuntime, checkpointer: Any = None) -> Any:
 
 MERMAID = """flowchart TD
     START --> bootstrap --> baseline --> plan --> build --> test
-    test -->|pass| review[Review: saved single or focused mode]
+    test -->|pass| review[Review: saved single, focused, or risk-based mode]
     test -->|fail, budget remains| repair --> test
     test -->|fail, exhausted| failed
     review -->|approve: Reviewer or focused judge| finalize --> END

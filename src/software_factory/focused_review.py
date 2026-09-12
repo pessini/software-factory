@@ -15,7 +15,19 @@ async def run_focused_review(
 ) -> tuple[str, JudgeEnvelope]:
     history = runtime.evidence.history(attempt)
     snapshot = runtime.evidence.read(bundle["repository_content"])
-    for role in ("request", "code", "security"):
+    roles = runtime.evidence.required_reviewers(bundle)
+    if runtime.config.review_mode == "risk_based":
+        selection_path = f"review/selection-{attempt:02d}.json"
+        selected = {"attempt": attempt, **bundle["review_selection"]}
+        if runtime.artifacts.path(selection_path).exists():
+            if runtime.evidence.read(selection_path) != selected:
+                raise ValueError("review round selection changed during restart")
+        else:
+            runtime.artifacts.write_json(selection_path, selected)
+            await runtime.emit(
+                "review", "info", "Review level selected", attempt=attempt, metadata=selected
+            )
+    for role in roles:
         step = f"{role}_review"
         child_role = f"{role}_reviewer"
         await runtime.check_cancelled()
@@ -32,7 +44,7 @@ async def run_focused_review(
                 runtime.config.agents.for_role(child_role),
                 step=step,
                 attempt=attempt,
-                tell_existing=attempt > 1,
+                tell_existing=await runtime.store.child(runtime.run_id, child_role) is not None,
             )
             review = await runtime.parse_with_correction(
                 child_role,

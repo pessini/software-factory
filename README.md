@@ -23,6 +23,9 @@ remain available as unverified historical records.
 The [focused review workflow](docs/focused-review.md) adds Request, Code, and
 Security reviews followed by a read-only judge. New configurations select it;
 existing configurations and saved runs keep their single-reviewer mode.
+The opt-in [risk selection policy](docs/risk-review.md) chooses the required
+reviewers from change size and sensitive paths. It adds Documentation Review
+when relevant and records review quality and user feedback for threshold tuning.
 
 The MVP provides:
 
@@ -71,6 +74,8 @@ software-factory run "request"
 software-factory inspect <run-id>
 software-factory resume <run-id>
 software-factory cancel <run-id>
+software-factory review-quality <run-id>
+software-factory review-feedback <run-id> <attempt> <reviewer> <finding-id> <verdict> <reason>
 ```
 
 The workflow never commits, pushes, merges, deploys, or runs an LLM-proposed

@@ -73,3 +73,4 @@ class FactoryState(TypedDict, total=False):
     content_version: str
     handoff: dict[str, Any]
     execution_summary: dict[str, Any]
+    review_quality: dict[str, Any]

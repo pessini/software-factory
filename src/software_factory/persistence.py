@@ -57,6 +57,11 @@ class RunStore:
                     payload TEXT NOT NULL,
                     PRIMARY KEY (run_id, sequence)
                 );
+                CREATE TABLE IF NOT EXISTS factory_review_feedback (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS factory_sessions (
                     session_id TEXT PRIMARY KEY,
                     cwd TEXT NOT NULL,
@@ -141,6 +146,22 @@ class RunStore:
                    SELECT session_id, run_id FROM factory_sessions WHERE run_id IS NOT NULL"""
             )
             await db.commit()
+
+    async def add_review_feedback(self, run_id: str, payload: dict[str, Any]) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                "INSERT INTO factory_review_feedback (run_id, payload) VALUES (?, ?)",
+                (run_id, json.dumps({**payload, "created_at": time.time()})),
+            )
+            await db.commit()
+
+    async def review_feedback(self, run_id: str) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.path) as db:
+            cursor = await db.execute(
+                "SELECT sequence, payload FROM factory_review_feedback WHERE run_id = ? ORDER BY sequence",
+                (run_id,),
+            )
+            return [{"sequence": row[0], **json.loads(row[1])} for row in await cursor.fetchall()]
 
     async def create_run(
         self,

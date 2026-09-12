@@ -21,6 +21,7 @@ from software_factory.contracts.models import (
     Reviewer,
 )
 from software_factory.git import capture_snapshot, changed_files, git
+from software_factory.review_policy import ReviewSelection, select_review
 
 EVIDENCE_VERSION = 1
 REVIEW_RULES = """The original user request defines the outcome. Project instructions apply
@@ -181,6 +182,7 @@ class RunEvidence:
             return self.read(bundle_path)  # type: ignore[no-any-return]
         changed = await changed_files(self.workspace)
         patches = {}
+        patch_contents = {}
         for index, path in enumerate(changed, 1):
             patch = await git(
                 self.workspace,
@@ -188,6 +190,7 @@ class RunEvidence:
                 "--binary",
                 "--no-ext-diff",
                 "--no-textconv",
+                "--no-renames",
                 "HEAD",
                 "--",
                 path,
@@ -208,6 +211,7 @@ class RunEvidence:
             relative = f"patches/attempt-{attempt:02d}-{index:04d}.patch"
             self.artifacts.write_text(relative, patch.decode(errors="replace"))
             patches[path] = relative
+            patch_contents[path] = patch.decode(errors="replace")
         # An existing, unchanged source file can prove a no-change result.
         refs = [
             checks_path,
@@ -220,7 +224,7 @@ class RunEvidence:
                 if entry["kind"] == "file"
             ),
         ]
-        bundle = {
+        bundle: dict[str, Any] = {
             "content_version": snapshot["content_version"],
             "context": {
                 "plan": self.read("plan.json"),
@@ -236,6 +240,16 @@ class RunEvidence:
             "repository_content": content_path,
             "starting_repository_content": "baseline/attempt-01-content.json",
         }
+        config = FactoryConfig.model_validate(self.read("config.json"))
+        if config.review_mode == "risk_based":
+            selection = select_review(
+                config.review_policy,
+                patch_contents,
+                snapshot["content_version"],
+                self.read("baseline/attempt-01-content.json")["files"],
+                snapshot["files"],
+            )
+            bundle["review_selection"] = selection.model_dump(mode="json")
         await self.require_current(snapshot)
         self.artifacts.write_json(bundle_path, bundle)
         self.artifacts.write_json("changes.json", bundle)
@@ -348,13 +362,29 @@ class RunEvidence:
         self, bundle: dict[str, Any], attempt: int
     ) -> dict[Reviewer, FocusedReviewEnvelope]:
         reviews: dict[Reviewer, FocusedReviewEnvelope] = {}
-        for role in ("request", "code", "security"):
+        for role in self.required_reviewers(bundle):
             review = FocusedReviewEnvelope.model_validate_json(
                 self.artifacts.read_text(f"review/{role}-{attempt:02d}.json")
             )
             self.validate_focused_review(review, role, bundle)
             reviews[review.reviewer] = review
         return reviews
+
+    def required_reviewers(self, bundle: dict[str, Any]) -> list[Reviewer]:
+        config = FactoryConfig.model_validate(self.read("config.json"))
+        if config.review_mode != "risk_based":
+            return ["request", "code", "security"]
+        selection = ReviewSelection.model_validate(bundle["review_selection"])
+        expected = select_review(
+            config.review_policy,
+            {path: self.artifacts.read_text(ref) for path, ref in bundle["patches"].items()},
+            bundle["content_version"],
+            self.read(bundle["starting_repository_content"])["files"],
+            self.read(bundle["repository_content"])["files"],
+        )
+        if selection != expected:
+            raise ValueError("saved review selection differs from the required policy")
+        return selection.required_reviewers
 
     def validate_focused_review(
         self, review: FocusedReviewEnvelope, role: str, bundle: dict[str, Any]

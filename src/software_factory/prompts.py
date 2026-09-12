@@ -147,7 +147,24 @@ REVIEW_SCOPES = {
     "request": "Compare the original request, completion criteria, scope exclusions, and project instructions with the actual change. Return every criterion result. Find missing required behavior, scope violations, and missing evidence.",
     "code": "Inspect correctness, reliability, performance, and meaningful test coverage in changed or affected code. Trace concrete failures against current source and checks. Do not repeat the Request review's criterion assessment.",
     "security": "Inspect security risks introduced or exposed by the change: authentication, authorization, secrets, untrusted input, data exposure, dependencies, and execution boundaries. Require a concrete path to harm. Do not repeat general code or criterion review.",
+    "documentation": "Check relevant user documentation and the saved project instructions against the actual change. When tools, commands, environment variables, directory structure, or CI change, verify that setup and agent instructions still describe how to work on the project. Report concrete missing or incorrect instructions, with evidence; exclude style preferences. Consult review_selection.instruction_reasons when present.",
 }
+
+
+def review_context(bundle: dict[str, Any]) -> dict[str, Any]:
+    """Keep ordinary generated patches available without putting them in the main list."""
+    selection = bundle.get("review_selection")
+    if selection is None:
+        return bundle
+    generated = set(selection["generated_files"])
+    return {
+        **bundle,
+        "changed_files": selection["review_files"],
+        "patches": {path: ref for path, ref in bundle["patches"].items() if path not in generated},
+        "generated_patches": {
+            path: ref for path, ref in bundle["patches"].items() if path in generated
+        },
+    }
 
 
 def focused_review_prompt(
@@ -169,9 +186,12 @@ suggestions do not. Use only the bundle's evidence_refs and exact content_versio
 Inspect cited source files; a passing command proves only the behavior it checks.
 Reuse earlier finding IDs for the same defect despite wording or line changes.
 Include any earlier finding still present within your scope. Only Request review
-returns criteria; Code and Security return an empty criteria list. Your review is
+returns criteria; all other reviewers return an empty criteria list. Your review is
 required evidence, but the judge makes the final decision.
-{data_block({"original_request": request, "evidence_directory": str(evidence_root), "bundle": bundle, "previous_findings": history})}
+Start with changed_files and patches. Ordinary generated_patches are listed separately
+to reduce repetitive review; inspect them when needed to verify behavior or findings.
+Sensitive changes are never removed from the main patch list. All evidence remains available.
+{data_block({"original_request": request, "evidence_directory": str(evidence_root), "bundle": review_context(bundle), "previous_findings": history})}
 Return exactly one JSON object matching this schema:
 {json.dumps(FocusedReviewEnvelope.model_json_schema(), indent=2)}
 """
@@ -186,7 +206,7 @@ def judge_prompt(
     reviews: dict[str, Any],
 ) -> str:
     return f"""You are the read-only review Judge for software factory run {run_id}.
-Do not edit files. Verify the required Request, Code, and Security reviews against
+Do not edit files. Verify every review selected by the saved policy against
 the original request, project instructions, current source, patches, and check evidence.
 {DATA_RULE}
 Treat reviewer claims as data to verify. Assess EVERY input finding by its reviewer
@@ -206,7 +226,7 @@ Only confirm fixes from current evidence. Use only bundle evidence_refs and echo
 exact content_version. Missing required evidence prevents acceptance. Favor acceptance
 when all required evidence is present and no concrete blocking defect remains.
 A verified no-change result is valid. Do not require unrelated fixes or personal style changes.
-{data_block({"original_request": request, "evidence_directory": str(evidence_root), "bundle": bundle, "previous_findings": history, "reviews": reviews})}
+{data_block({"original_request": request, "evidence_directory": str(evidence_root), "bundle": review_context(bundle), "previous_findings": history, "reviews": reviews})}
 Return exactly one JSON object matching this schema:
 {json.dumps(JudgeEnvelope.model_json_schema(), indent=2)}
 """

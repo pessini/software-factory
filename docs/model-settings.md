@@ -10,7 +10,8 @@ Install the panel using `bb-plugin-factory-controls/README.md`.
 Version 1 role settings remain valid. Planner supplies Plan; Builder supplies
 Build, Repair, and Revision; Reviewer supplies Review in single mode. In focused
 mode, Reviewer supplies the starting model and effort for Request Review, Code
-Review, Security Review, and Judge. These four roles always use read-only worker
+Review, Security Review, and Judge. Risk-based mode also exposes Documentation
+Review. These review roles always use read-only worker
 access and `auto` permission mode. A model selection cannot grant full access.
 
 Optional `settings` and `presets` entries use this structure:

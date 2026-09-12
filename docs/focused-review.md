@@ -79,5 +79,7 @@ every active step. The report is rendered from that saved state.
 The Phase 2 tests use the public workflow interface with a scripted provider.
 They cover partial failure, unsupported and repeated findings, invalid output,
 file protection, stale or missing evidence, model settings, restart, and
-cancellation. Risk thresholds, optional reviewers, concurrent review, and
-review-quality tuning remain Phase 3 work. PR delivery remains issue #7.
+cancellation. [Phase 3](risk-review.md) adds opt-in risk thresholds, a relevant
+Documentation Reviewer, and saved review-quality results. Fixed focused mode
+keeps all three reviewers. Concurrent execution remains outside the current
+workflow. PR delivery remains issue #7.

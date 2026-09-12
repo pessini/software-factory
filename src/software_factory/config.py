@@ -19,7 +19,7 @@ class AgentConfig(ConfigModel):
     permission_mode: Literal["accept-edits", "auto", "full"] = "auto"
 
 
-ReviewMode = Literal["single", "focused"]
+ReviewMode = Literal["single", "focused", "risk_based"]
 Step = Literal[
     "plan",
     "build",
@@ -29,6 +29,7 @@ Step = Literal[
     "request_review",
     "code_review",
     "security_review",
+    "documentation_review",
     "judge",
 ]
 STEP_ROLES: dict[Step, str] = {
@@ -40,6 +41,7 @@ STEP_ROLES: dict[Step, str] = {
     "request_review": "request_reviewer",
     "code_review": "code_reviewer",
     "security_review": "security_reviewer",
+    "documentation_review": "documentation_reviewer",
     "judge": "judge",
 }
 
@@ -49,8 +51,8 @@ def review_steps(mode: ReviewMode) -> dict[Step, str]:
         step: role
         for step, role in STEP_ROLES.items()
         if (
-            step != "review"
-            if mode == "focused"
+            (step != "review" and (mode == "risk_based" or step != "documentation_review"))
+            if mode != "single"
             else step in {"plan", "build", "repair", "review", "revision"}
         )
     }
@@ -93,7 +95,13 @@ class AgentsConfig(ConfigModel):
     reviewer: AgentConfig
 
     def for_role(self, role: str) -> AgentConfig:
-        if role in {"request_reviewer", "code_reviewer", "security_reviewer", "judge"}:
+        if role in {
+            "request_reviewer",
+            "code_reviewer",
+            "security_reviewer",
+            "documentation_reviewer",
+            "judge",
+        }:
             return self.reviewer.model_copy(update={"permission_mode": "auto"})
         return {"planner": self.planner, "builder": self.builder, "reviewer": self.reviewer}[role]
 
@@ -186,11 +194,44 @@ class SafetyConfig(ConfigModel):
         return value
 
 
+class ReviewPolicy(ConfigModel):
+    trivial_max_lines: int = Field(default=10, ge=0)
+    normal_max_lines: int = Field(default=100, ge=1)
+    normal_max_files: int = Field(default=20, ge=1)
+    sensitive_paths: list[str] = Field(default_factory=list)
+    documentation_paths: list[str] = Field(
+        default_factory=lambda: ["*.md", "*.rst", "*.txt", "*.adoc", "LICENSE*"]
+    )
+    generated_paths: list[str] = Field(default_factory=lambda: ["*.map", "*.snap", "*.generated.*"])
+
+    @field_validator("sensitive_paths", "documentation_paths", "generated_paths")
+    @classmethod
+    def relative_patterns(cls, value: list[str]) -> list[str]:
+        for pattern in value:
+            if (
+                not pattern.strip()
+                or pattern != pattern.strip()
+                or "\\" in pattern
+                or "\x00" in pattern
+                or PurePosixPath(pattern).is_absolute()
+                or ".." in PurePosixPath(pattern).parts
+            ):
+                raise ValueError("review patterns must be repository-relative globs")
+        return value
+
+    @model_validator(mode="after")
+    def ordered_thresholds(self) -> ReviewPolicy:
+        if self.trivial_max_lines > self.normal_max_lines:
+            raise ValueError("trivial_max_lines cannot exceed normal_max_lines")
+        return self
+
+
 class FactoryConfig(ConfigModel):
     version: Literal[1]
     workflow: Literal["simple-sdlc"]
     # Omitted in Phase 1 configurations, including saved active runs.
     review_mode: ReviewMode = "single"
+    review_policy: ReviewPolicy = Field(default_factory=ReviewPolicy)
     agents: AgentsConfig
     quality: QualityConfig
     settings: Selection = Field(default_factory=Selection)
@@ -220,6 +261,8 @@ def default_config() -> str:
     return """version: 1
 workflow: simple-sdlc
 review_mode: focused
+# To select reviewers by size and sensitive paths, use review_mode: risk_based.
+# See docs/risk-review.md for threshold boundaries and project-specific patterns.
 
 agents:
   planner:

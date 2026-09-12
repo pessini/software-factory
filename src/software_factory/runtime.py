@@ -30,6 +30,7 @@ from software_factory.processes import (
     stop_group,
 )
 from software_factory.reporting import execution_summary, final_report, run_summary
+from software_factory.review_quality import review_quality
 from software_factory.state import FINAL_STATUSES, FactoryState
 from software_factory.worktree_policy import WorktreePolicy, WorktreePolicyError
 
@@ -608,7 +609,7 @@ class FactoryRuntime:
         if not state.get("test_passed") or not state.get("review_approved"):
             raise ValueError("handoff requires successful checks and Reviewer approval")
         bundle = await self.evidence.review_bundle(state["test_attempt_count"])
-        review_model = JudgeEnvelope if self.config.review_mode == "focused" else ReviewEnvelope
+        review_model = JudgeEnvelope if self.config.review_mode != "single" else ReviewEnvelope
         review = review_model.model_validate_json(
             self.artifacts.read_text(f"review/attempt-{state['review_attempt_count']:02d}.json")
         )
@@ -706,6 +707,14 @@ class FactoryRuntime:
                     for step, choice in self.config.resolved_settings.effective.items()
                 },
             )
+        if self.config.review_mode == "risk_based":
+            try:
+                result["review_quality"] = review_quality(
+                    self.artifacts, result.get("execution_summary", {})
+                )
+            except (ArtifactIntegrityError, ValueError, KeyError) as exc:
+                # Corrupt evidence must not prevent cancellation or failure reporting.
+                result["review_quality"] = {"version": 1, "unavailable": str(exc)}
         return result
 
     async def report(self, state: FactoryState) -> FactoryState:

@@ -330,7 +330,7 @@ class WorkflowNodes:
         try:
             bundle = await runtime.evidence.review_bundle(state["test_attempt_count"])
             envelope: ReviewEnvelope
-            if runtime.config.review_mode == "focused":
+            if runtime.config.review_mode != "single":
                 thread_id, envelope = await run_focused_review(
                     runtime, state["request"], bundle, attempt
                 )
@@ -409,7 +409,7 @@ class WorkflowNodes:
         )
         try:
             review_model = (
-                JudgeEnvelope if runtime.config.review_mode == "focused" else ReviewEnvelope
+                JudgeEnvelope if runtime.config.review_mode != "single" else ReviewEnvelope
             )
             review = review_model.model_validate_json(
                 runtime.artifacts.read_text(

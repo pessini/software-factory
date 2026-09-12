@@ -36,6 +36,7 @@ def run_summary(state: FactoryState, status: str) -> dict[str, Any]:
         "content_version": state.get("content_version"),
         "handoff": state.get("handoff"),
         "execution_summary": state.get("execution_summary"),
+        "review_quality": state.get("review_quality"),
     }
 
 
@@ -98,6 +99,30 @@ def final_report(state: FactoryState, outcome: str) -> str:
             "\n\n## Reported manual work\n\n"
             + ("\n".join(f"- {item}" for item in handoff["manual_work"]) or "None reported.")
             + "\n"
+        )
+    quality = state.get("review_quality")
+    if quality:
+        details += "\n## Review selection and quality\n\n"
+        if quality.get("unavailable"):
+            details += f"Unavailable: {quality['unavailable']}\n"
+        for round_result in quality.get("rounds", []):
+            selection = round_result["selection"]
+            details += (
+                f"- Round {round_result['attempt']}: {selection['level']}; "
+                f"{selection['changed_lines']} measured lines in {selection['measured_file_count']} files "
+                f"({selection['changed_file_count']} changed files total). "
+                f"Required: {', '.join(selection['required_reviewers'])}, judge. "
+                f"{'Complete' if round_result['complete'] else 'Incomplete'}.\n"
+                f"  Reasons: {'; '.join(selection['reasons'])}.\n"
+                f"  Reported findings: {len(round_result['findings'])}; retained blockers: "
+                f"{len(round_result['retained_blocking_findings'])}; fixed findings: "
+                f"{len(round_result['resolved_findings'])}.\n"
+            )
+            if selection["generated_files"]:
+                details += f"  Ordinary generated files: {', '.join(selection['generated_files'])}; full evidence saved.\n"
+        details += (
+            "\nUser feedback is stored separately. Inspect current feedback with "
+            f"`software-factory review-quality {state['run_id']}`. Model fallback is disabled.\n"
         )
     if state.get("execution_summary"):
         details += (

@@ -95,8 +95,9 @@ async def test_project_preset_shared_and_step_choices_have_defined_priority(
     assert resolved.effective["plan"].model == "model-a"
 
 
+@pytest.mark.parametrize("mode", ["focused", "risk_based"])
 async def test_focused_review_settings_use_shared_resolution_and_read_only_permissions(
-    factory_yaml, tmp_path
+    factory_yaml, tmp_path, mode
 ):
     import yaml
 
@@ -105,7 +106,7 @@ async def test_focused_review_settings_use_shared_resolution_and_read_only_permi
     from tests.conftest import FakeBB
 
     raw = yaml.safe_load(factory_yaml)
-    raw["review_mode"] = "focused"
+    raw["review_mode"] = mode
     raw["agents"]["reviewer"]["permission_mode"] = "accept-edits"
     config = FactoryConfig.model_validate(raw)
     selected = Selection(
@@ -113,12 +114,13 @@ async def test_focused_review_settings_use_shared_resolution_and_read_only_permi
         steps={
             "security_review": ModelChoice(model="model-a", reasoning_level="high"),
             "judge": ModelChoice(model="model-a", reasoning_level="high"),
+            "documentation_review": ModelChoice(model="model-a", reasoning_level="high"),
         },
     )
     catalog = await FakeBB(tmp_path, {}).model_catalog()
     resolved = SessionSettings.resolve(config, selected, catalog)
     restored = SettingsSnapshot.model_validate_json(resolved.model_dump_json())
-    assert set(restored.effective) == {
+    expected = {
         "plan",
         "build",
         "repair",
@@ -128,7 +130,11 @@ async def test_focused_review_settings_use_shared_resolution_and_read_only_permi
         "security_review",
         "judge",
     }
-    for step in ("request_review", "code_review", "security_review", "judge"):
+    if mode == "risk_based":
+        expected.add("documentation_review")
+        assert restored.effective["documentation_review"].model == "model-a"
+    assert set(restored.effective) == expected
+    for step in expected - {"plan", "build", "repair", "revision"}:
         assert restored.effective[step].permission_mode == "auto"
     assert restored.effective["request_review"].model == "model-b"
     assert restored.effective["code_review"].reasoning_level == "low"
@@ -138,3 +144,27 @@ async def test_focused_review_settings_use_shared_resolution_and_read_only_permi
     assert {control.id for control in controls} == {"preset", "shared", *restored.effective}
     assert FactoryConfig.model_validate(yaml.safe_load(default_config())).review_mode == "focused"
     assert FactoryConfig.model_validate(yaml.safe_load(factory_yaml)).review_mode == "single"
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"trivial_max_lines": 101},
+        {"normal_max_lines": 0},
+        {"normal_max_files": 0},
+        {"sensitive_paths": ["../outside"]},
+        {"generated_paths": ["/absolute"]},
+        {"documentation_paths": [""]},
+        {"fallback_model": "another-model"},
+    ],
+)
+def test_invalid_review_policy_cannot_enable_routing(tmp_path, factory_yaml, policy):
+    import yaml
+
+    config_path = tmp_path / ".factory" / "factory.yaml"
+    config_path.parent.mkdir()
+    raw = yaml.safe_load(factory_yaml)
+    raw.update(review_mode="risk_based", review_policy=policy)
+    config_path.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValidationError):
+        load_config(tmp_path)

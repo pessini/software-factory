@@ -20,6 +20,7 @@ from software_factory.graph import build_graph
 from software_factory.ownership import OwnershipBusy, OwnershipError, RunOwnership
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain
+from software_factory.review_quality import ReviewFeedback, with_feedback
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
 from software_factory.session_settings import SessionSettings
 from software_factory.state import FINAL_STATUSES, FactoryState
@@ -140,10 +141,15 @@ class FactoryEngine:
 
     async def inspect(self, run_id: str) -> FactoryState:
         record = await self._record(run_id)
+        saved = json.loads(record["result_json"] or "{}")
+        if "review_quality" in saved:
+            saved["review_quality"] = with_feedback(
+                saved["review_quality"], await self.store.review_feedback(run_id)
+            )
         return cast(
             FactoryState,
             {
-                **json.loads(record["result_json"] or "{}"),
+                **saved,
                 "run_id": run_id,
                 "status": record["status"],
                 "error": record["error"],
@@ -157,6 +163,37 @@ class FactoryEngine:
                 ],
             },
         )
+
+    async def review_quality(self, run_id: str) -> dict[str, Any]:
+        state = await self.inspect(run_id)
+        if "review_quality" not in state:
+            raise ValueError("this run has no saved risk-based review quality results")
+        return state["review_quality"]
+
+    async def record_review_feedback(self, run_id: str, feedback: ReviewFeedback) -> dict[str, Any]:
+        record = await self._record(run_id)
+        if record["status"] not in FINAL_STATUSES:
+            raise ValueError("record review feedback after the run has finished")
+        # Load protected evidence, not a user-supplied finding or file path.
+        artifacts = ArtifactStore(
+            self.workspace,
+            run_id,
+            storage_root=self.context.thread_storage / "factory" / "artifacts",
+            create=False,
+        )
+        from software_factory.contracts.models import FocusedReviewEnvelope
+
+        relative = f"review/{feedback.reviewer}-{feedback.attempt:02d}.json"
+        if not artifacts.path(relative).exists():
+            raise ValueError("feedback refers to an unknown review round or reviewer")
+        review = FocusedReviewEnvelope.model_validate_json(artifacts.read_text(relative))
+        if feedback.finding_id not in {item.id for item in review.findings}:
+            raise ValueError("feedback refers to an unknown reviewer finding")
+        await self.review_quality(run_id)
+        await self.store.add_review_feedback(
+            run_id, {**feedback.model_dump(mode="json"), "content_version": review.content_version}
+        )
+        return await self.review_quality(run_id)
 
     async def answer(
         self, run_id: str, interaction_id: str, answers: dict[str, str]

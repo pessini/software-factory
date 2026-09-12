@@ -62,7 +62,14 @@ class Finding(Contract):
     id: Identifier
     criterion_id: Identifier | None = None
     category: Literal[
-        "correctness", "security", "reliability", "performance", "testing", "scope", "evidence"
+        "correctness",
+        "security",
+        "reliability",
+        "performance",
+        "testing",
+        "scope",
+        "evidence",
+        "documentation",
     ]
     severity: Literal["critical", "warning", "suggestion"]
     title: Text
@@ -135,7 +142,7 @@ class ReviewEnvelope(Contract):
         return self
 
 
-Reviewer = Literal["request", "code", "security"]
+Reviewer = Literal["request", "code", "security", "documentation"]
 
 
 class FocusedReviewEnvelope(Contract):

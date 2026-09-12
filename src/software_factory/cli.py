@@ -17,6 +17,7 @@ from software_factory.doctor import run_doctor
 from software_factory.engine import FactoryEngine, checkpoint_path
 from software_factory.graph import MERMAID
 from software_factory.persistence import RunStore
+from software_factory.review_quality import ReviewFeedback
 
 app = typer.Typer(no_args_is_help=True, help="Deterministic BB + LangGraph software factory")
 console = Console()
@@ -163,6 +164,40 @@ def answer_command(
     console.print_json(json.dumps(result))
     if result.get("status") != "ready_for_review":
         raise typer.Exit(1)
+
+
+@app.command("review-quality")
+def review_quality_command(
+    run_id: str,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Show saved review results and user feedback for threshold tuning."""
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    console.print_json(json.dumps(asyncio.run(engine.review_quality(run_id))))
+
+
+@app.command("review-feedback")
+def review_feedback_command(
+    run_id: str,
+    attempt: int,
+    reviewer: str,
+    finding_id: str,
+    verdict: str,
+    reason: str,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Record false_positive or useful feedback without changing review decisions."""
+    feedback = ReviewFeedback.model_validate(
+        {
+            "attempt": attempt,
+            "reviewer": reviewer,
+            "finding_id": finding_id,
+            "verdict": verdict,
+            "reason": reason,
+        }
+    )
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    console.print_json(json.dumps(asyncio.run(engine.record_review_feedback(run_id, feedback))))
 
 
 @app.command("retry")
