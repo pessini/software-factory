@@ -72,10 +72,25 @@ REVIEW_CASES = {
     },
 }
 
+# The same known defect compares fixed focused review with normal risk selection
+# and supplies real findings for inspection through the risk feedback interface.
+REVIEW_CASES["risk_revision"] = {
+    **REVIEW_CASES["focused_revision"],
+    "mode": "risk_based",
+    "level": "normal",
+    "reviewers": ["request", "code"],
+}
+
 
 def review_measurements(state, artifacts):
     if "review_quality" in state:
-        return state["review_quality"]
+        # inspect() adds separately stored feedback; keep the measured review
+        # records comparable with the original run result.
+        return {
+            key: value
+            for key, value in state["review_quality"].items()
+            if key not in {"feedback", "feedback_counts"}
+        }
     # Fixed focused mode saves the same review files but no risk selection/report.
     rounds = []
     for path in sorted(artifacts.root.glob("review/judge-*.json")):

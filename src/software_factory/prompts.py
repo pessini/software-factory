@@ -24,6 +24,15 @@ Preserve ignored files. Do not create bytecode or cache files in the workspace,
 including through compileall. The controller also checks ignored paths after each turn.
 """
 
+BUILD_CHECK_RULE = """The controller runs required checks and review after your handoff.
+Your isolated worker may not have the host's test dependencies. If implementation
+edits are complete but a check cannot run in the worker, return status completed
+and record the unavailable check in manual_work, without claiming it passed.
+That worker limit alone is not a blocker. The controller must still run and pass
+the required checks before acceptance. Do not change protected environments or
+quality commands to bypass the limit. Report separate implementation blockers normally.
+"""
+
 
 def planner_prompt(
     run_id: str,
@@ -59,9 +68,8 @@ baseline.json beside the plan. You may edit application and test files.
 {DATA_RULE}
 Only the reviewed check commands run in the controller. Do not repair unrelated
 baseline failures. If the request is already satisfied, report no changes and explain why.
-The controller runs checks and Reviewer after your handoff. Do not wait for approval.
-If your isolated environment cannot run a check, report that limit and hand off
-for controller verification. Do not edit factory policy, .bb, CI/deployment controls,
+{BUILD_CHECK_RULE}
+Do not wait for approval. Do not edit factory policy, .bb, CI/deployment controls,
 project instruction sources, or protected paths. Do not commit or push.
 Return exactly one JSON object. changed_files must list every changed repository
 file and no unchanged files. List any remaining manual work.
@@ -85,6 +93,7 @@ Use only the supplied failure logs to repair the implementation. Do not repair
 unrelated baseline failures or change commands to waive a failure.
 {DATA_RULE}
 Keep the original scope and criteria. You may be starting a new conversation.
+{BUILD_CHECK_RULE}
 Read project.json beside the plan. Do not alter factory policy, project instructions,
 quality commands, CI/deployment controls, or protected paths. Do not commit or push.
 {data_block({"original_request": request, "plan": str(plan_path), "changed_files": changed, "failure_logs": log_paths})}
@@ -143,6 +152,7 @@ def revision_prompt(
 Implement their required changes, retaining their stable IDs. Reviewer must verify fixes.
 {DATA_RULE}
 Keep the original scope and criteria. You may be starting a new conversation.
+{BUILD_CHECK_RULE}
 Read project.json beside the plan. Do not commit, push, or edit protected paths.
 {data_block({"original_request": request, "plan": str(plan_path), "changed_files": changed, "blocking_findings": [item.model_dump(mode="json") for item in findings]})}
 Return exactly one JSON object matching this schema:

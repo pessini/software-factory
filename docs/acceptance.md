@@ -120,8 +120,8 @@ FACTORY_LIVE_PROVIDER=1 uv run --frozen pytest tests/live/test_provider_workflow
   -k 'focused_revision or risk_' -s --basetemp=/absolute/path/to/new-disposable-cases
 ```
 
-These seven cases use real Planner, Builder, reviewer, and Judge responses. The
-focused case deliberately omits a required export on the first build, then
+These eight cases use real Planner, Builder, reviewer, and Judge responses. The
+focused and normal-risk revision cases omit a required export on the first build, then
 requires a retained finding, a revision, and saved resolution. Four documentation
 cases require exact changes of 10, 11, 100, and 101 lines. A normal code case and
 a small access-rule change check size selection and the sensitive-path override.
@@ -130,7 +130,10 @@ The test checks final behavior independently of the provider's own tests.
 Request, Code, Security, Documentation, and Judge steps use medium effort. The
 other settings and protection checks match Phase 1. Each record contains saved
 review-quality results, elapsed time, source identity, worker receipts, and the
-local evidence path. A new engine must read back identical quality results.
+local evidence path. A new engine must read back identical saved results. Fixed
+focused mode is measured from its review files; risk mode also checks the public
+review-quality command. Repair and revision hand off unavailable worker checks
+to the controller, which must run and pass them before acceptance.
 The four exact documentation sizes isolate the routing limits; they do not
 represent large application changes or prove review accuracy for ordinary work.
 The 20/21-file boundary remains covered by the controlled workflow tests.

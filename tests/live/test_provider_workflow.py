@@ -176,7 +176,7 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
         "fault_injection": "BB API boundary; provider responses are real"
         if scenario in {"restart_after_dispatch", "restart_after_result", "connection_loss"}
         else "deliberately incomplete first build"
-        if scenario in {"repair", "revision", "focused_revision"}
+        if scenario in {"repair", "revision", "focused_revision", "risk_revision"}
         else None,
     }
     workspace = tmp_path / "demo"
