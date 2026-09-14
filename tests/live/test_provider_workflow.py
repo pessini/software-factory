@@ -11,6 +11,7 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,6 +29,7 @@ from software_factory.evidence import RunEvidence
 from software_factory.processes import finish_process, start_process
 from software_factory.worker_container import WORKER_IMAGE, container_command
 from software_factory.worker_records import WorkerRecords
+from tests.live.review_cases import REVIEW_CASES, verify_review_case
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("FACTORY_LIVE_PROVIDER") != "1",
@@ -82,6 +84,7 @@ SCENARIOS = (
     "connection_loss",
     "question_restart",
     "cancel",
+    *REVIEW_CASES,
 )
 
 
@@ -157,11 +160,15 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
     output = Path(os.environ["FACTORY_ACCEPTANCE_OUTPUT"]).resolve()
     output.mkdir(parents=True, exist_ok=True)
     case_id = f"{scenario}-{uuid4().hex[:8]}"
+    review_case = REVIEW_CASES.get(scenario)
+    started_at = time.time()
     record = {
         **acceptance_source,
         "scenario": scenario,
         "result": "incomplete",
         "case_id": case_id,
+        "started_at": started_at,
+        "review_case": review_case,
         "platform": platform.platform(),
         "python": platform.python_version(),
         "worker_image": WORKER_IMAGE,
@@ -169,7 +176,7 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
         "fault_injection": "BB API boundary; provider responses are real"
         if scenario in {"restart_after_dispatch", "restart_after_result", "connection_loss"}
         else "deliberately incomplete first build"
-        if scenario in {"repair", "revision"}
+        if scenario in {"repair", "revision", "focused_revision"}
         else None,
     }
     workspace = tmp_path / "demo"
@@ -180,6 +187,9 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
     )
     with (seed / ".gitignore").open("a") as handle:
         handle.write("\n.env\n")
+    if review_case:
+        with (seed / ".factory/factory.yaml").open("a") as handle:
+            handle.write(f"\nreview_mode: {review_case['mode']}\n")
     git(seed, "init", "-q")
     git(seed, "add", ".")
     git(
@@ -211,7 +221,7 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
         "--permission-mode",
         "accept-edits",
         "--title",
-        f"Issue 6 {case_id}",
+        f"Issue {1 if review_case else 6} {case_id}",
         "--prompt",
         "/status",
     )
@@ -226,6 +236,16 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
             "repair": ModelChoice(reasoning_level="medium"),
             "review": ModelChoice(reasoning_level="medium"),
             "revision": ModelChoice(reasoning_level="high"),
+            **{
+                step: ModelChoice(reasoning_level="medium")
+                for step in (
+                    "request_review",
+                    "code_review",
+                    "security_review",
+                    "documentation_review",
+                    "judge",
+                )
+            },
         },
     )
     record["requested"] = selection.model_dump(mode="json")
@@ -271,7 +291,11 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
         await client.check_protection(context.thread_storage / "factory" / "artifacts")
         async with asyncio.timeout(1800):
             task = asyncio.create_task(
-                engine.run(REQUESTS.get(scenario, FEATURE), run_id, selection=selection)
+                engine.run(
+                    review_case["request"] if review_case else REQUESTS.get(scenario, FEATURE),
+                    run_id,
+                    selection=selection,
+                )
             )
             if scenario == "cancel":
                 await client.dispatched.wait()
@@ -328,6 +352,13 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
                 assert any(
                     item["status"] == "fixed" for item in state["handoff"]["findings"].values()
                 )
+            if review_case:
+                verify_review_case(workspace, state, review_case)
+                record["quality"] = await engine.review_quality(run_id)
+                assert record["quality"] == (
+                    await FactoryEngine(workspace=workspace, context=context).review_quality(run_id)
+                )
+                record["artifacts_root"] = str(artifacts.root)
             operations = await engine.store.operations(run_id)
             record["operations"] = operations
             assert all(item["dispatch_count"] == 1 for item in operations)
@@ -389,4 +420,6 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
         if task is not None and not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+        record["finished_at"] = time.time()
+        record["duration_seconds"] = record["finished_at"] - started_at
         (output / f"{case_id}.json").write_text(json.dumps(record, indent=2, default=str))
