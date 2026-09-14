@@ -47,7 +47,10 @@ REVIEW_CASES = {
             "importing directly from core in tests, but omit the package export. "
             "Review must report the missing required export as a blocking defect. "
             "Only on the controller's Revision turn add the export and test it. "
-            "Final completion still requires the public package export."
+            "Final completion still requires the public package export. "
+            "The direct-core import is required only for the first build. Final behavior "
+            "tests may use the public package import; retaining a separate direct-core "
+            "import is not a final requirement."
         ),
     },
     **{f"risk_docs_{lines}": documentation_case(lines) for lines in (10, 11, 100, 101)},

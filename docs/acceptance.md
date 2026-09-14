@@ -115,6 +115,10 @@ skips that stage makes the scenario fail; it is not counted as exercised.
 Use the same setup and a new output and temporary directory. Select only the
 later review cases with `-k 'focused_revision or risk_'`:
 
+Run one live group at a time. The tested BB setup keeps completed worker tasks
+open until their parent run ends. Simultaneous groups can occupy the available
+execution slots and leave both next workers queued.
+
 ```bash
 FACTORY_LIVE_PROVIDER=1 uv run --frozen pytest tests/live/test_provider_workflow.py \
   -k 'focused_revision or risk_' -s --basetemp=/absolute/path/to/new-disposable-cases
@@ -134,6 +138,9 @@ local evidence path. A new engine must read back identical saved results. Fixed
 focused mode is measured from its review files; risk mode also checks the public
 review-quality command. Repair and revision hand off unavailable worker checks
 to the controller, which must run and pass them before acceptance.
+Every Builder handoff lists all files still changed from the starting commit,
+including changes from earlier turns. The revision cases state explicitly that
+the initial direct-core test import does not constrain the final test import.
 The four exact documentation sizes isolate the routing limits; they do not
 represent large application changes or prove review accuracy for ordinary work.
 The 20/21-file boundary remains covered by the controlled workflow tests.
