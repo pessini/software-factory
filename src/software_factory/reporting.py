@@ -61,6 +61,11 @@ def final_report(state: FactoryState, outcome: str) -> str:
     )
     details = ""
     delivery = state.get("delivery")
+    publication_note = (
+        "No commit or push was performed.\n"
+        if not delivery or delivery["status"] in {"manual", "no_change"}
+        else ""
+    )
     if delivery:
         details += f"\n## PR delivery\n\nStatus: {delivery['status']}\n"
         if delivery.get("pr_url"):
@@ -159,8 +164,7 @@ Review: {"approved" if state.get("review_approved") else "not approved"} on atte
 {changed}
 {details}
 
-No commit or push was performed.
-Next action: {action}
+{publication_note}Next action: {action}
 """
 
 

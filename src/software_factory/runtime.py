@@ -685,7 +685,23 @@ class FactoryRuntime:
         result["interactions"] = [
             item.model_dump(mode="json") for item in await self.store.interactions(self.run_id)
         ]
-        for operation in await self.store.operations(self.run_id):
+        operations = await self.store.operations(self.run_id)
+        delivery = result.get("delivery", {})
+        if delivery.get("status") == "cancelled" and any(
+            operation["kind"] == "remote" and operation["state"] in {"dispatching", "dispatched"}
+            for operation in operations
+        ):
+            # Stopping a command cannot confirm whether its remote mutation completed.
+            # Apply this to both initial publication and review-fix reports, including resume.
+            result["delivery"] = {
+                **delivery,
+                "status": "recovery_needed",
+                "error": (
+                    f"{delivery.get('error') or 'PR delivery cancelled'}; "
+                    "a remote operation is still unconfirmed; inspect the saved operation and GitHub result"
+                ),
+            }
+        for operation in operations:
             if not operation["dispatch_count"]:
                 continue
             step = operation["step"]

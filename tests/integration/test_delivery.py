@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import sqlite3
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ from langgraph.errors import NodeCancelledError
 from software_factory.config import DeliveryPolicy, load_config
 from software_factory.engine import FactoryEngine
 from software_factory.git import git
+from software_factory.ownership import RunOwnership
+from software_factory.runtime import FactoryCancelled
 from tests.conftest import FakeBB, init_repository, run
 from tests.integration.test_factory_engine import (
     build_output,
@@ -69,6 +72,7 @@ async def test_manual_handoff_keeps_verified_files_without_publishing(
     assert result["delivery"]["status"] == "manual"
     assert await git(tmp_path, "rev-parse", "HEAD") == head
     assert (tmp_path / "answer.txt").read_text() == "good"
+    assert "No commit or push was performed." in Path(result["final_report_path"]).read_text()
 
 
 class ControlledGitHub:
@@ -80,10 +84,14 @@ class ControlledGitHub:
         self.threads: list[dict] = []
         self.summary_comments: list[dict] = []
         self.lose_response_at: str | None = None
+        self.cancel_response: Callable[[], Awaitable[object]] | None = None
 
-    def lose_response(self, operation: str) -> None:
+    async def lose_response(self, operation: str) -> None:
         if self.lose_response_at == operation:
             self.lose_response_at = None
+            if self.cancel_response is not None:
+                await self.cancel_response()
+                raise FactoryCancelled(f"cancelled while {operation} was in flight")
             raise ConnectionError(f"{operation} completed, response lost")
 
     async def branch_head(self, repository: str, branch: str) -> str | None:
@@ -92,7 +100,7 @@ class ControlledGitHub:
     async def push(self, repository: str, branch: str, commit: str, previous: str | None) -> None:
         assert self.branches.get(branch) == previous
         self.branches[branch] = commit
-        self.lose_response("push")
+        await self.lose_response("push")
 
     async def find_pull(self, repository: str, branch: str) -> dict | None:
         return next((p for p in self.pulls if p["branch"] == branch), None)
@@ -113,6 +121,7 @@ class ControlledGitHub:
                 "title": title,
             }
         )
+        await self.lose_response("pull")
 
     async def pull(self, repository: str, number: int) -> dict:
         p = self.pulls[number - 1]
@@ -131,18 +140,18 @@ class ControlledGitHub:
     async def reply(self, repository: str, number: int, thread: dict, body: str) -> None:
         target = next(item for item in self.threads if item["id"] == thread["id"])
         target["comments"].append({"id": "reply-1", "body": body})
-        self.lose_response("reply")
+        await self.lose_response("reply")
 
     async def resolve(self, thread_id: str) -> None:
         next(item for item in self.threads if item["id"] == thread_id)["resolved"] = True
-        self.lose_response("resolve")
+        await self.lose_response("resolve")
 
     async def comments(self, repository: str, number: int) -> list[dict]:
         return self.summary_comments
 
     async def comment(self, repository: str, number: int, body: str) -> None:
         self.summary_comments.append({"id": "summary-1", "body": body})
-        self.lose_response("summary")
+        await self.lose_response("summary")
 
 
 def pr_policy(**overrides) -> DeliveryPolicy:
@@ -175,6 +184,8 @@ async def test_authorized_delivery_commits_verified_content_and_reuses_regular_p
     assert await git(tmp_path, "status", "--porcelain") == b""
     assert github.pulls[0]["draft"] is False
     assert "Closes issue #7" in github.pulls[0]["body"]
+    assert "\nCloses #7\n" in github.pulls[0]["body"]
+    assert "No commit or push was performed." not in Path(result["final_report_path"]).read_text()
     assert github.pulls[0]["branch"].startswith("feat/7-")
     resumed = await engine.deliver("fct_delivery")
     assert resumed["delivery"]["commit"] == commit
@@ -237,11 +248,24 @@ async def test_ci_state_is_bound_to_delivered_commit(
     result = await engine.run("Write the correct answer", "fct_ci", configuration=config)
     assert result["delivery"]["status"] == delivery_status
     assert result["delivery"]["ci"]["commit"] == result["delivery"]["commit"]
+    assert "No commit or push was performed." not in Path(result["final_report_path"]).read_text()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "lost_operation", ["push", "reply", "resolve", "summary", "parent_save", "child_dispatch"]
+    "lost_operation",
+    [
+        "push",
+        "reply",
+        "resolve",
+        "summary",
+        "parent_save",
+        "child_dispatch",
+        "cancel_push",
+        "cancel_reply",
+        "cancel_resolve",
+        "cancel_summary",
+    ],
 )
 async def test_authorized_review_fixes_recover_without_repeating_replies(
     tmp_path: Path, factory_yaml: str, lost_operation: str
@@ -310,10 +334,22 @@ async def test_authorized_review_fixes_recover_without_repeating_replies(
         with sqlite3.connect(worker.store.path) as connection:
             connection.execute("DROP TRIGGER fail_parent_result")
     else:
-        github.lose_response_at = lost_operation
+        github.lose_response_at = lost_operation.removeprefix("cancel_")
+        if lost_operation.startswith("cancel_"):
+            github.cancel_response = lambda: worker.cancel_external("fct_fixes")
         interrupted = await worker.fix_reviews("fct_fixes", ["thread-1"])
         assert interrupted["delivery"]["status"] == "recovery_needed", interrupted
     restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb, github=github)
+    if lost_operation.startswith("cancel_"):
+        operations = await worker.store.operations("fct_fixes")
+        assert any(op["kind"] == "remote" and op["state"] == "dispatching" for op in operations)
+        claim = RunOwnership(tmp_path, "fct_fixes", worker.database_path).claim_path
+        assert claim.exists()
+        resumed = await restarted.resume("fct_fixes")
+        assert resumed["delivery"]["status"] == "recovery_needed"
+        assert await worker.store.operations("fct_fixes") == operations
+        assert claim.exists()
+        return
     github.check_state = "pending"
     result = await restarted.resume("fct_fixes")
     assert result["delivery"]["status"] == "ci_pending", result
@@ -354,6 +390,46 @@ async def test_cancel_after_push_prevents_pr_creation(tmp_path: Path, factory_ya
     assert result["delivery"]["status"] == "cancelled"
     assert github.pulls == []
     assert await engine.store.processes("fct_cancel_delivery") == []
+    assert not RunOwnership(
+        tmp_path, "fct_cancel_delivery", engine.database_path
+    ).claim_path.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["push", "pull"])
+async def test_cancel_during_remote_delivery_keeps_recovery_claim(
+    tmp_path: Path, factory_yaml: str, operation: str
+) -> None:
+    github = ControlledGitHub(tmp_path)
+    engine = delivery_engine(tmp_path, factory_yaml, github=github)
+    github.branches["main"] = (await git(tmp_path, "rev-parse", "HEAD")).decode().strip()
+    other = FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), bb=engine.bb, github=github
+    )
+    github.lose_response_at = operation
+    github.cancel_response = lambda: other.cancel_external("fct_cancel_inflight")
+    config = load_config(tmp_path)
+    config.delivery = pr_policy()
+    result = await engine.run(
+        "Write the correct answer", "fct_cancel_inflight", configuration=config
+    )
+    assert result["status"] == "ready_for_review"
+    assert result["delivery"]["status"] == "recovery_needed"
+    assert "No commit or push was performed." not in Path(result["final_report_path"]).read_text()
+    operations = await engine.store.operations("fct_cancel_inflight")
+    assert (
+        next(op for op in operations if op["step"] == f"delivery:{operation}")["state"]
+        == "dispatching"
+    )
+    claim = RunOwnership(tmp_path, "fct_cancel_inflight", engine.database_path).claim_path
+    assert claim.exists()
+    saved = await engine.inspect("fct_cancel_inflight")
+    assert saved["delivery"]["status"] == "recovery_needed"
+    resumed = await other.resume("fct_cancel_inflight")
+    assert resumed["delivery"]["status"] == "recovery_needed"
+    assert await engine.store.operations("fct_cancel_inflight") == operations
+    assert len(github.pulls) == (1 if operation == "pull" else 0)
+    assert claim.exists()
 
 
 @pytest.mark.asyncio
@@ -458,6 +534,7 @@ async def test_same_authorization_reuses_an_inferred_linked_issue(
     assert result["delivery"]["status"] == "delivered"
     assert len(github.pulls) == 1
     assert "Closes issue #7" in github.pulls[0]["body"]
+    assert "\nCloses #7\n" in github.pulls[0]["body"]
 
 
 @pytest.mark.asyncio

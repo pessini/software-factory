@@ -82,7 +82,7 @@ The run's implementation status remains separate from `delivery.status`:
 | `blocked` | Content, required evidence, or remote state does not match |
 | `recovery_needed` | A remote result could not be confirmed |
 | `fixes_incomplete` | The saved fix run needs input, recovery, or a correction |
-| `stopping` / `cancelled` | Publication cancellation requested / observed |
+| `stopping` / `cancelled` | Publication cancellation requested / observed with no uncertain remote operation |
 
 CI includes all returned check-run pages and the latest legacy status for each
 context. This reports GitHub's available checks; it does not impose a branch
@@ -91,6 +91,11 @@ commit. The CLI returns a nonzero status for failed, pending, unavailable, or
 incomplete delivery. The final report includes the PR, commit, CI identity, and
 any error. Cancellation stops later mutations and controlled commands; completed
 remote operations remain on GitHub. Use `resume` to inspect an interrupted stop.
+If cancellation interrupts a remote operation before its result is confirmed,
+both initial delivery and review-fix delivery remain at `recovery_needed`, and
+the workspace stays reserved. Inspect the saved operation and GitHub result.
+Resuming keeps the cancellation request in effect and does not repeat mutations
+or report a confirmed cancellation while the remote operation is uncertain.
 
 ## Selected review fixes
 

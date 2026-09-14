@@ -288,6 +288,8 @@ class Delivery:
             f"- {item['criterion_id']}: {item['status']} — {item['evidence']}"
             for item in handoff["criteria"]
         )
-        close = f"\n\nCloses issue #{policy.issue}" if policy.issue else ""
+        close = (
+            f"\n\nCloses issue #{policy.issue}.\n\nCloses #{policy.issue}" if policy.issue else ""
+        )
         manual = "\n".join(f"- {item}" for item in handoff["manual_work"]) or "None reported."
         return f"{policy.title}\n\n{handoff['change']}\n\n## Verification\n\nCommit: `{sha}`\nContent version: `{handoff['content_version']}`\n\n{checks}\n\n{criteria}\n\n## Remaining manual work\n\n{manual}{close}\n\n{marker}"
