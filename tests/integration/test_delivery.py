@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from langgraph.errors import NodeCancelledError
 from software_factory.config import DeliveryPolicy, load_config
 from software_factory.engine import FactoryEngine
 from software_factory.git import git
-from tests.conftest import FakeBB, init_repository
+from tests.conftest import FakeBB, init_repository, run
 from tests.integration.test_factory_engine import (
     build_output,
     context,
@@ -21,8 +22,27 @@ from tests.integration.test_factory_engine import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.useConfigOnly")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    for name in (
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+        "EMAIL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def delivery_engine(tmp_path: Path, factory_yaml: str, **kwargs) -> FactoryEngine:
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
+    run(["git", "config", "--local", "user.name", "Factory Tests"], tmp_path)
+    run(["git", "config", "--local", "user.email", "factory@example.invalid"], tmp_path)
     return FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
@@ -149,6 +169,9 @@ async def test_authorized_delivery_commits_verified_content_and_reuses_regular_p
     assert result["delivery"]["status"] == "delivered", result
     commit = result["delivery"]["commit"]
     assert await git(tmp_path, "show", f"{commit}:answer.txt") == b"good"
+    assert await git(tmp_path, "show", "-s", "--format=%an <%ae>", commit) == (
+        b"Factory Tests <factory@example.invalid>\n"
+    )
     assert await git(tmp_path, "status", "--porcelain") == b""
     assert github.pulls[0]["draft"] is False
     assert "Closes issue #7" in github.pulls[0]["body"]

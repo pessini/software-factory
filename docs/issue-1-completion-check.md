@@ -33,9 +33,14 @@ generated-file cases use controlled tests. Issue #7 explicitly permits a control
 GitHub adapter for its completion checks. Broader production measurements remain
 future evaluation, rather than an unfinished item in the initial tuning decision.
 
-The Phase 2/3 and #7 implementation checkboxes can now be checked against this
-evidence. The issues remain open until the delivery PR merges; the PR includes
-the closing references for both issues.
+The Phase 2/3 and #7 implementation checkboxes are checked against this
+evidence. The issues remain open until [PR #8](https://github.com/pessini/software-factory/pull/8)
+merges; that PR includes the closing references for both issues.
+
+The initial Linux hosted run exposed missing Git author settings in the delivery
+test setup. Temporary delivery repositories now set their own author identity,
+and the tests disable host identity defaults. The final hosted check results are
+reported in PR #8, separately from the historical local measurements above.
 
 Sources: [issue #1](https://github.com/pessini/software-factory/issues/1),
 [issue #7](https://github.com/pessini/software-factory/issues/7), the commits above,
