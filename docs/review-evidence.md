@@ -9,7 +9,9 @@ This page describes the common evidence rules and the retained single-reviewer m
 
 `ready_for_review` means that the saved request, plan, project rules, required
 checks, review, and current files agree. It does not record human approval.
-The workflow does not commit, push, open a pull request, merge, or deploy.
+The default local workflow stops at that handoff. A separately authorized
+[delivery policy](pr-delivery.md) can commit, push, and open a regular PR.
+Merge and deployment remain outside the workflow.
 
 Each observable completion criterion has a stable ID. The Reviewer returns one
 result per criterion: `satisfied`, `unmet`, or `not_verified`. A satisfied result

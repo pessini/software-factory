@@ -82,4 +82,6 @@ file protection, stale or missing evidence, model settings, restart, and
 cancellation. [Phase 3](risk-review.md) adds opt-in risk thresholds, a relevant
 Documentation Reviewer, and saved review-quality results. Fixed focused mode
 keeps all three reviewers. Concurrent execution remains outside the current
-workflow. PR delivery remains issue #7.
+workflow. [PR delivery](pr-delivery.md) implements issue #7. The
+[live measurement study](review-measurements.md) records the completed staged
+revision case, observed review limits, and the initial risk-threshold decision.

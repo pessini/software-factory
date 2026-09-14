@@ -13,7 +13,10 @@ providers and remote BB environments are not currently supported.
 See [run ownership and recovery](docs/run-recovery.md) for cancellation and restart
 rules, [live acceptance evidence](docs/live-worker-acceptance.json) for the
 verified run, and the [issue completion check](docs/issue-1-completion-check.md)
-for implemented phases and remaining acceptance work.
+for implementation and verification status.
+The [focused/risk measurement study](docs/review-measurements.md) records eight
+passing real-provider cases, earlier failed attempts, and the decision to retain
+the starting 10/100/20 limits with risk selection still opt-in.
 
 The [evidence workflow](docs/review-evidence.md) records baseline
 checks, structured criterion results and findings, and the exact tested file

@@ -99,6 +99,8 @@ standards and specification reviews passed after correcting sensitive hunk
 context detection and interrupted-round reporting. Both corrections have
 regression tests that failed before the fixes and passed afterward.
 
-The workflow tests use a scripted provider. Live-provider review quality and
-threshold tuning remain experiments to measure with the saved results; this
-check does not establish live-provider acceptance of the new review policy.
+The 12 September workflow tests use a scripted provider and do not establish
+live-provider review quality. The subsequent [14 September study](review-measurements.md)
+records eight passing real-provider cases, earlier failed attempts, and an explicit
+decision to retain the starting 10/100/20 limits. Risk mode remains opt-in; the
+small study does not establish optimal thresholds or general review accuracy.
