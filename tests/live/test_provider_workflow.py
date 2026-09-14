@@ -29,7 +29,7 @@ from software_factory.evidence import RunEvidence
 from software_factory.processes import finish_process, start_process
 from software_factory.worker_container import WORKER_IMAGE, container_command
 from software_factory.worker_records import WorkerRecords
-from tests.live.review_cases import REVIEW_CASES, verify_review_case
+from tests.live.review_cases import REVIEW_CASES, review_measurements, verify_review_case
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("FACTORY_LIVE_PROVIDER") != "1",
@@ -353,11 +353,16 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
                     item["status"] == "fixed" for item in state["handoff"]["findings"].values()
                 )
             if review_case:
-                verify_review_case(workspace, state, review_case)
-                record["quality"] = await engine.review_quality(run_id)
-                assert record["quality"] == (
-                    await FactoryEngine(workspace=workspace, context=context).review_quality(run_id)
+                record["quality"] = review_measurements(state, artifacts)
+                verify_review_case(workspace, state, review_case, record["quality"])
+                reloaded = FactoryEngine(workspace=workspace, context=context)
+                assert record["quality"] == review_measurements(
+                    await reloaded.inspect(run_id), artifacts
                 )
+                if review_case["mode"] == "risk_based":
+                    assert (await engine.review_quality(run_id)) == (
+                        await reloaded.review_quality(run_id)
+                    )
                 record["artifacts_root"] = str(artifacts.root)
             operations = await engine.store.operations(run_id)
             record["operations"] = operations

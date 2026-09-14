@@ -1,5 +1,6 @@
 """Live review experiments with independent expected results, not scripted replies."""
 
+import json
 import subprocess
 
 FEATURE = (
@@ -72,16 +73,66 @@ REVIEW_CASES = {
 }
 
 
-def verify_review_case(workspace, state, case):
-    rounds = state["review_quality"]["rounds"]
+def review_measurements(state, artifacts):
+    if "review_quality" in state:
+        return state["review_quality"]
+    # Fixed focused mode saves the same review files but no risk selection/report.
+    rounds = []
+    for path in sorted(artifacts.root.glob("review/judge-*.json")):
+        attempt = int(path.stem.removeprefix("judge-"))
+
+        def read(name, attempt=attempt):
+            return json.loads(artifacts.read_text(f"review/{name}-{attempt:02d}.json"))
+
+        reviews = {role: read(role) for role in ("request", "code", "security")}
+        judge, decision, history = read("judge"), read("attempt"), read("findings")
+        rounds.append(
+            {
+                "attempt": attempt,
+                "content_version": judge["content_version"],
+                "complete": judge == decision
+                and all(r["content_version"] == judge["content_version"] for r in reviews.values()),
+                "selection": {"required_reviewers": list(reviews)},
+                "missing_reviewers": [],
+                "findings": [
+                    {"reviewer": role, "finding": finding}
+                    for role, review in reviews.items()
+                    for finding in review["findings"]
+                ],
+                "retained_blocking_findings": [
+                    f for f in judge["findings"] if f["severity"] in {"critical", "warning"}
+                ],
+                "assessments": judge["assessments"],
+                "resolved_findings": [
+                    {"finding_id": key, **item}
+                    for key, item in history.items()
+                    if item["status"] == "fixed"
+                ],
+            }
+        )
+    return {
+        "version": 1,
+        "rounds": rounds,
+        "execution": {
+            step: value
+            for step, value in state["execution_summary"]["steps"].items()
+            if step.endswith("_review") or step == "judge"
+        },
+        "source": "focused review artifacts; no risk policy selected",
+    }
+
+
+def verify_review_case(workspace, state, case, quality):
+    rounds = quality["rounds"]
     assert rounds and all(item["complete"] for item in rounds)
     for item in rounds:
         selection = item["selection"]
         assert set(selection["required_reviewers"]) == set(case["reviewers"])
         assert not item["missing_reviewers"]
-        assert selection["policy"]["trivial_max_lines"] == 10
-        assert selection["policy"]["normal_max_lines"] == 100
-        assert selection["policy"]["normal_max_files"] == 20
+        if case["mode"] == "risk_based":
+            assert selection["policy"]["trivial_max_lines"] == 10
+            assert selection["policy"]["normal_max_lines"] == 100
+            assert selection["policy"]["normal_max_files"] == 20
         if "level" in case:
             assert selection["level"] == case["level"]
         if "lines" in case:
