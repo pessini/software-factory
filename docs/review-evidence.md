@@ -1,14 +1,17 @@
 # Single-reviewer evidence
 
 Issue #1, Phase 1 completes the Planner → Builder → checks → Reviewer workflow.
-The real-provider acceptance run belongs to issue #6. Additional reviewers belong
-to later phases of issue #1.
+The real-provider acceptance run passed in issue #6. Phase 2 adds the
+[focused reviewers and judge](focused-review.md) using the same evidence rules.
+This page describes the common evidence rules and the retained single-reviewer mode.
 
 ## Completion policy
 
 `ready_for_review` means that the saved request, plan, project rules, required
 checks, review, and current files agree. It does not record human approval.
-The workflow does not commit, push, open a pull request, merge, or deploy.
+The default local workflow stops at that handoff. A separately authorized
+[delivery policy](pr-delivery.md) can commit, push, and open a regular PR.
+Merge and deployment remain outside the workflow.
 
 Each observable completion criterion has a stable ID. The Reviewer returns one
 result per criterion: `satisfied`, `unmet`, or `not_verified`. A satisfied result

@@ -62,7 +62,14 @@ class Finding(Contract):
     id: Identifier
     criterion_id: Identifier | None = None
     category: Literal[
-        "correctness", "security", "reliability", "performance", "testing", "scope", "evidence"
+        "correctness",
+        "security",
+        "reliability",
+        "performance",
+        "testing",
+        "scope",
+        "evidence",
+        "documentation",
     ]
     severity: Literal["critical", "warning", "suggestion"]
     title: Text
@@ -133,3 +140,51 @@ class ReviewEnvelope(Contract):
             if len(ids) != len(set(ids)):
                 raise ValueError(f"{label} IDs must be unique")
         return self
+
+
+Reviewer = Literal["request", "code", "security", "documentation"]
+
+
+class FocusedReviewEnvelope(Contract):
+    version: Literal[1]
+    reviewer: Reviewer
+    content_version: ContentVersion
+    summary: Text
+    findings: list[Finding]
+    criteria: list[CriterionResult] = Field(default_factory=list)
+    manual_work: list[Text] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def consistent_scope(self) -> FocusedReviewEnvelope:
+        if self.reviewer == "request" and not self.criteria:
+            raise ValueError("Request review requires criterion results")
+        if self.reviewer != "request" and self.criteria:
+            raise ValueError("only Request review returns criterion results")
+        for ids in (
+            [item.id for item in self.findings],
+            [item.criterion_id for item in self.criteria],
+        ):
+            if len(ids) != len(set(ids)):
+                raise ValueError("review IDs must be unique")
+        return self
+
+
+class FindingAssessment(Contract):
+    reviewer: Reviewer
+    finding_id: Identifier
+    disposition: Literal["retained", "duplicate", "unsupported"]
+    reason: Text
+    evidence_refs: list[Text] = Field(min_length=1)
+    retained_finding_id: Identifier | None = None
+
+    @model_validator(mode="after")
+    def consistent_target(self) -> FindingAssessment:
+        if (self.disposition == "unsupported") != (self.retained_finding_id is None):
+            raise ValueError(
+                "retained and duplicate assessments require a final finding ID; unsupported assessments must omit it"
+            )
+        return self
+
+
+class JudgeEnvelope(ReviewEnvelope):
+    assessments: list[FindingAssessment]

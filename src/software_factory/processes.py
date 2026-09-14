@@ -122,7 +122,11 @@ async def start_process(
         if store is not None:
             await store.register_process(run_id, process_id, kind, process.pid, identity)
             record = await store.get_run(run_id)
-            if record is None or (record["stop_target"] and kind != "bb_control"):
+            if (
+                record is None
+                or (record["stop_target"] and kind != "bb_control")
+                or (kind == "delivery" and record.get("delivery_cancel_requested"))
+            ):
                 raise CleanupUncertain("run stopped before command dispatch")
         if deadline_at is not None and time.time() >= deadline_at:
             raise TimeoutError("command time limit exceeded before dispatch")

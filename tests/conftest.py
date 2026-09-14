@@ -33,6 +33,8 @@ def render_review(output: str, prompt: str) -> str:
     review = json.loads(output)
     review["content_version"] = data["bundle"]["content_version"]
     active = {item["id"] for item in review["findings"]}
+    if "reviewer" in review:
+        return json.dumps(review)
     review.setdefault(
         "resolutions",
         [

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -19,14 +20,43 @@ class AgentConfig(ConfigModel):
     permission_mode: Literal["accept-edits", "auto", "full"] = "auto"
 
 
-Step = Literal["plan", "build", "repair", "review", "revision"]
+ReviewMode = Literal["single", "focused", "risk_based"]
+Step = Literal[
+    "plan",
+    "build",
+    "repair",
+    "review",
+    "revision",
+    "request_review",
+    "code_review",
+    "security_review",
+    "documentation_review",
+    "judge",
+]
 STEP_ROLES: dict[Step, str] = {
     "plan": "planner",
     "build": "builder",
     "repair": "builder",
     "review": "reviewer",
     "revision": "builder",
+    "request_review": "request_reviewer",
+    "code_review": "code_reviewer",
+    "security_review": "security_reviewer",
+    "documentation_review": "documentation_reviewer",
+    "judge": "judge",
 }
+
+
+def review_steps(mode: ReviewMode) -> dict[Step, str]:
+    return {
+        step: role
+        for step, role in STEP_ROLES.items()
+        if (
+            (step != "review" and (mode == "risk_based" or step != "documentation_review"))
+            if mode != "single"
+            else step in {"plan", "build", "repair", "review", "revision"}
+        )
+    }
 
 
 class ModelChoice(ConfigModel):
@@ -64,6 +94,17 @@ class AgentsConfig(ConfigModel):
     planner: AgentConfig
     builder: AgentConfig
     reviewer: AgentConfig
+
+    def for_role(self, role: str) -> AgentConfig:
+        if role in {
+            "request_reviewer",
+            "code_reviewer",
+            "security_reviewer",
+            "documentation_reviewer",
+            "judge",
+        }:
+            return self.reviewer.model_copy(update={"permission_mode": "auto"})
+        return {"planner": self.planner, "builder": self.builder, "reviewer": self.reviewer}[role]
 
     @model_validator(mode="after")
     def restricted_permissions(self) -> AgentsConfig:
@@ -154,9 +195,89 @@ class SafetyConfig(ConfigModel):
         return value
 
 
+class ReviewPolicy(ConfigModel):
+    trivial_max_lines: int = Field(default=10, ge=0)
+    normal_max_lines: int = Field(default=100, ge=1)
+    normal_max_files: int = Field(default=20, ge=1)
+    sensitive_paths: list[str] = Field(default_factory=list)
+    documentation_paths: list[str] = Field(
+        default_factory=lambda: ["*.md", "*.rst", "*.txt", "*.adoc", "LICENSE*"]
+    )
+    generated_paths: list[str] = Field(default_factory=lambda: ["*.map", "*.snap", "*.generated.*"])
+
+    @field_validator("sensitive_paths", "documentation_paths", "generated_paths")
+    @classmethod
+    def relative_patterns(cls, value: list[str]) -> list[str]:
+        for pattern in value:
+            if (
+                not pattern.strip()
+                or pattern != pattern.strip()
+                or "\\" in pattern
+                or "\x00" in pattern
+                or PurePosixPath(pattern).is_absolute()
+                or ".." in PurePosixPath(pattern).parts
+            ):
+                raise ValueError("review patterns must be repository-relative globs")
+        return value
+
+    @model_validator(mode="after")
+    def ordered_thresholds(self) -> ReviewPolicy:
+        if self.trivial_max_lines > self.normal_max_lines:
+            raise ValueError("trivial_max_lines cannot exceed normal_max_lines")
+        return self
+
+
+class DeliveryPolicy(ConfigModel):
+    mode: Literal["manual", "pull_request"] = "manual"
+    repository: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    )
+    base_branch: str = "main"
+    work_type: Literal["feat", "fix", "chore", "docs", "refactor", "test"] = "feat"
+    issue: int | None = Field(default=None, ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    review_fixes: bool = False
+
+    @field_validator("base_branch")
+    @classmethod
+    def safe_branch(cls, value: str) -> str:
+        if (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", value)
+            or any(part in {"", ".", ".."} or part.endswith(".lock") for part in value.split("/"))
+            or ".." in value
+            or value.endswith(".")
+        ):
+            raise ValueError("base_branch must be a Git branch name")
+        return value
+
+    @field_validator("title")
+    @classmethod
+    def descriptive_title(cls, value: str | None) -> str | None:
+        if value is not None and (
+            value != value.strip()
+            or any(ord(char) < 32 for char in value)
+            or "codex" in value.casefold()
+        ):
+            raise ValueError(
+                "use a single-line title that describes the change without naming the agent"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def authorized_target(self) -> DeliveryPolicy:
+        if self.mode == "pull_request" and (not self.repository or not self.title):
+            raise ValueError("pull_request delivery requires repository and title")
+        if self.review_fixes and self.mode != "pull_request":
+            raise ValueError("review_fixes requires pull_request delivery")
+        return self
+
+
 class FactoryConfig(ConfigModel):
     version: Literal[1]
     workflow: Literal["simple-sdlc"]
+    # Omitted in Phase 1 configurations, including saved active runs.
+    review_mode: ReviewMode = "single"
+    review_policy: ReviewPolicy = Field(default_factory=ReviewPolicy)
     agents: AgentsConfig
     quality: QualityConfig
     settings: Selection = Field(default_factory=Selection)
@@ -164,6 +285,7 @@ class FactoryConfig(ConfigModel):
     resolved_settings: SettingsSnapshot | None = None
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
+    delivery: DeliveryPolicy = Field(default_factory=DeliveryPolicy)
 
 
 CONFIG_PATH = Path(".factory/factory.yaml")
@@ -185,6 +307,12 @@ def load_config(workspace: Path, config_path: Path | None = None) -> FactoryConf
 def default_config() -> str:
     return """version: 1
 workflow: simple-sdlc
+review_mode: focused
+# To select reviewers by size and sensitive paths, use review_mode: risk_based.
+# See docs/risk-review.md for threshold boundaries and project-specific patterns.
+delivery:
+  mode: manual
+# See docs/pr-delivery.md to authorize publication and selected review fixes.
 
 agents:
   planner:

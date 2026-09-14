@@ -2,7 +2,7 @@
 
 A macOS-first MVP that exposes a deterministic, resumable software-development
 workflow to [BB](https://github.com/get-bb/bb). LangGraph owns routing and durable
-state; BB owns visible Planner, Builder, and Reviewer threads; Python owns all
+state; BB owns visible Planner, Builder, review, and judge threads; Python owns all
 quality gates.
 
 Live runs use the [protected local BB worker](docs/protected-worker.md), tested
@@ -12,15 +12,25 @@ providers and remote BB environments are not currently supported.
 
 See [run ownership and recovery](docs/run-recovery.md) for cancellation and restart
 rules, [live acceptance evidence](docs/live-worker-acceptance.json) for the
-verified run, and the [issues 1–4 review](docs/issues-1-4-review.md) for the
-remaining dependency order.
+verified run, and the [issue completion check](docs/issue-1-completion-check.md)
+for implementation and verification status.
+The [focused/risk measurement study](docs/review-measurements.md) records eight
+passing real-provider cases, earlier failed attempts, and the decision to retain
+the starting 10/100/20 limits with risk selection still opt-in.
 
-The [single-reviewer evidence workflow](docs/review-evidence.md) records baseline
+The [evidence workflow](docs/review-evidence.md) records baseline
 checks, structured criterion results and findings, and the exact tested file
 version. Successful runs finish at `ready_for_review`. Old `accepted` results
-remain available as unverified historical records. Issue #6 verifies this complete
-Phase 1 workflow with a real provider; the earlier live evidence does not establish
-that acceptance result.
+remain available as unverified historical records.
+[Phase 1 acceptance passed](docs/acceptance-results.md) with a real provider in issue #6.
+The [focused review workflow](docs/focused-review.md) adds Request, Code, and
+Security reviews followed by a read-only judge. New configurations select it;
+existing configurations and saved runs keep their single-reviewer mode.
+The opt-in [risk selection policy](docs/risk-review.md) chooses the required
+reviewers from change size and sensitive paths. It adds Documentation Review
+when relevant and records review quality and user feedback for threshold tuning.
+The opt-in [PR delivery policy](docs/pr-delivery.md) publishes verified changes,
+tracks CI, and completes selected review fixes under saved authorization.
 
 The MVP provides:
 
@@ -69,14 +79,22 @@ software-factory run "request"
 software-factory inspect <run-id>
 software-factory resume <run-id>
 software-factory cancel <run-id>
+software-factory review-quality <run-id>
+software-factory review-feedback <run-id> <attempt> <reviewer> <finding-id> <verdict> <reason>
+software-factory deliver <run-id> [--policy delivery.json]
+software-factory review-threads <run-id>
+software-factory fix-reviews <run-id> --thread <thread-id>
 ```
 
-The workflow never commits, pushes, merges, deploys, or runs an LLM-proposed
-command. It stops on unexpected file, index, or reference changes and preserves the workspace for inspection.
+Agents cannot commit, push, or run an LLM-proposed command through the controller.
+The controller commits and pushes only under the saved PR delivery policy.
+Merge and deployment remain outside the workflow. Unexpected file, index, or
+reference changes stop delivery and preserve the workspace for inspection.
 Operator-reviewed quality programs are outside that guarantee and must not publish
 or mutate repository metadata indirectly.
 
-Model and effort choices for Plan, Build, Repair, Review, and Revision are
+Model and effort choices for every active step, including the focused reviewers
+and judge, are
 available through the [BB Factory panel](bb-plugin-factory-controls/README.md).
 See [model settings](docs/model-settings.md) for saved settings and presets,
 and [BB compatibility](docs/bb-settings-compatibility.md) for the tested interface

@@ -4,7 +4,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import typer
 from rich.console import Console
@@ -12,11 +12,12 @@ from rich.table import Table
 
 from software_factory.acp_agent import serve_acp
 from software_factory.bb import BBContext
-from software_factory.config import CONFIG_PATH, default_config, load_config
+from software_factory.config import CONFIG_PATH, DeliveryPolicy, default_config, load_config
 from software_factory.doctor import run_doctor
 from software_factory.engine import FactoryEngine, checkpoint_path
 from software_factory.graph import MERMAID
 from software_factory.persistence import RunStore
+from software_factory.review_quality import ReviewFeedback
 
 app = typer.Typer(no_args_is_help=True, help="Deterministic BB + LangGraph software factory")
 console = Console()
@@ -25,6 +26,12 @@ DEFAULT_WORKSPACE = Path.cwd()
 
 def _workspace(value: Path) -> Path:
     return value.expanduser().resolve()
+
+
+def _successful(result: dict[str, Any]) -> bool:
+    return result.get("status") == "ready_for_review" and result.get("delivery", {}).get(
+        "status", "manual"
+    ) in {"manual", "no_change", "delivered"}
 
 
 def _context_or_none() -> BBContext | None:
@@ -106,7 +113,7 @@ def run_command(
     engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
     result = asyncio.run(engine.run(request))
     console.print_json(json.dumps(result))
-    if result.get("status") != "ready_for_review":
+    if not _successful(dict(result)):
         raise typer.Exit(1)
 
 
@@ -119,7 +126,52 @@ def resume_command(
     engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
     result = asyncio.run(engine.resume(run_id))
     console.print_json(json.dumps(result))
-    if result.get("status") != "ready_for_review":
+    if not _successful(dict(result)):
+        raise typer.Exit(1)
+
+
+@app.command("deliver")
+def deliver_command(
+    run_id: str,
+    policy: Annotated[
+        Path | None,
+        typer.Option(help="Reviewed JSON delivery policy; saved on first authorization"),
+    ] = None,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Deliver verified changes or refresh the saved PR's CI result."""
+    authorization = DeliveryPolicy.model_validate_json(policy.read_text()) if policy else None
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    result = asyncio.run(engine.deliver(run_id, authorization=authorization))
+    console.print_json(json.dumps(result))
+    if not _successful(dict(result)):
+        raise typer.Exit(1)
+
+
+@app.command("review-threads")
+def review_threads_command(
+    run_id: str,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """List PR review thread IDs and findings for operator selection."""
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    console.print_json(json.dumps(asyncio.run(engine.review_threads(run_id))))
+
+
+@app.command("fix-reviews")
+def fix_reviews_command(
+    run_id: str,
+    thread: Annotated[
+        list[str],
+        typer.Option("--thread", help="Accepted review thread ID; repeat for each finding"),
+    ],
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Implement, verify, push, reply to, and resolve selected authorized findings."""
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    result = asyncio.run(engine.fix_reviews(run_id, thread))
+    console.print_json(json.dumps(result))
+    if not _successful(dict(result)):
         raise typer.Exit(1)
 
 
@@ -163,6 +215,40 @@ def answer_command(
     console.print_json(json.dumps(result))
     if result.get("status") != "ready_for_review":
         raise typer.Exit(1)
+
+
+@app.command("review-quality")
+def review_quality_command(
+    run_id: str,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Show saved review results and user feedback for threshold tuning."""
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    console.print_json(json.dumps(asyncio.run(engine.review_quality(run_id))))
+
+
+@app.command("review-feedback")
+def review_feedback_command(
+    run_id: str,
+    attempt: int,
+    reviewer: str,
+    finding_id: str,
+    verdict: str,
+    reason: str,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Record false_positive or useful feedback without changing review decisions."""
+    feedback = ReviewFeedback.model_validate(
+        {
+            "attempt": attempt,
+            "reviewer": reviewer,
+            "finding_id": finding_id,
+            "verdict": verdict,
+            "reason": reason,
+        }
+    )
+    engine = FactoryEngine(workspace=_workspace(workspace), context=_required_context())
+    console.print_json(json.dumps(asyncio.run(engine.record_review_feedback(run_id, feedback))))
 
 
 @app.command("retry")

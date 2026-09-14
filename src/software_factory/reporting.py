@@ -36,6 +36,8 @@ def run_summary(state: FactoryState, status: str) -> dict[str, Any]:
         "content_version": state.get("content_version"),
         "handoff": state.get("handoff"),
         "execution_summary": state.get("execution_summary"),
+        "review_quality": state.get("review_quality"),
+        "delivery": state.get("delivery"),
     }
 
 
@@ -58,6 +60,26 @@ def final_report(state: FactoryState, outcome: str) -> str:
         if item["state"] == "waiting"
     )
     details = ""
+    delivery = state.get("delivery")
+    publication_note = (
+        "No commit or push was performed.\n"
+        if not delivery or delivery["status"] in {"manual", "no_change"}
+        else ""
+    )
+    if delivery:
+        details += f"\n## PR delivery\n\nStatus: {delivery['status']}\n"
+        if delivery.get("pr_url"):
+            details += f"\nPR: {delivery['pr_url']}\nCommit: `{delivery['commit']}`\n"
+        if delivery.get("ci"):
+            details += f"\nCI for `{delivery['ci']['commit']}`: {delivery['ci']['status']}\n"
+        if delivery.get("error"):
+            details += f"\nDelivery stopped: {delivery['error']}\n"
+        if delivery.get("review_fix"):
+            details += f"\nReview-fix run: {delivery['review_fix']['run_id']}; {delivery['review_fix']['status']}\n"
+        if delivery.get("verified_run_id"):
+            details += f"\nThe current PR commit was verified by run `{delivery['verified_run_id']}`. The handoff below describes the original implementation.\n"
+        if delivery["status"] != "manual":
+            action = "inspect the saved delivery result; use deliver to refresh CI or reconcile an interrupted delivery."
     handoff = state.get("handoff")
     if handoff:
         details += f"\n## Builder change summary\n\n{handoff['change']}\n\n"
@@ -82,10 +104,46 @@ def final_report(state: FactoryState, outcome: str) -> str:
             )
             or "None."
         )
+        if handoff.get("reviews"):
+            details += "\n\n## Required reviews and judge\n\n"
+            for role, review in handoff["reviews"].items():
+                details += f"- {role.title()} review: {review['summary']}\n"
+            details += f"- Judge: {handoff['judge']['summary']}\n"
+            for assessment in handoff["judge"]["assessments"]:
+                target = (
+                    f" → {assessment['retained_finding_id']}"
+                    if assessment["retained_finding_id"]
+                    else ""
+                )
+                details += f"- {assessment['reviewer']}/{assessment['finding_id']}: {assessment['disposition']}{target} — {assessment['reason']} (references: {', '.join(assessment['evidence_refs'])})\n"
         details += (
             "\n\n## Reported manual work\n\n"
             + ("\n".join(f"- {item}" for item in handoff["manual_work"]) or "None reported.")
             + "\n"
+        )
+    quality = state.get("review_quality")
+    if quality:
+        details += "\n## Review selection and quality\n\n"
+        if quality.get("unavailable"):
+            details += f"Unavailable: {quality['unavailable']}\n"
+        for round_result in quality.get("rounds", []):
+            selection = round_result["selection"]
+            details += (
+                f"- Round {round_result['attempt']}: {selection['level']}; "
+                f"{selection['changed_lines']} measured lines in {selection['measured_file_count']} files "
+                f"({selection['changed_file_count']} changed files total). "
+                f"Required: {', '.join(selection['required_reviewers'])}, judge. "
+                f"{'Complete' if round_result['complete'] else 'Incomplete'}.\n"
+                f"  Reasons: {'; '.join(selection['reasons'])}.\n"
+                f"  Reported findings: {len(round_result['findings'])}; retained blockers: "
+                f"{len(round_result['retained_blocking_findings'])}; fixed findings: "
+                f"{len(round_result['resolved_findings'])}.\n"
+            )
+            if selection["generated_files"]:
+                details += f"  Ordinary generated files: {', '.join(selection['generated_files'])}; full evidence saved.\n"
+        details += (
+            "\nUser feedback is stored separately. Inspect current feedback with "
+            f"`software-factory review-quality {state['run_id']}`. Model fallback is disabled.\n"
         )
     if state.get("execution_summary"):
         details += (
@@ -106,8 +164,7 @@ Review: {"approved" if state.get("review_approved") else "not approved"} on atte
 {changed}
 {details}
 
-No commit or push was performed.
-Next action: {action}
+{publication_note}Next action: {action}
 """
 
 

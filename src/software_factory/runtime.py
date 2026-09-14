@@ -16,8 +16,9 @@ from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
 from software_factory.bb import BBClient, BBClientProtocol, BBContext
 from software_factory.bb.client import BBError, BBExecution, RecoveryNeeded, WaitingForInput
 from software_factory.cleanup import stop_owned_work
-from software_factory.config import AgentConfig, FactoryConfig, QualityCommand, Step
+from software_factory.config import STEP_ROLES, AgentConfig, FactoryConfig, QualityCommand, Step
 from software_factory.contracts import BuildEnvelope, ReviewEnvelope
+from software_factory.contracts.models import JudgeEnvelope
 from software_factory.events import EventSink, FactoryEvent, null_event_sink
 from software_factory.evidence import RunEvidence
 from software_factory.persistence import RunStore
@@ -29,6 +30,7 @@ from software_factory.processes import (
     stop_group,
 )
 from software_factory.reporting import execution_summary, final_report, run_summary
+from software_factory.review_quality import review_quality
 from software_factory.state import FINAL_STATUSES, FactoryState
 from software_factory.worktree_policy import WorktreePolicy, WorktreePolicyError
 
@@ -96,7 +98,9 @@ class FactoryRuntime:
             raise FactoryCancelled("factory run cancelled")
         record = await self.store.get_run(self.run_id)
         if record is not None and (
-            record.get("stop_target") or record.get("status") == "cancelled"
+            record.get("stop_target")
+            or record.get("status") == "cancelled"
+            or record.get("delivery_cancel_requested")
         ):
             self.cancel_event.set()
             raise FactoryCancelled(str(record.get("error") or "factory run cancelled"))
@@ -111,6 +115,7 @@ class FactoryRuntime:
         step: str | None = None,
         attempt: int = 1,
         operation_kind: str | None = None,
+        before_dispatch: Callable[[], Awaitable[None]] | None = None,
     ) -> tuple[str, str]:
         await self.verify_repository()
         await self.bb.check_protection(self.artifacts.root)
@@ -120,15 +125,12 @@ class FactoryRuntime:
         settings = self.config.resolved_settings
         conversation_role = role
         if settings is not None:
+            primary_step = next(key for key, value in STEP_ROLES.items() if value == role)
             selected_step = cast(Step, {"revise": "revision"}.get(step, step))
             if selected_step not in settings.effective:
-                selected_step = cast(
-                    Step, {"planner": "plan", "builder": "build", "reviewer": "review"}[role]
-                )
+                selected_step = primary_step
             agent = settings.effective[selected_step]
-            primary = settings.effective[
-                cast(Step, {"planner": "plan", "builder": "build", "reviewer": "review"}[role])
-            ]
+            primary = settings.effective[primary_step]
             if agent != primary:
                 digest = hashlib.sha256(agent.model_dump_json().encode()).hexdigest()[:16]
                 conversation_role = f"{role}:{digest}"
@@ -157,6 +159,8 @@ class FactoryRuntime:
             )
         if operation["state"] == "prepared":
             await self.check_cancelled()
+            if before_dispatch is not None:
+                await before_dispatch()
             await self.store.update_operation(
                 operation_id, state="dispatching", thread_id=thread_id, dispatch_count=1
             )
@@ -463,7 +467,7 @@ class FactoryRuntime:
                 "Return only one corrected JSON object matching this schema:\n"
                 f"{json.dumps(model.model_json_schema(), indent=2)}"
             )
-            agent = getattr(self.config.agents, role)
+            agent = self.config.agents.for_role(role)
             _, corrected = await self.get_or_spawn(
                 role,
                 correction,
@@ -607,12 +611,31 @@ class FactoryRuntime:
         if not state.get("test_passed") or not state.get("review_approved"):
             raise ValueError("handoff requires successful checks and Reviewer approval")
         bundle = await self.evidence.review_bundle(state["test_attempt_count"])
-        review = ReviewEnvelope.model_validate_json(
+        review_model = JudgeEnvelope if self.config.review_mode != "single" else ReviewEnvelope
+        review = review_model.model_validate_json(
             self.artifacts.read_text(f"review/attempt-{state['review_attempt_count']:02d}.json")
         )
         if not review.approved:
             raise ValueError("saved Reviewer did not approve")
-        history = self.evidence.validate_review(review, bundle, state["review_attempt_count"])
+        review_details: dict[str, Any] = {}
+        if isinstance(review, JudgeEnvelope):
+            history = self.evidence.validate_judge(review, bundle, state["review_attempt_count"])
+            saved_judge = JudgeEnvelope.model_validate_json(
+                self.artifacts.read_text(f"review/judge-{state['review_attempt_count']:02d}.json")
+            )
+            if saved_judge != review:
+                raise ValueError("final review differs from the saved judge decision")
+            review_details = {
+                "reviews": {
+                    role: item.model_dump(mode="json")
+                    for role, item in self.evidence.focused_reviews(
+                        bundle, state["review_attempt_count"]
+                    ).items()
+                },
+                "judge": review.model_dump(mode="json"),
+            }
+        else:
+            history = self.evidence.validate_review(review, bundle, state["review_attempt_count"])
         if history != self.evidence.read(
             f"review/findings-{state['review_attempt_count']:02d}.json"
         ):
@@ -623,6 +646,8 @@ class FactoryRuntime:
             )
         )
         return {
+            **review_details,
+            "review_mode": self.config.review_mode,
             "change": build.summary,
             "content_version": bundle["content_version"],
             "request": self.evidence.read("request.json"),
@@ -660,7 +685,23 @@ class FactoryRuntime:
         result["interactions"] = [
             item.model_dump(mode="json") for item in await self.store.interactions(self.run_id)
         ]
-        for operation in await self.store.operations(self.run_id):
+        operations = await self.store.operations(self.run_id)
+        delivery = result.get("delivery", {})
+        if delivery.get("status") == "cancelled" and any(
+            operation["kind"] == "remote" and operation["state"] in {"dispatching", "dispatched"}
+            for operation in operations
+        ):
+            # Stopping a command cannot confirm whether its remote mutation completed.
+            # Apply this to both initial publication and review-fix reports, including resume.
+            result["delivery"] = {
+                **delivery,
+                "status": "recovery_needed",
+                "error": (
+                    f"{delivery.get('error') or 'PR delivery cancelled'}; "
+                    "a remote operation is still unconfirmed; inspect the saved operation and GitHub result"
+                ),
+            }
+        for operation in operations:
             if not operation["dispatch_count"]:
                 continue
             step = operation["step"]
@@ -684,6 +725,14 @@ class FactoryRuntime:
                     for step, choice in self.config.resolved_settings.effective.items()
                 },
             )
+        if self.config.review_mode == "risk_based":
+            try:
+                result["review_quality"] = review_quality(
+                    self.artifacts, result.get("execution_summary", {})
+                )
+            except (ArtifactIntegrityError, ValueError, KeyError) as exc:
+                # Corrupt evidence must not prevent cancellation or failure reporting.
+                result["review_quality"] = {"version": 1, "unavailable": str(exc)}
         return result
 
     async def report(self, state: FactoryState) -> FactoryState:

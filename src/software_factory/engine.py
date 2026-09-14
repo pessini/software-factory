@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -13,15 +15,19 @@ from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
 from software_factory.bb import BBClient, BBClientProtocol, BBContext
 from software_factory.bb.client import BBError, RecoveryNeeded, WaitingForInput
 from software_factory.cleanup import stop_owned_work
-from software_factory.config import FactoryConfig, Selection, load_config
+from software_factory.config import DeliveryPolicy, FactoryConfig, Selection, load_config
+from software_factory.delivery import Delivery
+from software_factory.delivery_commands import DeliveryCommands
 from software_factory.events import EventSink, null_event_sink
 from software_factory.evidence import EVIDENCE_VERSION
+from software_factory.github_delivery import GitHubDelivery, GitHubProtocol
 from software_factory.graph import build_graph
 from software_factory.ownership import OwnershipBusy, OwnershipError, RunOwnership
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain
+from software_factory.review_quality import ReviewFeedback, with_feedback
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
-from software_factory.settings import resolve_choices
+from software_factory.session_settings import SessionSettings
 from software_factory.state import FINAL_STATUSES, FactoryState
 
 
@@ -43,6 +49,7 @@ class FactoryEngine:
         database_path: Path | None = None,
         event_sink: EventSink = null_event_sink,
         cancel_event: asyncio.Event | None = None,
+        github: GitHubProtocol | None = None,
     ) -> None:
         self.workspace = workspace.resolve()
         self.context = context
@@ -52,6 +59,7 @@ class FactoryEngine:
         self.event_sink = event_sink
         self.cancel_event = cancel_event or asyncio.Event()
         self.active_run_id: str | None = None
+        self.github = github
 
     async def run(
         self,
@@ -60,6 +68,7 @@ class FactoryEngine:
         *,
         selection: Selection | None = None,
         configuration: FactoryConfig | None = None,
+        required_criteria: list[dict[str, str]] | None = None,
     ) -> FactoryState:
         if not request.strip():
             raise ValueError("request must not be empty")
@@ -89,6 +98,10 @@ class FactoryEngine:
             "changed_files": [],
             "active_child_thread_id": None,
             "error": None,
+            "required_criteria": required_criteria or [],
+            "delivery": {
+                "status": "pending" if config.delivery.mode == "pull_request" else "manual"
+            },
         }
         ownership = RunOwnership(self.workspace, run_id, self.database_path)
         await ownership.acquire(publish=False)
@@ -112,16 +125,10 @@ class FactoryEngine:
                 async with asyncio.timeout(config.limits.total_run_timeout_seconds):
                     await self.bb.check_protection(runtime.artifacts.root)
                     await self.bb.validate_workspace(self.workspace)
-                    config.resolved_settings = resolve_choices(
-                        {
-                            role: getattr(config.agents, role)
-                            for role in ("planner", "builder", "reviewer")
-                        },
-                        config.settings,
-                        config.presets,
+                    config.resolved_settings = SessionSettings.resolve(
+                        config,
                         selection or Selection(),
                         await self.bb.model_catalog(),
-                        config.version,
                     )
                     runtime.artifacts.write_json("config.json", config)
             except (BBError, ValueError, TimeoutError) as exc:
@@ -146,14 +153,21 @@ class FactoryEngine:
 
     async def inspect(self, run_id: str) -> FactoryState:
         record = await self._record(run_id)
+        saved = json.loads(record["result_json"] or "{}")
+        if "review_quality" in saved:
+            saved["review_quality"] = with_feedback(
+                saved["review_quality"], await self.store.review_feedback(run_id)
+            )
         return cast(
             FactoryState,
             {
-                **json.loads(record["result_json"] or "{}"),
+                **saved,
                 "run_id": run_id,
                 "status": record["status"],
                 "error": record["error"],
-                "evidence_status": "legacy_unverified"
+                "evidence_status": "stale"
+                if saved.get("evidence_status") == "stale"
+                else "legacy_unverified"
                 if record["status"] == "accepted"
                 else "verified"
                 if record["status"] == "ready_for_review"
@@ -163,6 +177,89 @@ class FactoryEngine:
                 ],
             },
         )
+
+    def _delivery(self, runtime: FactoryRuntime) -> Delivery:
+        github = self.github or GitHubDelivery(
+            DeliveryCommands(self.workspace, self.store, runtime.run_id)
+        )
+        return Delivery(runtime, github)
+
+    @asynccontextmanager
+    async def delivery_runtime(self, run_id: str) -> AsyncIterator[FactoryRuntime]:
+        await self._record(run_id)
+        ownership = RunOwnership(self.workspace, run_id, self.database_path)
+        await ownership.acquire()
+        try:
+            runtime = self._runtime(run_id, create=False)
+            await stop_owned_work(self.store, run_id, self.bb)
+            yield runtime
+        finally:
+            if not any(
+                op["state"] in {"dispatching", "dispatched"}
+                for op in await self.store.operations(run_id)
+            ):
+                ownership.release_claim()
+            ownership.close()
+
+    async def deliver(
+        self, run_id: str, *, authorization: DeliveryPolicy | None = None
+    ) -> FactoryState:
+        state = await self.inspect(run_id)
+        fix = state.get("delivery", {}).get("review_fix")
+        if fix and fix["status"] != "completed":
+            if authorization is not None:
+                self._delivery(self._runtime(run_id, create=False)).policy(authorization)
+            return await self.fix_reviews(run_id, fix["thread_ids"])
+        async with self.delivery_runtime(run_id) as runtime:
+            return await self._delivery(runtime).deliver(await self.inspect(run_id), authorization)
+
+    async def review_threads(self, run_id: str) -> list[dict[str, Any]]:
+        await self._record(run_id)
+        runtime = self._runtime(run_id, create=False)
+        state = await self.inspect(run_id)
+        policy = self._delivery(runtime).policy()
+        if not policy.repository or not state.get("delivery", {}).get("pr_number"):
+            raise ValueError("run has no delivered PR")
+        return await self._delivery(runtime).github.review_threads(
+            policy.repository, state["delivery"]["pr_number"]
+        )
+
+    async def fix_reviews(self, run_id: str, thread_ids: list[str]) -> FactoryState:
+        from software_factory.delivery_reviews import ReviewFixes
+
+        await self._record(run_id)
+        return await ReviewFixes(self, run_id).run(thread_ids)
+
+    async def review_quality(self, run_id: str) -> dict[str, Any]:
+        state = await self.inspect(run_id)
+        if "review_quality" not in state:
+            raise ValueError("this run has no saved risk-based review quality results")
+        return state["review_quality"]
+
+    async def record_review_feedback(self, run_id: str, feedback: ReviewFeedback) -> dict[str, Any]:
+        record = await self._record(run_id)
+        if record["status"] not in FINAL_STATUSES:
+            raise ValueError("record review feedback after the run has finished")
+        # Load protected evidence, not a user-supplied finding or file path.
+        artifacts = ArtifactStore(
+            self.workspace,
+            run_id,
+            storage_root=self.context.thread_storage / "factory" / "artifacts",
+            create=False,
+        )
+        from software_factory.contracts.models import FocusedReviewEnvelope
+
+        relative = f"review/{feedback.reviewer}-{feedback.attempt:02d}.json"
+        if not artifacts.path(relative).exists():
+            raise ValueError("feedback refers to an unknown review round or reviewer")
+        review = FocusedReviewEnvelope.model_validate_json(artifacts.read_text(relative))
+        if feedback.finding_id not in {item.id for item in review.findings}:
+            raise ValueError("feedback refers to an unknown reviewer finding")
+        await self.review_quality(run_id)
+        await self.store.add_review_feedback(
+            run_id, {**feedback.model_dump(mode="json"), "content_version": review.content_version}
+        )
+        return await self.review_quality(run_id)
 
     async def answer(
         self, run_id: str, interaction_id: str, answers: dict[str, str]
@@ -186,7 +283,15 @@ class FactoryEngine:
         if record["status"] in FINAL_STATUSES:
             if interaction_id is not None:
                 await self.store.answer_interaction(run_id, interaction_id, answers or {})
-            return await self.inspect(run_id)
+            state = await self.inspect(run_id)
+            if state["status"] == "ready_for_review" and state.get("delivery", {}).get(
+                "status", "manual"
+            ) not in {"manual", "no_change"}:
+                review_fix = state["delivery"].get("review_fix")
+                if review_fix and review_fix["status"] != "completed":
+                    return await self.fix_reviews(run_id, review_fix["thread_ids"])
+                return await self.deliver(run_id)
+            return state
         saved = json.loads(record["result_json"] or "{}")
         if saved.get("evidence_version") != EVIDENCE_VERSION:
             raise ValueError("legacy run lacks Phase 1 evidence; cancel it and start a new run")
@@ -250,6 +355,8 @@ class FactoryEngine:
         self.active_run_id = runtime.run_id
         try:
             result = await self._execute_run(runtime, value, deadline_at)
+            if result["status"] == "ready_for_review":
+                result = await self._delivery(runtime).deliver(result)
             # After this point a concurrent cancel waits to acquire the lock.
             # A stop accepted by a callback during execution is handled here.
             self.active_run_id = None
@@ -262,7 +369,14 @@ class FactoryEngine:
         finally:
             self.active_run_id = None
             record = await self.store.get_run(runtime.run_id)
-            if record and record["status"] in FINAL_STATUSES:
+            if (
+                record
+                and record["status"] in FINAL_STATUSES
+                and not any(
+                    op["state"] in {"dispatching", "dispatched"}
+                    for op in await self.store.operations(runtime.run_id)
+                )
+            ):
                 ownership.release_claim()
 
     async def _execute_run(
@@ -386,6 +500,19 @@ class FactoryEngine:
             raise ValueError(f"unknown run ID: {run_id}")
         if Path(record["workspace"]).resolve() != self.workspace:
             raise ValueError("run belongs to a different workspace")
+        if record["status"] == "ready_for_review":
+            saved = await self.inspect(run_id)
+            delivery = saved.get("delivery", {})
+            if delivery.get("status", "manual") not in {"manual", "no_change", "cancelled"}:
+                await self.store.cancel_delivery(run_id)
+                if self.active_run_id == run_id:
+                    self.cancel_event.set()
+                fix = delivery.get("review_fix")
+                if fix and fix["status"] != "completed" and await self.store.get_run(fix["run_id"]):
+                    await self.cancel_external(fix["run_id"])
+                saved["delivery"] = {**delivery, "status": "stopping", "error": error}
+                return cast(FactoryState, await self.store.save_result(run_id, dict(saved)))
+            return saved
         record = await self.store.request_stop(run_id, status, error)
         saved = cast(
             FactoryState,

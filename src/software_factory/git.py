@@ -51,8 +51,8 @@ async def repository_root(workspace: Path) -> Path:
 
 
 async def changed_files(workspace: Path) -> list[str]:
-    tracked = await git(workspace, "diff", "--name-only", "-z", "HEAD")
-    staged = await git(workspace, "diff", "--cached", "--name-only", "-z", "HEAD")
+    tracked = await git(workspace, "diff", "--no-renames", "--name-only", "-z", "HEAD")
+    staged = await git(workspace, "diff", "--no-renames", "--cached", "--name-only", "-z", "HEAD")
     untracked = await git(workspace, "ls-files", "--others", "--exclude-standard", "-z")
     return sorted(_paths(tracked) | _paths(staged) | _paths(untracked))
 

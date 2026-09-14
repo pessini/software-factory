@@ -12,8 +12,16 @@ from typing import Any
 from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
 from software_factory.config import FactoryConfig
 from software_factory.contracts import PlanEnvelope, ReviewEnvelope
-from software_factory.contracts.models import CriterionResult, Finding, FindingResolution
+from software_factory.contracts.models import (
+    CriterionResult,
+    Finding,
+    FindingResolution,
+    FocusedReviewEnvelope,
+    JudgeEnvelope,
+    Reviewer,
+)
 from software_factory.git import capture_snapshot, changed_files, git
+from software_factory.review_policy import ReviewSelection, select_review
 
 EVIDENCE_VERSION = 1
 REVIEW_RULES = """The original user request defines the outcome. Project instructions apply
@@ -25,10 +33,13 @@ Critical: concrete outage, data-loss, or security risk. Warning: concrete defect
 or measurable risk. Both block, regardless of confidence. Suggestions do not block.
 Every completion criterion must be satisfied with current implementation or check
 evidence. Required checks must all run and pass. Baseline failures are not waived.
-Reuse finding IDs across wording or line changes. Account for every previous
-finding, including fixed findings, in resolutions. Only the Reviewer can confirm
-a fix with current evidence. An unresolved or reopened finding must also occur
-in findings with the same ID. Do not duplicate an earlier finding under a new ID.
+Reuse finding IDs across wording or line changes. The final decision role is the
+Reviewer in single mode or the Judge in focused mode. That role must account for
+every previous finding, including fixed findings, in resolutions, and is the only
+role that can confirm a fix with current evidence. In the final decision, an
+unresolved or reopened finding must also occur in findings with the same ID.
+Focused reviewers report findings still present within their assigned scope;
+they do not return resolutions. Do not duplicate an earlier finding under a new ID.
 No change is valid when the original request is already satisfied and verified.
 Require meaningful behavior tests where useful; do not require tests which only
 repeat a trivial implementation. Human approval is outside this workflow.
@@ -171,6 +182,7 @@ class RunEvidence:
             return self.read(bundle_path)  # type: ignore[no-any-return]
         changed = await changed_files(self.workspace)
         patches = {}
+        patch_contents = {}
         for index, path in enumerate(changed, 1):
             patch = await git(
                 self.workspace,
@@ -178,6 +190,7 @@ class RunEvidence:
                 "--binary",
                 "--no-ext-diff",
                 "--no-textconv",
+                "--no-renames",
                 "HEAD",
                 "--",
                 path,
@@ -198,6 +211,7 @@ class RunEvidence:
             relative = f"patches/attempt-{attempt:02d}-{index:04d}.patch"
             self.artifacts.write_text(relative, patch.decode(errors="replace"))
             patches[path] = relative
+            patch_contents[path] = patch.decode(errors="replace")
         # An existing, unchanged source file can prove a no-change result.
         refs = [
             checks_path,
@@ -210,7 +224,7 @@ class RunEvidence:
                 if entry["kind"] == "file"
             ),
         ]
-        bundle = {
+        bundle: dict[str, Any] = {
             "content_version": snapshot["content_version"],
             "context": {
                 "plan": self.read("plan.json"),
@@ -226,6 +240,16 @@ class RunEvidence:
             "repository_content": content_path,
             "starting_repository_content": "baseline/attempt-01-content.json",
         }
+        config = FactoryConfig.model_validate(self.read("config.json"))
+        if config.review_mode == "risk_based":
+            selection = select_review(
+                config.review_policy,
+                patch_contents,
+                snapshot["content_version"],
+                self.read("baseline/attempt-01-content.json")["files"],
+                snapshot["files"],
+            )
+            bundle["review_selection"] = selection.model_dump(mode="json")
         await self.require_current(snapshot)
         self.artifacts.write_json(bundle_path, bundle)
         self.artifacts.write_json("changes.json", bundle)
@@ -260,9 +284,18 @@ class RunEvidence:
     def validate_review(
         self, review: ReviewEnvelope, bundle: dict[str, Any], attempt: int
     ) -> dict[str, Any]:
+        self.validate_review_evidence(review, bundle)
+        return self._finding_history(review, attempt)
+
+    def validate_review_evidence(
+        self, review: ReviewEnvelope | FocusedReviewEnvelope, bundle: dict[str, Any]
+    ) -> None:
         plan = PlanEnvelope.model_validate_json(self.artifacts.read_text("plan.json"))
         criterion_ids = {item.id for item in plan.acceptance_criteria}
-        if {item.criterion_id for item in review.criteria} != criterion_ids:
+        requires_criteria = (
+            not isinstance(review, FocusedReviewEnvelope) or review.reviewer == "request"
+        )
+        if requires_criteria and {item.criterion_id for item in review.criteria} != criterion_ids:
             raise ValueError("review must cover every criterion exactly once")
         if review.content_version != bundle["content_version"]:
             raise ValueError("Reviewer reported a stale or invalid content version")
@@ -270,7 +303,7 @@ class RunEvidence:
         referenced: list[CriterionResult | Finding | FindingResolution] = [
             *review.criteria,
             *review.findings,
-            *review.resolutions,
+            *(review.resolutions if isinstance(review, ReviewEnvelope) else []),
         ]
         for item in referenced:
             if not set(item.evidence_refs) <= valid_refs:
@@ -289,6 +322,8 @@ class RunEvidence:
                     or finding.line > len(source.read_bytes().splitlines())
                 ):
                     raise ValueError("finding refers to an invalid source line")
+
+    def _finding_history(self, review: ReviewEnvelope, attempt: int) -> dict[str, Any]:
         history = self.history(attempt)
         resolutions = {item.finding_id: item for item in review.resolutions}
         if resolutions.keys() != history.keys():
@@ -322,6 +357,72 @@ class RunEvidence:
                 }
             history[finding.id]["finding"] = finding.model_dump(mode="json")
         return history
+
+    def focused_reviews(
+        self, bundle: dict[str, Any], attempt: int
+    ) -> dict[Reviewer, FocusedReviewEnvelope]:
+        reviews: dict[Reviewer, FocusedReviewEnvelope] = {}
+        for role in self.required_reviewers(bundle):
+            review = FocusedReviewEnvelope.model_validate_json(
+                self.artifacts.read_text(f"review/{role}-{attempt:02d}.json")
+            )
+            self.validate_focused_review(review, role, bundle)
+            reviews[review.reviewer] = review
+        return reviews
+
+    def required_reviewers(self, bundle: dict[str, Any]) -> list[Reviewer]:
+        config = FactoryConfig.model_validate(self.read("config.json"))
+        if config.review_mode != "risk_based":
+            return ["request", "code", "security"]
+        selection = ReviewSelection.model_validate(bundle["review_selection"])
+        expected = select_review(
+            config.review_policy,
+            {path: self.artifacts.read_text(ref) for path, ref in bundle["patches"].items()},
+            bundle["content_version"],
+            self.read(bundle["starting_repository_content"])["files"],
+            self.read(bundle["repository_content"])["files"],
+        )
+        if selection != expected:
+            raise ValueError("saved review selection differs from the required policy")
+        return selection.required_reviewers
+
+    def validate_focused_review(
+        self, review: FocusedReviewEnvelope, role: str, bundle: dict[str, Any]
+    ) -> None:
+        if review.reviewer != role:
+            raise ValueError("review result does not match the required reviewer")
+        self.validate_review_evidence(review, bundle)
+
+    def validate_judge(
+        self, judge: JudgeEnvelope, bundle: dict[str, Any], attempt: int
+    ) -> dict[str, Any]:
+        reviews = self.focused_reviews(bundle, attempt)
+        candidates = {
+            (role, finding.id): finding
+            for role, review in reviews.items()
+            for finding in review.findings
+        }
+        assessments = {(item.reviewer, item.finding_id): item for item in judge.assessments}
+        if len(assessments) != len(judge.assessments) or assessments.keys() != candidates.keys():
+            raise ValueError("judge must assess every reviewer finding exactly once")
+        final = {item.id: item for item in judge.findings}
+        retained = [
+            item.retained_finding_id for item in judge.assessments if item.disposition == "retained"
+        ]
+        if len(retained) != len(set(retained)) or set(retained) != final.keys():
+            raise ValueError("each final finding needs exactly one retained assessment")
+        for key, assessment in assessments.items():
+            if not set(assessment.evidence_refs) <= set(bundle["evidence_refs"]):
+                raise ValueError("judge assessment contains invalid evidence references")
+            if assessment.disposition != "unsupported":
+                target = final.get(str(assessment.retained_finding_id))
+                if target is None:
+                    raise ValueError("judge assessment refers to a missing retained finding")
+                if candidates[key].blocking and not target.blocking:
+                    raise ValueError(
+                        "judge must reject an unsupported blocker explicitly, not downgrade it"
+                    )
+        return self.validate_review(judge, bundle, attempt)
 
     @staticmethod
     def _test_attempt(bundle: dict[str, Any]) -> int:
