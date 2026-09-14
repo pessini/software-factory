@@ -14,7 +14,7 @@ async def stop_owned_work(store: RunStore, run_id: str, bb: BBClientProtocol) ->
     uncertain = False
     errors: list[str] = []
     for operation in operations:
-        if operation["kind"] == "check" or operation["state"] not in {
+        if operation["kind"] in {"check", "remote"} or operation["state"] not in {
             "dispatching",
             "dispatched",
         }:

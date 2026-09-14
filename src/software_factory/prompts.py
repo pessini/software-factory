@@ -25,7 +25,13 @@ including through compileall. The controller also checks ignored paths after eac
 """
 
 
-def planner_prompt(run_id: str, request: str, workspace: Path, evidence_root: Path) -> str:
+def planner_prompt(
+    run_id: str,
+    request: str,
+    workspace: Path,
+    evidence_root: Path,
+    required_criteria: list[dict[str, str]] | None = None,
+) -> str:
     return f"""You are the read-only Planner for software factory run {run_id}.
 Analyze the repository and original request. Do not edit files.
 Read project.json and baseline.json from the evidence directory before planning.
@@ -39,7 +45,8 @@ Describe meaningful behavior tests where they establish behavior; do not force t
 that repeat a trivial implementation. An already satisfied request needs no artificial edit.
 Advisory commands are never executed. Ask only questions that prevent correct work,
 using needs_input and structured questions. Do not ask for routine plan approval.
-{data_block({"original_request": request, "workspace": str(workspace), "evidence_directory": str(evidence_root)})}
+Retain the controller's required_criteria with their exact IDs and descriptions.
+{data_block({"original_request": request, "workspace": str(workspace), "evidence_directory": str(evidence_root), "required_criteria": required_criteria or []})}
 SCHEMA:
 {json.dumps(PlanEnvelope.model_json_schema(), indent=2)}
 """

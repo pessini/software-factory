@@ -133,6 +133,7 @@ class RunStore:
                 ("result_json", "TEXT"),
                 ("wait_started_at", "REAL"),
                 ("overall_expires_at", "REAL"),
+                ("delivery_cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 if name not in columns:
                     await db.execute(f"ALTER TABLE factory_runs ADD COLUMN {name} {definition}")
@@ -152,6 +153,13 @@ class RunStore:
             await db.execute(
                 "INSERT INTO factory_review_feedback (run_id, payload) VALUES (?, ?)",
                 (run_id, json.dumps({**payload, "created_at": time.time()})),
+            )
+            await db.commit()
+
+    async def cancel_delivery(self, run_id: str) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                "UPDATE factory_runs SET delivery_cancel_requested = 1 WHERE run_id = ?", (run_id,)
             )
             await db.commit()
 

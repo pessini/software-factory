@@ -122,7 +122,11 @@ class WorkflowNodes:
                 thread_id, output = await runtime.get_or_spawn(
                     "planner",
                     planner_prompt(
-                        runtime.run_id, state["request"], runtime.workspace, runtime.artifacts.root
+                        runtime.run_id,
+                        state["request"],
+                        runtime.workspace,
+                        runtime.artifacts.root,
+                        state.get("required_criteria"),
                     ),
                     runtime.config.agents.planner,
                     step="plan",
@@ -179,6 +183,16 @@ class WorkflowNodes:
                     )
                 if envelope.status == "blocked" or not envelope.acceptance_criteria:
                     raise ValueError(envelope.summary or "Planner blocked")
+            if state.get("required_criteria"):
+                from software_factory.contracts.models import CompletionCriterion
+
+                required = [
+                    CompletionCriterion.model_validate(item) for item in state["required_criteria"]
+                ]
+                required_ids = {item.id for item in required}
+                envelope.acceptance_criteria = [
+                    item for item in envelope.acceptance_criteria if item.id not in required_ids
+                ] + required
             json_path = runtime.artifacts.write_json("plan.json", envelope)
             markdown_path = runtime.artifacts.write_text("plan.md", plan_markdown(envelope))
             await runtime.emit("plan", "completed", "plan and acceptance criteria validated")

@@ -98,7 +98,9 @@ class FactoryRuntime:
             raise FactoryCancelled("factory run cancelled")
         record = await self.store.get_run(self.run_id)
         if record is not None and (
-            record.get("stop_target") or record.get("status") == "cancelled"
+            record.get("stop_target")
+            or record.get("status") == "cancelled"
+            or record.get("delivery_cancel_requested")
         ):
             self.cancel_event.set()
             raise FactoryCancelled(str(record.get("error") or "factory run cancelled"))

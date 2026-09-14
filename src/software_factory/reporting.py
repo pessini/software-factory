@@ -37,6 +37,7 @@ def run_summary(state: FactoryState, status: str) -> dict[str, Any]:
         "handoff": state.get("handoff"),
         "execution_summary": state.get("execution_summary"),
         "review_quality": state.get("review_quality"),
+        "delivery": state.get("delivery"),
     }
 
 
@@ -59,6 +60,21 @@ def final_report(state: FactoryState, outcome: str) -> str:
         if item["state"] == "waiting"
     )
     details = ""
+    delivery = state.get("delivery")
+    if delivery:
+        details += f"\n## PR delivery\n\nStatus: {delivery['status']}\n"
+        if delivery.get("pr_url"):
+            details += f"\nPR: {delivery['pr_url']}\nCommit: `{delivery['commit']}`\n"
+        if delivery.get("ci"):
+            details += f"\nCI for `{delivery['ci']['commit']}`: {delivery['ci']['status']}\n"
+        if delivery.get("error"):
+            details += f"\nDelivery stopped: {delivery['error']}\n"
+        if delivery.get("review_fix"):
+            details += f"\nReview-fix run: {delivery['review_fix']['run_id']}; {delivery['review_fix']['status']}\n"
+        if delivery.get("verified_run_id"):
+            details += f"\nThe current PR commit was verified by run `{delivery['verified_run_id']}`. The handoff below describes the original implementation.\n"
+        if delivery["status"] != "manual":
+            action = "inspect the saved delivery result; use deliver to refresh CI or reconcile an interrupted delivery."
     handoff = state.get("handoff")
     if handoff:
         details += f"\n## Builder change summary\n\n{handoff['change']}\n\n"

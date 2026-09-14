@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -226,6 +227,51 @@ class ReviewPolicy(ConfigModel):
         return self
 
 
+class DeliveryPolicy(ConfigModel):
+    mode: Literal["manual", "pull_request"] = "manual"
+    repository: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    )
+    base_branch: str = "main"
+    work_type: Literal["feat", "fix", "chore", "docs", "refactor", "test"] = "feat"
+    issue: int | None = Field(default=None, ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    review_fixes: bool = False
+
+    @field_validator("base_branch")
+    @classmethod
+    def safe_branch(cls, value: str) -> str:
+        if (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", value)
+            or any(part in {"", ".", ".."} or part.endswith(".lock") for part in value.split("/"))
+            or ".." in value
+            or value.endswith(".")
+        ):
+            raise ValueError("base_branch must be a Git branch name")
+        return value
+
+    @field_validator("title")
+    @classmethod
+    def descriptive_title(cls, value: str | None) -> str | None:
+        if value is not None and (
+            value != value.strip()
+            or any(ord(char) < 32 for char in value)
+            or "codex" in value.casefold()
+        ):
+            raise ValueError(
+                "use a single-line title that describes the change without naming the agent"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def authorized_target(self) -> DeliveryPolicy:
+        if self.mode == "pull_request" and (not self.repository or not self.title):
+            raise ValueError("pull_request delivery requires repository and title")
+        if self.review_fixes and self.mode != "pull_request":
+            raise ValueError("review_fixes requires pull_request delivery")
+        return self
+
+
 class FactoryConfig(ConfigModel):
     version: Literal[1]
     workflow: Literal["simple-sdlc"]
@@ -239,6 +285,7 @@ class FactoryConfig(ConfigModel):
     resolved_settings: SettingsSnapshot | None = None
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
+    delivery: DeliveryPolicy = Field(default_factory=DeliveryPolicy)
 
 
 CONFIG_PATH = Path(".factory/factory.yaml")
@@ -263,6 +310,9 @@ workflow: simple-sdlc
 review_mode: focused
 # To select reviewers by size and sensitive paths, use review_mode: risk_based.
 # See docs/risk-review.md for threshold boundaries and project-specific patterns.
+delivery:
+  mode: manual
+# See docs/pr-delivery.md to authorize publication and selected review fixes.
 
 agents:
   planner:
