@@ -37,6 +37,19 @@ class RunStore:
                     result_json TEXT,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS factory_start_requests (
+                    request_id TEXT PRIMARY KEY,
+                    input_hash TEXT NOT NULL,
+                    run_id TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS factory_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    process_group INTEGER,
+                    identity TEXT,
+                    state TEXT NOT NULL DEFAULT 'queued',
+                    error TEXT
+                );
                 CREATE TABLE IF NOT EXISTS factory_children (
                     run_id TEXT NOT NULL,
                     role TEXT NOT NULL,
@@ -71,6 +84,13 @@ class RunStore:
                 CREATE TABLE IF NOT EXISTS factory_active_sessions (
                     cwd TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS factory_interface_sessions (
+                    interface TEXT NOT NULL,
+                    reference_id TEXT NOT NULL,
+                    workspace TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    PRIMARY KEY (interface, reference_id)
                 );
                 CREATE TABLE IF NOT EXISTS factory_session_history (
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -722,7 +742,48 @@ class RunStore:
                      run_id = COALESCE(excluded.run_id, factory_sessions.run_id)""",
                 (session_id, str(cwd), run_id),
             )
+            if run_id is not None:
+                await db.execute(
+                    "INSERT OR IGNORE INTO factory_session_runs (session_id, run_id) VALUES (?, ?)",
+                    (session_id, run_id),
+                )
             await db.commit()
+
+    async def interface_session(
+        self, interface: str, reference_id: str, workspace: Path, session_id: str | None = None
+    ) -> str:
+        """Map optional presentation references to Factory sessions, never run ownership."""
+        from uuid import uuid4
+
+        canonical = str(workspace.resolve(strict=True))
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                "SELECT workspace, session_id FROM factory_interface_sessions WHERE interface = ? AND reference_id = ?",
+                (interface, reference_id),
+            )
+            mapping = await cursor.fetchone()
+            if mapping and mapping[0] != canonical:
+                raise ValueError("interface reference belongs to a different workspace")
+            if session_id is None:
+                session_id = str(mapping[1]) if mapping else "session_" + uuid4().hex
+            cursor = await db.execute(
+                "SELECT cwd FROM factory_sessions WHERE session_id = ?", (session_id,)
+            )
+            session = await cursor.fetchone()
+            if session and session[0] != canonical:
+                raise ValueError("session belongs to a different workspace")
+            await db.execute(
+                "INSERT OR IGNORE INTO factory_sessions (session_id, cwd) VALUES (?, ?)",
+                (session_id, canonical),
+            )
+            await db.execute(
+                """INSERT INTO factory_interface_sessions VALUES (?, ?, ?, ?)
+                   ON CONFLICT(interface, reference_id) DO UPDATE SET session_id = excluded.session_id""",
+                (interface, reference_id, canonical, session_id),
+            )
+            await db.commit()
+            return session_id
 
     async def session(self, session_id: str) -> dict[str, str | None] | None:
         async with aiosqlite.connect(self.path) as db:
@@ -817,7 +878,7 @@ class RunStore:
                 "UPDATE factory_sessions SET run_id = ? WHERE session_id = ?", (run_id, session_id)
             )
             await db.execute(
-                "INSERT INTO factory_session_runs (session_id, run_id) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO factory_session_runs (session_id, run_id) VALUES (?, ?)",
                 (session_id, run_id),
             )
             await db.commit()

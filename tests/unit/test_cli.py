@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from software_factory.cli import app
+from software_factory.context import FactoryContext
 from software_factory.persistence import RunStore
 
 
@@ -26,21 +27,28 @@ def test_help_exposes_operational_commands() -> None:
 def test_resume_exit_code_and_printed_result_match_the_stored_outcome(
     tmp_path: Path, status: str
 ) -> None:
-    storage = tmp_path / "parent-storage"
+    workspace = tmp_path / "target"
+    workspace.mkdir()
+    storage = tmp_path / "controller"
+    context = FactoryContext.open(workspace, storage_root=storage)
     store = RunStore(storage / "factory" / "checkpoints.sqlite")
 
     async def save_outcome() -> None:
         await store.initialize()
-        await store.create_run("fct_cli_outcome", tmp_path, "parent-1")
+        await store.create_run("fct_cli_outcome", workspace, context.session_id)
         await store.set_status("fct_cli_outcome", "running")
         if status == "cancelled":
             await store.request_stop("fct_cli_outcome", status, "cancelled by user")
-        await store.set_status("fct_cli_outcome", status, result={"changed_files": ["answer.txt"]})
+        await store.set_status(
+            "fct_cli_outcome",
+            status,
+            result={"context_version": 2, "changed_files": ["answer.txt"]},
+        )
 
     asyncio.run(save_outcome())
     result = CliRunner().invoke(
         app,
-        ["resume", "fct_cli_outcome", "--workspace", str(tmp_path)],
+        ["--storage", str(storage), "resume", "fct_cli_outcome", "--workspace", str(workspace)],
         env={
             "BB_THREAD_ID": "parent-1",
             "BB_PROJECT_ID": "project-1",

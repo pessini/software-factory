@@ -1,9 +1,11 @@
 # Factory controls for BB
 
 This panel lets a user set a shared provider, model, and effort, then override
-plan, build, repair, review, and revision. It reads models from the task's BB
-environment. Each change is saved through the Python factory settings command.
-The panel supports workspaces on the BB server machine.
+plan, build, repair, review, and revision. It reads models from Factory's protected
+native worker. Each change is saved through the shared Factory controls. The
+selected BB conversation is mapped to a Factory session so conversations in the
+same workspace retain separate settings. The panel supports workspaces on the
+BB server machine. Set the same `FACTORY_HOME` for the BB agent and panel command.
 
 Install the Python project with `uv tool install --editable .` from the repository
 root. Register Software Factory as described in `docs/macos-runbook.md`.
@@ -33,5 +35,6 @@ bb plugin build
 
 The Python tests cover settings resolution, session persistence, and child
 execution choices. See `docs/bb-settings-compatibility.md` in the repository for
-the live BB 0.42.1 check and the execution limits inherited from issue 3.
+the historical live BB 0.42.1 check. Current verification and remaining live
+checks are recorded in `docs/issue-9-acceptance.md`.
 The generated BB UI components remain available for panel maintenance.

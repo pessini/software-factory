@@ -46,7 +46,10 @@ async def test_builder_cannot_replace_plan_and_complete(tmp_path: Path, factory_
         },
     )
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+        workspace=tmp_path,
+        context=context(tmp_path),
+        execution=bb,
+        database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", run_id)
 
@@ -92,7 +95,10 @@ async def test_reviewer_process_cannot_replace_test_evidence_and_complete(
         },
     )
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+        workspace=tmp_path,
+        context=context(tmp_path),
+        execution=bb,
+        database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", run_id)
     assert result["status"] == "blocked"
@@ -110,7 +116,9 @@ async def test_unverified_bb_permissions_stop_before_child_dispatch(
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
     ctx = context(tmp_path)
     bb = BBClient(ctx, tmp_path, ("/must-not-be-executed",))
-    engine = FactoryEngine(workspace=tmp_path, context=ctx, bb=bb, database_path=database(tmp_path))
+    engine = FactoryEngine(
+        workspace=tmp_path, context=ctx, execution=bb, database_path=database(tmp_path)
+    )
     result = await engine.run("Write the correct answer", "fct_unverified")
     assert result["status"] == "failed"
     assert "cannot enforce read-only" in (result["error"] or "")
@@ -138,7 +146,7 @@ async def test_reference_change_between_roles_stops_before_builder(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
         event_sink=outside_change,
     )
@@ -169,7 +177,7 @@ async def test_invalid_json_gets_one_correction_in_same_thread(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", "fct_correction")
@@ -191,7 +199,7 @@ async def test_read_only_planner_change_is_preserved(tmp_path: Path, factory_yam
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     result = await engine.run("Read only", "fct_read_only")
@@ -220,7 +228,7 @@ async def test_reviewer_change_is_preserved_for_inspection(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     result = await engine.run("Write safely", "fct_reviewer_read_only")
@@ -243,7 +251,7 @@ async def test_cancellation_terminates_quality_process_group(
         workspace=tmp_path,
         context=ctx,
         config=load_config(tmp_path),
-        bb=FakeBB(tmp_path, {}),
+        execution=FakeBB(tmp_path, {}),
         store=store,
         artifacts=ArtifactStore(
             tmp_path, "fct_cancel", storage_root=ctx.thread_storage / "factory" / "artifacts"
@@ -291,7 +299,7 @@ async def test_read_only_change_is_preserved_when_envelope_is_invalid(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
 
@@ -325,7 +333,7 @@ async def test_protected_change_is_preserved_when_builder_envelope_is_invalid(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
 
@@ -349,7 +357,7 @@ async def test_runtime_observes_cancellation_persisted_by_another_engine(
         workspace=tmp_path,
         context=ctx,
         config=load_config(tmp_path),
-        bb=FakeBB(tmp_path, {}),
+        execution=FakeBB(tmp_path, {}),
         store=store,
         artifacts=ArtifactStore(
             tmp_path,
@@ -360,7 +368,7 @@ async def test_runtime_observes_cancellation_persisted_by_another_engine(
     cancelling_engine = FactoryEngine(
         workspace=tmp_path,
         context=ctx,
-        bb=FakeBB(tmp_path, {}),
+        execution=FakeBB(tmp_path, {}),
         database_path=database(tmp_path),
     )
 
@@ -384,7 +392,7 @@ async def test_external_cancellation_stops_quality_process_without_starting_repa
         workspace=tmp_path,
         context=ctx,
         config=load_config(tmp_path),
-        bb=FakeBB(tmp_path, {}),
+        execution=FakeBB(tmp_path, {}),
         store=store,
         artifacts=ArtifactStore(
             tmp_path,
@@ -408,7 +416,7 @@ async def test_external_cancellation_stops_quality_process_without_starting_repa
     cancelling_engine = FactoryEngine(
         workspace=tmp_path,
         context=ctx,
-        bb=FakeBB(tmp_path, {}),
+        execution=FakeBB(tmp_path, {}),
         database_path=database(tmp_path),
     )
 
@@ -430,10 +438,10 @@ async def test_cancellation_racing_spawn_stops_the_new_child(
             self.spawn_started = asyncio.Event()
             self.release_spawn = asyncio.Event()
 
-        async def spawn_child(self, role, prompt, agent, spawn_key):  # type: ignore[no-untyped-def]
+        async def start_worker(self, role, prompt, agent, spawn_key):  # type: ignore[no-untyped-def]
             self.spawn_started.set()
             await self.release_spawn.wait()
-            return await super().spawn_child(role, prompt, agent, spawn_key)
+            return await super().start_worker(role, prompt, agent, spawn_key)
 
     ctx = context(tmp_path)
     bb = GatedSpawnBB()
@@ -446,7 +454,7 @@ async def test_cancellation_racing_spawn_stops_the_new_child(
         workspace=tmp_path,
         context=ctx,
         config=load_config(tmp_path),
-        bb=bb,
+        execution=bb,
         store=store,
         artifacts=ArtifactStore(
             tmp_path, "fct_spawn_cancel", storage_root=ctx.thread_storage / "factory" / "artifacts"
@@ -460,7 +468,7 @@ async def test_cancellation_racing_spawn_stops_the_new_child(
     cancelling_engine = FactoryEngine(
         workspace=tmp_path,
         context=ctx,
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     await cancelling_engine.cancel_external("fct_spawn_cancel")

@@ -32,12 +32,10 @@ export default function plugin(bb: BbPluginApi) {
       const environment = await bb.sdk.environments.get({ environmentId: thread.environmentId });
       if (!environment.path) throw new Error("The environment has no workspace path.");
       const workspace = environment.path;
-      const storage = await bb.sdk.threads.storageLocation({ threadId });
       const localHost = (await readFile(join(bb.server.experimental_dataDir, "host-id"), "utf8")).trim();
-      if (environment.hostId !== localHost || storage.hostId !== localHost) {
+      if (environment.hostId !== localHost) {
         throw new Error("Factory controls currently require a workspace on the BB server machine.");
       }
-      if (thread.status === "active") throw new Error("Finish or cancel the current run before changing settings.");
       let command = (await settings.get()).executable;
       if (!command) {
         const config = JSON.parse(await readFile(join(bb.server.experimental_dataDir, "config.json"), "utf8"));
@@ -52,14 +50,12 @@ export default function plugin(bb: BbPluginApi) {
       return await new Promise<SettingsResult>((resolve, reject) => {
         const child = execFile(command, ["settings-panel", "--workspace", workspace], {
           cwd: workspace, encoding: "utf8", timeout: 120000, maxBuffer: 1024 * 1024,
-          env: { ...process.env, BB_SERVER_URL: bb.server.loopbackBaseUrl,
-            BB_THREAD_ID: threadId, BB_PROJECT_ID: thread.projectId!,
-            BB_ENVIRONMENT_ID: environment.id, BB_THREAD_STORAGE: storage.storageRootPath },
+          env: { ...process.env },
         }, (error, stdout, stderr) => {
           if (error) { reject(new Error(stderr.trim() || error.message)); return; }
           try { resolve(resultSchema.parse(JSON.parse(stdout))); } catch (cause) { reject(cause); }
         });
-        child.stdin?.end(JSON.stringify(request));
+        child.stdin?.end(JSON.stringify({ ...request, interface_reference: threadId }));
       });
     },
   });

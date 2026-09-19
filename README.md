@@ -1,14 +1,21 @@
-# BB LangGraph Software Factory
+# LangGraph Software Factory
 
-A macOS-first MVP that exposes a deterministic, resumable software-development
-workflow to [BB](https://github.com/get-bb/bb). LangGraph owns routing and durable
-state; BB owns visible Planner, Builder, review, and judge threads; Python owns all
-quality gates.
+A macOS-first controller for a deterministic, resumable software-development
+workflow. LangGraph and Python own saved state, protected workers, and quality
+checks. The CLI, [BB](https://github.com/get-bb/bb) ACP interface, and local Codex MCP
+interface use the same Factory control operations and run IDs.
 
-Live runs use the [protected local BB worker](docs/protected-worker.md), tested
+See [interface setup](docs/factory-interfaces.md) and
+[existing-run compatibility](docs/interface-migration.md). The independent native
+path is implemented; live workflow acceptance and optional Codex Router support
+remain incomplete for issue #9. Local container permission checks and model
+discovery are separate from a live workflow acceptance run.
+
+Earlier live acceptance used the [protected local BB worker](docs/protected-worker.md)
 with BB 0.42.1, Apple Container 1.0.0, and the Codex provider CLI 0.154.0.
-The worker enforces read-only roles and protects controller storage. Other
-providers and remote BB environments are not currently supported.
+New runs use Factory-owned workers with the same container protection. See the
+[issue 9 verification record](docs/issue-9-acceptance.md) for current evidence.
+Other providers and remote execution are not currently supported.
 
 See [run ownership and recovery](docs/run-recovery.md) for cancellation and restart
 rules, [live acceptance evidence](docs/live-worker-acceptance.json) for the
@@ -37,9 +44,9 @@ The MVP provides:
 - an ACP agent registered as **Software Factory** in BB;
 - a resumable LangGraph with baseline checks, Planner, Builder, deterministic tests, repair,
   Reviewer, revision, finalization, and terminal failure nodes;
-- visible, reusable BB child threads for every specialist;
+- Factory-owned protected worker processes for every specialist;
 - a SQLite LangGraph checkpointer plus a durable spawn-intent ledger and
-  deterministic BB-thread reconciliation that prevent duplicate children after
+  exact execution reconciliation that prevent duplicate requests after
   process crashes;
 - strict Pydantic handoffs, file and Git change detection, versioned evidence,
   trusted `argv` quality commands, bounded loops, and process-tree cancellation;
@@ -71,11 +78,14 @@ boundary and must be verification-only.
 
 ```text
 software-factory acp
+software-factory mcp --workspace /path/to/target
+software-factory models
 software-factory doctor
 software-factory graph --format mermaid
 software-factory init
 software-factory repo-check
 software-factory run "request"
+software-factory start "request" --request-id <stable-request-id>
 software-factory inspect <run-id>
 software-factory resume <run-id>
 software-factory cancel <run-id>

@@ -3,7 +3,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p .checks
-export FACTORY_LIVE_CONTAINER=0 FACTORY_LIVE_PROVIDER=0
+export FACTORY_LIVE_CONTAINER=0 FACTORY_LIVE_PROVIDER=0 FACTORY_LIVE_NATIVE=0 FACTORY_LIVE_SANDBOX=0
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 
 if ! uv sync --frozen 2>&1 | tee .checks/install.log; then

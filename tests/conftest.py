@@ -101,6 +101,9 @@ safety:
 
 
 class FakeBB:
+    def bind_run(self, store, run_id):
+        pass
+
     async def model_catalog(self) -> list[ModelOption]:
         return [
             ModelOption(
@@ -147,7 +150,7 @@ class FakeBB:
         self.prompts: list[tuple[str, str]] = []
         self.thread_prompts: dict[str, str] = {}
 
-    async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
+    async def start_worker(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
         self.choices.append((role, agent))
         self.prompts.append((role, prompt))
         self.spawn_counts[role] += 1
@@ -163,7 +166,7 @@ class FakeBB:
             raise error
         return thread_id
 
-    async def find_child(self, role: str, spawn_key: str) -> str | None:
+    async def find_worker(self, role: str, spawn_key: str) -> str | None:
         return self.remote_threads.get((role, spawn_key))
 
     async def wait(self, thread_id: str) -> None:
@@ -175,7 +178,7 @@ class FakeBB:
     async def output(self, thread_id: str) -> str:
         return self.outputs[thread_id]
 
-    async def tell(self, thread_id: str, message: str) -> str:
+    async def continue_worker(self, thread_id: str, message: str) -> str:
         self.prompts.append((self.thread_roles[thread_id], message))
         await self._advance(thread_id, message)
         self._record_execution(thread_id, message)
@@ -184,7 +187,7 @@ class FakeBB:
     async def stop(self, thread_id: str) -> None:
         self.stopped.append(thread_id)
 
-    async def inspect_thread(self, thread_id: str) -> BBThreadState:
+    async def inspect_worker(self, thread_id: str) -> BBThreadState:
         return BBThreadState("stopped" if thread_id in self.stopped else "idle", True)
 
     def _record_execution(self, thread_id: str, prompt: str) -> None:

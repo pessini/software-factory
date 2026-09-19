@@ -42,9 +42,11 @@ class FactoryState(TypedDict, total=False):
     run_id: str
     request: str
     status: RunStatus
-    bb_parent_thread_id: str
-    bb_project_id: str
-    bb_environment_id: str
+    context_version: int
+    session_id: str
+    workspace_id: str
+    owner_uid: int
+    checkpoint_thread_id: str
     workspace_path: str
     storage_path: str
     planner_thread_id: str

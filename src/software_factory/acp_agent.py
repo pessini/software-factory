@@ -1,412 +1,184 @@
+"""BB ACP presentation over the shared Factory controls."""
+
 from __future__ import annotations
 
-import asyncio
 import json
+import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 from uuid import uuid4
 
 import acp
 from acp import (
-    InitializeResponse,
     LoadSessionResponse,
     NewSessionResponse,
     PromptResponse,
     update_agent_message_text,
     update_user_message_text,
 )
-from acp.helpers import SessionUpdate
 from acp.schema import (
-    AgentCapabilities,
-    Implementation,
     SessionConfigOptionSelect,
     SessionNotification,
     SetSessionConfigOptionResponse,
 )
 
-from software_factory import __version__
-from software_factory.bb import BBClient, BBClientProtocol, BBContext
+from software_factory.acp_presentation import ACPPresentation
 from software_factory.bb.acp_input import request_text
-from software_factory.bb.client import BBError, RecoveryNeeded
-from software_factory.engine import FactoryEngine, checkpoint_path, new_run_id
-from software_factory.events import FactoryEvent
-from software_factory.interactions import Interaction
-from software_factory.ownership import OwnershipError, session_lease
+from software_factory.context import FactoryContext, checkpoint_path
+from software_factory.control import FactoryControl
+from software_factory.execution import ExecutionManager
+from software_factory.panel import PanelRequest, panel_request
 from software_factory.persistence import RunStore
-from software_factory.session_presentation import EventPresentation
-from software_factory.session_settings import SessionSettings
-from software_factory.state import FINAL_STATUSES, FactoryState
-
-COMMAND_HELP = (
-    "Use /status to inspect this run, /continue to resume it, /retry to retry recovery, "
-    "/answer INTERACTION_ID ANSWER to answer a saved question, /cancel to stop, "
-    "or /new REQUEST to start new work after this run ends."
-)
+from software_factory.state import FactoryState
 
 
-class SoftwareFactoryAgent:
-    def __init__(self, context: BBContext, bb: BBClientProtocol | None = None) -> None:
-        self.context = context
-        self.bb = bb
+class SoftwareFactoryAgent(ACPPresentation):
+    def __init__(
+        self,
+        context: FactoryContext,
+        execution: ExecutionManager | None = None,
+        launch: Callable[[str], Awaitable[None]] | None = None,
+    ) -> None:
+        self.factory_context = context
+        self.execution = execution
+        self.launch = launch
         self.connection: acp.Client | None = None
         self.store = RunStore(checkpoint_path(context))
-        self.cancellations: dict[str, asyncio.Event] = {}
 
-    def on_connect(self, conn: acp.Client) -> None:
-        self.connection = conn
-
-    async def initialize(
-        self,
-        protocol_version: int,
-        client_capabilities: Any = None,
-        client_info: Any = None,
-        **kwargs: Any,
-    ) -> InitializeResponse:
-        del client_capabilities, client_info, kwargs
-        return InitializeResponse(
-            protocol_version=acp.PROTOCOL_VERSION,
-            agent_capabilities=AgentCapabilities(load_session=True),
-            agent_info=Implementation(
-                name="software-factory", title="Software Factory", version=__version__
-            ),
+    def control(self, workspace: Path, session_id: str) -> FactoryControl:
+        return FactoryControl(
+            workspace,
+            storage_root=self.factory_context.storage_root,
+            session_id=session_id,
+            execution=self.execution,
+            launch=self.launch,
         )
 
-    async def new_session(
-        self,
-        cwd: str,
-        additional_directories: list[str] | None = None,
-        mcp_servers: list[Any] | None = None,
-        **kwargs: Any,
-    ) -> NewSessionResponse:
-        del additional_directories, mcp_servers, kwargs
-        session_id = f"factory_session_{uuid4().hex}"
+    async def new_session(self, cwd: str, **kwargs: Any) -> NewSessionResponse:
         await self.store.initialize()
-        previous = await self.store.latest_session(Path(cwd))
-        await self.store.save_session(session_id, Path(cwd).resolve())
-        if previous and previous["settings_json"]:
-            await self.store.save_session_settings(session_id, str(previous["settings_json"]))
-        options = await self.settings(Path(cwd)).options(session_id)
+        session_id = "session_" + uuid4().hex
+        workspace = Path(cwd).resolve(strict=True)
+        if reference := os.environ.get("BB_THREAD_ID"):
+            session_id = await self.store.interface_session("bb", reference, workspace)
+        await self.store.save_session(session_id, workspace)
         await self.store.activate_session(session_id)
+        options = await self._options(workspace, session_id)
         return NewSessionResponse(session_id=session_id, config_options=list(options))
 
-    async def load_session(
-        self,
-        cwd: str,
-        session_id: str,
-        mcp_servers: list[Any] | None = None,
-        additional_directories: list[str] | None = None,
-        **kwargs: Any,
-    ) -> LoadSessionResponse:
-        del mcp_servers, additional_directories, kwargs
+    async def _options(
+        self, workspace: Path, session_id: str, request: PanelRequest | None = None
+    ) -> list[SessionConfigOptionSelect]:
+        result = await panel_request(
+            workspace,
+            self.control(workspace, session_id).context,
+            request or PanelRequest(action="read"),
+            execution=self.execution,
+            session_id=session_id,
+        )
+        return [
+            SessionConfigOptionSelect.model_validate(item)
+            for item in cast(list[Any], result["configOptions"])
+        ]
+
+    async def load_session(self, cwd: str, session_id: str, **kwargs: Any) -> LoadSessionResponse:
         await self.store.initialize()
         session = await self.store.session(session_id)
-        if session is None:
-            raise ValueError(f"unknown ACP session: {session_id}")
-        if Path(str(session["cwd"])).resolve() != Path(cwd).resolve():
-            raise ValueError("ACP session belongs to a different workspace")
-        try:
-            options = await self.settings(Path(cwd)).options(session_id)
-        except (BBError, ValueError) as exc:
-            options = [
-                SessionConfigOptionSelect.model_validate(item)
-                for item in json.loads(session.get("config_options_json") or "[]")
-            ]
-            await self._send(
-                session_id,
-                update_agent_message_text(
-                    f"Saved history is available. Settings could not load: {exc}"
-                ),
-                publish=False,
-            )
+        if session is None or Path(str(session["cwd"])).resolve() != Path(cwd).resolve():
+            raise ValueError("session does not belong to this workspace")
+        if reference := os.environ.get("BB_THREAD_ID"):
+            await self.store.interface_session("bb", reference, Path(cwd), session_id)
         await self.store.activate_session(session_id)
         await self._sync_events(session_id, publish=False)
-        session = await self.store.session(session_id)
-        if session and session["run_id"] and await self.store.get_run(str(session["run_id"])):
-            engine = FactoryEngine(workspace=Path(cwd), context=self.context, bb=self.bb)
-            await self._result(
-                session_id, await engine.inspect(str(session["run_id"])), publish=False
-            )
         if self.connection is not None:
             for update in await self.store.session_history(session_id):
                 notification = SessionNotification.model_validate(
                     {"sessionId": session_id, "update": update}
                 )
                 await self.connection.session_update(session_id, notification.update)
+        try:
+            options = await self._options(Path(cwd), session_id)
+        except Exception:
+            options = [
+                SessionConfigOptionSelect.model_validate(item)
+                for item in json.loads(session.get("config_options_json") or "[]")
+            ]
         return LoadSessionResponse(config_options=list(options))
-
-    def settings(self, workspace: Path) -> SessionSettings:
-        return SessionSettings(
-            self.store, self.bb or BBClient.from_context(self.context, workspace)
-        )
 
     async def set_config_option(
         self, session_id: str, config_id: str, value: str, **kwargs: Any
     ) -> SetSessionConfigOptionResponse:
-        del kwargs
-        await self.store.initialize()
         session = await self.store.session(session_id)
         if session is None:
-            raise ValueError(f"unknown ACP session: {session_id}")
-        options = await self.settings(Path(str(session["cwd"]))).change(
-            session_id, config_id, value
+            raise ValueError("unknown Factory session")
+        options = await self._options(
+            Path(str(session["cwd"])),
+            session_id,
+            PanelRequest(action="change", config_id=config_id, value=value),
         )
         return SetSessionConfigOptionResponse(config_options=list(options))
 
     async def prompt(self, session_id: str, prompt: list[Any], **kwargs: Any) -> PromptResponse:
-        if request_text(prompt).startswith("[bb system]\n"):
-            # BB echoes child completion back to the parent as a system prompt.
-            # The controller already reads the exact saved child result.
-            return PromptResponse(stop_reason="end_turn")
         await self.store.initialize()
-        while True:
-            owns_session = False
-            try:
-                with session_lease(self.store.path, session_id):
-                    owns_session = True
-                    session = await self.store.session(session_id)
-                    if session and session["run_id"]:
-                        await self.store.release_unstarted_session_run(
-                            session_id, str(session["run_id"])
-                        )
-                    return await self._prompt_owned(session_id, prompt, **kwargs)
-            except OwnershipError:
-                if owns_session:
-                    raise
-                request = request_text(prompt).strip()
-                session = await self.store.session(session_id)
-                if (
-                    not request.lower().startswith("/answer ")
-                    or not session
-                    or not session["run_id"]
-                ):
-                    raise
-                run_id = str(session["run_id"])
-                interaction, answers = await self._parse_answer(run_id, request.partition(" ")[2])
-                if interaction.answers is None:
-                    # The first answer may own the session before its database write.
-                    # Wait for that write or for ownership to become available.
-                    await asyncio.sleep(0.01)
-                    continue
-                if interaction.answers != answers:
-                    raise ValueError(
-                        "this interaction already has a different saved answer"
-                    ) from None
-                engine = FactoryEngine(
-                    workspace=Path(str(session["cwd"])), context=self.context, bb=self.bb
-                )
-                result = await engine.inspect(run_id)
-                await self._send(session_id, update_user_message_text(request), publish=False)
-                await self._result(session_id, result)
-                return PromptResponse(
-                    stop_reason="cancelled" if result["status"] == "cancelled" else "end_turn"
-                )
-
-    async def _parse_answer(self, run_id: str, argument: str) -> tuple[Interaction, dict[str, str]]:
-        interaction_id, separator, answer_text = argument.strip().partition(" ")
-        interaction = await self.store.interaction(run_id, interaction_id)
-        if interaction is None or not separator:
-            raise ValueError("use /answer INTERACTION_ID ANSWER for a saved question")
-        answers = (
-            {interaction.questions[0].id: answer_text.strip()}
-            if len(interaction.questions) == 1 and not answer_text.lstrip().startswith("{")
-            else json.loads(answer_text)
-        )
-        if not isinstance(answers, dict):
-            raise ValueError("answers must be a JSON object with one answer per question ID")
-        interaction.validate_answers(answers)
-        return interaction, answers
-
-    async def _send(
-        self,
-        session_id: str,
-        update: SessionUpdate,
-        *,
-        key: str | None = None,
-        publish: bool = True,
-    ) -> None:
-        added = await self.store.append_session_update(
-            session_id, key or uuid4().hex, update.model_dump(mode="json", by_alias=True)
-        )
-        if publish and added and self.connection is not None:
-            await self.connection.session_update(session_id, update)
-
-    async def _sync_events(self, session_id: str, *, publish: bool = True) -> None:
-        for run_id in await self.store.session_runs(session_id):
-            presentation = EventPresentation()
-            for raw in await self.store.events(run_id):
-                event = FactoryEvent.model_validate(raw)
-                for index, update in enumerate(presentation.updates(event)):
-                    await self._send(
-                        session_id,
-                        update,
-                        key=f"event:{run_id}:{event.sequence}:{index}",
-                        publish=publish,
-                    )
-
-    async def _result(
-        self,
-        session_id: str,
-        result: FactoryState,
-        *,
-        publish: bool = True,
-    ) -> None:
-        run_id = result["run_id"]
-        summary = f"Run {run_id}: {result['status']}."
-        if result.get("error"):
-            summary += "\n" + str(result["error"])
-        pending = [
-            Interaction.model_validate(item)
-            for item in result.get("interactions", [])
-            if item["state"] == "waiting"
-        ]
-        if pending:
-            summary += "\n\n" + "\n\n".join(item.display() for item in pending)
-        elif result.get("status") in FINAL_STATUSES and result.get("final_report_path"):
-            path = Path(str(result["final_report_path"]))
-            if path.is_file():
-                summary += "\n\n" + path.read_text(encoding="utf-8")
-        summary += "\n\n" + COMMAND_HELP
-        if not publish and any(
-            item.get("sessionUpdate") == "agent_message_chunk"
-            and item.get("content", {}).get("text") == summary
-            for item in await self.store.session_history(session_id)
-        ):
-            return
-        sequence = len(await self.store.events(run_id))
-        await self._send(
-            session_id,
-            update_agent_message_text(summary),
-            key=f"result:{run_id}:{result['status']}:{sequence}" if not publish else None,
-            publish=publish,
-        )
-
-    async def _prompt_owned(
-        self, session_id: str, prompt: list[Any], **kwargs: Any
-    ) -> PromptResponse:
-        del kwargs
-        if self.connection is None:
-            raise RuntimeError("ACP client connection is unavailable")
         session = await self.store.session(session_id)
         if session is None:
-            raise ValueError(f"unknown ACP session: {session_id}")
+            raise ValueError("unknown Factory session")
         request = request_text(prompt).strip()
+        if request.startswith("[bb system]\n"):
+            return PromptResponse(stop_reason="end_turn")
         if not request:
             raise ValueError("request must not be empty")
-        await self._send(session_id, update_user_message_text(request), publish=False)
+        control = self.control(Path(str(session["cwd"])), session_id)
         first, _, argument = request.partition(" ")
         command = first.lower().lstrip("/")
-        normalized = request.lower().rstrip("?.!")
-        if normalized in {
-            "status",
-            "/status",
-            "inspect",
-            "/inspect",
-            "what is the status",
-            "what's the status",
-            "what is the status of this run",
-        }:
-            command = "status"
-        elif normalized in {
-            "continue",
-            "/continue",
-            "resume",
-            "/resume",
-            "retry",
-            "/retry",
-            "cancel",
-            "/cancel",
-        }:
-            command = normalized.lstrip("/")
-        elif first.lower() not in {"/new", "/answer"}:
-            command = "message"
-        run_id = str(session["run_id"]) if session["run_id"] else None
-        cancellation = asyncio.Event()
-
-        async def sink(event: FactoryEvent) -> None:
-            del event
-            try:
-                await self._sync_events(session_id)
-            except (ConnectionError, BrokenPipeError) as exc:
-                raise RecoveryNeeded(
-                    "ACP client disconnected; reconnect and continue the saved run"
-                ) from exc
-
-        engine = FactoryEngine(
-            workspace=Path(str(session["cwd"])),
-            context=self.context,
-            event_sink=sink,
-            bb=self.bb,
-            cancel_event=cancellation,
-        )
-        if command == "message" and run_id:
-            await self._send(session_id, update_agent_message_text(COMMAND_HELP))
+        run_id = session["run_id"]
+        await self._send(session_id, update_user_message_text(request), publish=False)
+        if command == "attach":
+            await control.engine(argument)
+            await self.store.save_session(session_id, Path(str(session["cwd"])), argument)
+            run_id = argument
+            result = await control.status(run_id)
+        elif command == "new" or (
+            run_id is None
+            and command
+            not in {"status", "inspect", "resume", "continue", "cancel", "answer", "retry"}
+        ):
+            result = await control.start(
+                argument if command == "new" else request,
+                request_id=str(kwargs.get("request_id") or uuid4().hex),
+            )
+        elif run_id is None:
+            await self._send(
+                session_id,
+                update_agent_message_text("Send a work request, or /attach FACTORY_RUN_ID."),
+            )
             return PromptResponse(stop_reason="end_turn")
-        if not run_id and command not in {"message", "new"}:
+        elif command in {"status", "inspect"}:
+            result = await control.status(run_id)
+        elif command in {"resume", "continue", "retry"}:
+            result = await control.resume(run_id)
+        elif command == "answer":
+            interaction, answers = await self._parse_answer(run_id, argument)
+            result = await control.answer(run_id, interaction.interaction_id, answers)
+        elif command == "cancel":
+            result = await control.cancel(run_id)
+        else:
             await self._send(
                 session_id,
                 update_agent_message_text(
-                    "This session has no run. Send a work request to start one."
+                    "Use /status, /continue, /answer ID ANSWER, /cancel, or /new REQUEST."
                 ),
             )
             return PromptResponse(stop_reason="end_turn")
-        if command in {"message", "new"}:
-            request = argument.strip() if command == "new" else request
-            if not request:
-                raise ValueError("/new requires a work request")
-            configuration, selection = await self.settings(Path(str(session["cwd"]))).read(
-                session_id
-            )
-            # read() can initialize an old session's saved settings.
-            session = await self.store.session(session_id)
-            assert session is not None
-            run_id = new_run_id()
-            await self.store.claim_session_run(session_id, run_id, session["settings_json"])
-        assert run_id is not None
-        self.cancellations[run_id] = cancellation
-        try:
-            if command in {"message", "new"}:
-                await self._send(session_id, update_agent_message_text(f"Starting run {run_id}."))
-                result = await engine.run(
-                    request, run_id, selection=selection, configuration=configuration
-                )
-            elif command == "status":
-                result = await engine.inspect(run_id)
-            elif command == "retry":
-                result = await engine.retry(run_id)
-            elif command == "cancel":
-                result = await engine.cancel_external(run_id)
-            elif command == "answer":
-                interaction, answers = await self._parse_answer(run_id, argument)
-                result = await engine.answer(run_id, interaction.interaction_id, answers)
-            else:
-                result = await engine.resume(run_id)
-            await self._sync_events(session_id)
-            await self._result(session_id, result)
-            reason: Literal["cancelled", "end_turn"] = (
-                "cancelled" if result.get("status") == "cancelled" else "end_turn"
-            )
-            return PromptResponse(stop_reason=reason)
-        finally:
-            self.cancellations.pop(run_id, None)
-            await self.store.release_unstarted_session_run(session_id, run_id)
+        await self._sync_events(session_id)
+        await self._result(session_id, cast(FactoryState, result))
+        return PromptResponse(stop_reason="end_turn")
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
-        del kwargs
-        session = await self.store.session(session_id)
-        if session is None or not session.get("run_id"):
-            return
-        run_id = str(session["run_id"])
-        cancellation = self.cancellations.get(run_id)
-        if cancellation:
-            cancellation.set()
-        engine = FactoryEngine(
-            workspace=Path(str(session["cwd"])), context=self.context, bb=self.bb
-        )
-        result = await engine.cancel_external(run_id)
-        await self._sync_events(session_id)
-        await self._result(session_id, result)
+        # ACP cancellation ends presentation. Only the explicit /cancel control stops a job.
+        return None
 
 
 async def serve_acp() -> None:
-    context = BBContext.from_environment()
+    context = FactoryContext.open(Path.cwd())
     await acp.run_agent(cast(acp.Agent, SoftwareFactoryAgent(context)))

@@ -13,6 +13,18 @@ class BBContext:
     environment_id: str
     thread_storage: Path
 
+    @property
+    def session_id(self) -> str:
+        return self.parent_thread_id
+
+    @property
+    def storage_root(self) -> Path:
+        return self.thread_storage
+
+    @property
+    def legacy(self) -> bool:
+        return True
+
     @classmethod
     def from_environment(cls, env: Mapping[str, str] | None = None) -> BBContext:
         source = env or os.environ

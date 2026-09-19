@@ -17,10 +17,10 @@ async def test_cancel_finds_repair_child_after_lost_creation_reply(
     )
 
     class LostRepairReply(FakeBB):
-        async def spawn_child(self, role, prompt, agent, spawn_key):
+        async def start_worker(self, role, prompt, agent, spawn_key):
             if role == "builder" and self.spawn_counts[role] == 1:
                 self.spawn_error_after_create = RecoveryNeeded("creation reply lost")
-            return await super().spawn_child(role, prompt, agent, spawn_key)
+            return await super().start_worker(role, prompt, agent, spawn_key)
 
     bb = LostRepairReply(
         tmp_path,
@@ -32,7 +32,7 @@ async def test_cancel_finds_repair_child_after_lost_creation_reply(
             ],
         },
     )
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run(
         "Write the answer",
         selection=Selection(steps={"repair": ModelChoice(model="model-b", reasoning_level="low")}),
@@ -77,13 +77,15 @@ async def test_preflight_failure_retains_ownership_if_stop_is_unconfirmed(
             await engine.store.save_child(run_id, "planner", "uncertain-child")
             raise BBError("connection ended")
 
-        async def inspect_thread(self, thread_id):
+        async def inspect_worker(self, thread_id):
             return BBThreadState("unknown", False)
 
     bb = UncertainPreflight(tmp_path, {})
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer", run_id)
     assert result["status"] == "recovery_needed"
-    other = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=FakeBB(tmp_path, {}))
+    other = FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=FakeBB(tmp_path, {})
+    )
     with pytest.raises(OwnershipError, match="reserved for recovery"):
         await other.run("Other work", "fct_takeover")

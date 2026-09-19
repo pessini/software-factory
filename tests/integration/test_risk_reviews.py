@@ -72,7 +72,7 @@ async def test_small_edit_inside_authentication_requires_security_review(tmp_pat
             evidence_file="service.py",
         ),
     )
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Update the service result"
     )
     assert result["status"] == "ready_for_review", result.get("error")
@@ -93,13 +93,13 @@ async def test_review_round_is_incomplete_until_the_decision_and_history_are_sav
             raise RecoveryNeeded("Interrupted before saving the decision and finding history")
 
     result = await FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, event_sink=interrupt
+        workspace=tmp_path, context=context(tmp_path), execution=bb, event_sink=interrupt
     ).run("Set the value")
     assert result["status"] == "recovery_needed"
     assert not result["review_quality"]["rounds"][0]["complete"]
-    resumed = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).resume(
-        result["run_id"]
-    )
+    resumed = await FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=bb
+    ).resume(result["run_id"])
     assert resumed["status"] == "ready_for_review", resumed.get("error")
     assert resumed["review_quality"]["rounds"][0]["complete"]
     assert resumed["execution_summary"]["steps"]["judge"]["dispatch_count"] == 1
@@ -138,7 +138,7 @@ async def test_policy_boundaries_select_and_save_required_reviews(
     result = await FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(tmp_path, risk_scripts(changes, evidence_file=evidence_file)),
+        execution=FakeBB(tmp_path, risk_scripts(changes, evidence_file=evidence_file)),
     ).run("Apply the requested change")
     assert result["status"] == "ready_for_review", result.get("error")
     assert set(result["handoff"]["reviews"]) == reviewers
@@ -179,7 +179,7 @@ async def test_sensitive_paths_override_documentation_and_generated_patterns(
     result = await FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(tmp_path, risk_scripts({path: "value\n"}, evidence_file=path)),
+        execution=FakeBB(tmp_path, risk_scripts({path: "value\n"}, evidence_file=path)),
     ).run("Update the sensitive file")
     assert result["status"] == "ready_for_review", result.get("error")
     selection = result["handoff"]["bundle"]["review_selection"]
@@ -225,7 +225,7 @@ async def test_revision_reselects_reviews_and_keeps_retained_and_fixed_findings(
     for role in ("builder", "request_reviewer", "documentation_reviewer", "judge"):
         responses[role].extend(following[role])
     bb = FakeBB(tmp_path, responses)
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Update the note and required behavior"
     )
     assert result["status"] == "ready_for_review", result.get("error")
@@ -260,7 +260,7 @@ async def test_rename_cannot_hide_the_old_sensitive_path(tmp_path, factory_yaml)
     result = await FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(
+        execution=FakeBB(
             tmp_path,
             risk_scripts({"auth.py": None, "value.py": "VALUE = 1\n"}, evidence_file="value.py"),
         ),
@@ -283,7 +283,7 @@ async def test_project_thresholds_apply_to_the_saved_run(tmp_path, factory_yaml)
     result = await FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(
+        execution=FakeBB(
             tmp_path, risk_scripts({"value.py": "VALUE = 1\n" * 6}, evidence_file="value.py")
         ),
     ).run("Update the values")
@@ -296,6 +296,8 @@ async def test_project_thresholds_apply_to_the_saved_run(tmp_path, factory_yaml)
 async def test_feedback_cli_preserves_decisions_and_keeps_correction_history(
     tmp_path, factory_yaml
 ):
+    from software_factory.context import FactoryContext
+
     init_repository(tmp_path, factory_yaml + "\nreview_mode: risk_based\n", "raise SystemExit(0)\n")
     responses = risk_scripts({"value.py": "VALUE = 1\n"}, evidence_file="value.py")
     suggestion = {
@@ -317,17 +319,13 @@ async def test_feedback_cli_preserves_decisions_and_keeps_correction_history(
             ],
         }
     )
+    factory_context = FactoryContext.open(tmp_path, storage_root=context(tmp_path).storage_root)
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=FakeBB(tmp_path, responses)
+        workspace=tmp_path, context=factory_context, execution=FakeBB(tmp_path, responses)
     )
     result = await engine.run("Set the value")
     assert result["status"] == "ready_for_review", result.get("error")
-    env = {
-        "BB_THREAD_ID": "parent-1",
-        "BB_PROJECT_ID": "project-1",
-        "BB_ENVIRONMENT_ID": "environment-1",
-        "BB_THREAD_STORAGE": str(context(tmp_path).thread_storage),
-    }
+    env = {"FACTORY_HOME": str(factory_context.storage_root)}
 
     async def invoke(*args):
         return await asyncio.to_thread(
@@ -373,7 +371,7 @@ async def test_required_documentation_review_cannot_be_skipped_or_edit_files(
             root / "notes.md"
         ).write_text("unexpected edit")
     bb = FakeBB(tmp_path, responses)
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Update the note"
     )
     assert result["status"] == "blocked"
@@ -387,7 +385,7 @@ async def test_generated_noise_is_separate_but_keeps_full_evidence(tmp_path, fac
     init_repository(tmp_path, factory_yaml + "\nreview_mode: risk_based\n", "raise SystemExit(0)\n")
     changes = {"notes.md": "A change.\n", "bundle.map": "generated line\n" * 150}
     bb = FakeBB(tmp_path, risk_scripts(changes, evidence_file="notes.md"))
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Update the documentation and generated map"
     )
     assert result["status"] == "ready_for_review", result.get("error")
@@ -413,7 +411,7 @@ async def test_custom_sensitive_patterns_are_added_to_builtin_rules(tmp_path, fa
     result = await FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(
+        execution=FakeBB(
             tmp_path, risk_scripts({"payments.py": "VALUE = 1\n"}, evidence_file="payments.py")
         ),
     ).run("Update payments")

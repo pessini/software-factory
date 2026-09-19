@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import asyncio
 
-from software_factory.bb import BBClientProtocol
-from software_factory.bb.client import RecoveryNeeded
+from software_factory.execution import ExecutionManager, RecoveryNeeded
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain, group_alive, stop_group
 
 
-async def stop_owned_work(store: RunStore, run_id: str, bb: BBClientProtocol) -> None:
+async def stop_owned_work(store: RunStore, run_id: str, execution: ExecutionManager) -> None:
     children = set((await store.list_children(run_id)).values())
     operations = await store.operations(run_id)
     uncertain = False
@@ -21,7 +20,7 @@ async def stop_owned_work(store: RunStore, run_id: str, bb: BBClientProtocol) ->
             continue
         try:
             thread_id = operation["thread_id"] or await asyncio.wait_for(
-                bb.find_child(
+                execution.find_worker(
                     str(operation["role"]).split(":")[0], f"{run_id}:{operation['role']}"
                 ),
                 5,
@@ -36,8 +35,8 @@ async def stop_owned_work(store: RunStore, run_id: str, bb: BBClientProtocol) ->
             await store.update_operation(operation["operation_id"], thread_id=thread_id)
     for thread_id in children:
         try:
-            await asyncio.wait_for(bb.stop(thread_id), 5)
-            inspection = await asyncio.wait_for(bb.inspect_thread(thread_id), 5)
+            await asyncio.wait_for(execution.stop(thread_id), 5)
+            inspection = await asyncio.wait_for(execution.inspect_worker(thread_id), 5)
             if not inspection.stopped:
                 raise CleanupUncertain(f"cannot confirm child exit: {thread_id}")
             for operation in await store.operations(run_id):

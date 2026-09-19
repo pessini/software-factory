@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import fcntl
 import hashlib
 import json
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import ExitStack, asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import IO, Any
 
@@ -32,6 +33,19 @@ def session_lease(database: Path, session_id: str) -> Iterator[None]:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise OwnershipBusy("this session already has an active prompt") from exc
+        yield
+
+
+@asynccontextmanager
+async def command_lease(database: Path, command_id: str) -> AsyncIterator[None]:
+    """Serialize retries of one command without blocking the event loop."""
+    with ExitStack() as stack:
+        while True:
+            try:
+                stack.enter_context(session_lease(database, command_id))
+                break
+            except OwnershipBusy:
+                await asyncio.sleep(0.05)
         yield
 
 

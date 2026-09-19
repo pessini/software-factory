@@ -126,8 +126,8 @@ class InterruptedBB(ProtectedBBClient):
         self.injected = False
         self.observed = None
 
-    async def spawn_child(self, role, prompt, agent, spawn_key):
-        child = await super().spawn_child(role, prompt, agent, spawn_key)
+    async def start_worker(self, role, prompt, agent, spawn_key):
+        child = await super().start_worker(role, prompt, agent, spawn_key)
         if not self.injected and self.scenario in {
             "restart_after_dispatch",
             "connection_loss",
@@ -276,7 +276,9 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
             interrupted = True
             raise asyncio.CancelledError()
 
-    engine = FactoryEngine(workspace=workspace, context=context, bb=client, event_sink=events)
+    engine = FactoryEngine(
+        workspace=workspace, context=context, execution=client, event_sink=events
+    )
     run_id = "fct_live_" + uuid4().hex[:12]
     record["run_id"] = run_id
     task = None
@@ -378,7 +380,7 @@ async def test_real_provider_workflow(tmp_path, scenario, acceptance_source):
             assert {item["id"] for item in actual_children} == owned_children
             record["workers"] = []
             for child_id in owned_children:
-                assert (await client.inspect_thread(child_id)).stopped
+                assert (await client.inspect_worker(child_id)).stopped
                 receipts = WorkerRecords(await thread_storage(child_id)).all()
                 record["workers"].extend(item.model_dump(mode="json") for item in receipts)
             provider_operations = [item for item in operations if item["kind"] != "check"]

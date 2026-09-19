@@ -47,7 +47,7 @@ async def test_initialize_migrates_existing_run_table(tmp_path: Path) -> None:
     engine = FactoryEngine(
         workspace=tmp_path,
         context=BBContext("parent", "project", "environment", tmp_path / "storage"),
-        bb=bb,
+        execution=bb,
         database_path=database,
     )
     with pytest.raises(ValueError, match="legacy run lacks Phase 1 evidence"):

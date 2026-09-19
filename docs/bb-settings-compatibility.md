@@ -2,6 +2,10 @@
 
 Checked on 2026-09-10 with installed BB 0.42.1.
 
+This is historical evidence for the BB-owned execution path. New runs use the
+[shared Factory controls](factory-interfaces.md). The [issue 9 verification
+record](issue-9-acceptance.md) states which checks cover the new implementation.
+
 ## Environment and discovery
 
 The packaged CLI is `node /Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/dist/bb.js`.

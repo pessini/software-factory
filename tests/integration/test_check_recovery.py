@@ -31,7 +31,7 @@ async def main():
         'planner': [{'output': plan_output()}],
         'builder': [{'output': build_output(), 'action': write_answer('good')}],
     })
-    engine = FactoryEngine(workspace=workspace, context=context(workspace), bb=bb,
+    engine = FactoryEngine(workspace=workspace, context=context(workspace), execution=bb,
         database_path=database(workspace))
     await engine.run('Write the answer', 'fct_check_crash')
 asyncio.run(main())
@@ -84,14 +84,17 @@ if attempt == 1:
         contender = FactoryEngine(
             workspace=tmp_path,
             context=context(tmp_path),
-            bb=FakeBB(tmp_path, {}),
+            execution=FakeBB(tmp_path, {}),
             database_path=database(tmp_path).with_name("other.sqlite"),
         )
         with pytest.raises(OwnershipError, match="reserved for recovery"):
             await contender.run("Competing work", "fct_takeover")
         bb = FakeBB(tmp_path, {"reviewer": [{"output": review_output()}]})
         engine = FactoryEngine(
-            workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+            workspace=tmp_path,
+            context=context(tmp_path),
+            execution=bb,
+            database_path=database(tmp_path),
         )
         result = await engine.resume("fct_check_crash")
         expected_status = (

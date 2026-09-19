@@ -272,8 +272,14 @@ class DeliveryPolicy(ConfigModel):
         return self
 
 
+class WorkerConnection(ConfigModel):
+    runtime: Literal["codex"] = "codex"
+    model_connection: Literal["native"] = "native"
+    codex_version: Literal["0.154.0"] = "0.154.0"
+
+
 class FactoryConfig(ConfigModel):
-    version: Literal[1]
+    version: Literal[1, 2]
     workflow: Literal["simple-sdlc"]
     # Omitted in Phase 1 configurations, including saved active runs.
     review_mode: ReviewMode = "single"
@@ -286,6 +292,28 @@ class FactoryConfig(ConfigModel):
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     delivery: DeliveryPolicy = Field(default_factory=DeliveryPolicy)
+    worker_connection: WorkerConnection | None = None
+
+    @model_validator(mode="after")
+    def connection_version(self) -> FactoryConfig:
+        if self.version == 1 and self.worker_connection is not None:
+            raise ValueError("worker_connection requires configuration version 2")
+        if self.version == 2 and self.worker_connection is None:
+            raise ValueError("configuration version 2 requires an explicit worker_connection")
+        return self
+
+
+def upgrade_config(config: FactoryConfig) -> FactoryConfig:
+    """Convert a copy; retain the original policy and all saved authorization."""
+    if config.version == 2:
+        return config.model_copy(deep=True)
+    return FactoryConfig.model_validate(
+        {
+            **config.model_dump(mode="json"),
+            "version": 2,
+            "worker_connection": WorkerConnection().model_dump(),
+        }
+    )
 
 
 CONFIG_PATH = Path(".factory/factory.yaml")
@@ -305,7 +333,11 @@ def load_config(workspace: Path, config_path: Path | None = None) -> FactoryConf
 
 
 def default_config() -> str:
-    return """version: 1
+    return """version: 2
+worker_connection:
+  runtime: codex
+  model_connection: native
+  codex_version: '0.154.0'
 workflow: simple-sdlc
 review_mode: focused
 # To select reviewers by size and sensitive paths, use review_mode: risk_based.

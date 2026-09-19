@@ -8,8 +8,8 @@ from acp.schema import TextContentBlock
 
 from software_factory.bb import BBContext
 from software_factory.bb.client import BBExecution, BBThreadState
+from software_factory.bb.worker_acp import WorkerAgent
 from software_factory.engine import FactoryEngine
-from software_factory.worker import WorkerAgent
 from software_factory.worker_records import WorkerMessage
 from tests.conftest import FakeBB, init_repository, render_review
 from tests.integration.test_factory_engine import build_output, context, plan_output, review_output
@@ -117,7 +117,7 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
                 for item in await super().model_catalog()
             ]
 
-        async def spawn_child(self, role, prompt, agent, spawn_key):
+        async def start_worker(self, role, prompt, agent, spawn_key):
             self.spawn_counts[role] += 1
             thread_id = "child-" + role
             operation_id = re.search(r"Factory operation: (\S+)", prompt)[1]
@@ -163,7 +163,7 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
                 receipt.interaction_id,
             )
 
-        async def inspect_thread(self, thread_id):
+        async def inspect_worker(self, thread_id):
             receipt = self.workers[thread_id].records.read(self.operations[thread_id])
             return BBThreadState(
                 receipt.status if receipt else "starting", bool(receipt and receipt.stopped)
@@ -172,7 +172,7 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
         async def wait(self, thread_id):
             step = self.operations[thread_id].split(":")[1]
             await next(provider for provider in providers if provider.step == step).finished.wait()
-            while not (await self.inspect_thread(thread_id)).stopped:
+            while not (await self.inspect_worker(thread_id)).stopped:
                 await asyncio.wait({self.child_tasks[thread_id]}, timeout=0.01)
                 if self.child_tasks[thread_id].done():
                     await self.child_tasks[thread_id]
@@ -198,9 +198,9 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
         assert parent == ctx.parent_thread_id
         return ctx.thread_storage
 
-    monkeypatch.setattr("software_factory.worker.read_bb", read_bb)
-    monkeypatch.setattr("software_factory.worker.thread_storage", thread_storage)
-    engine = FactoryEngine(workspace=tmp_path, context=ctx, bb=bb)
+    monkeypatch.setattr("software_factory.bb.worker_acp.read_bb", read_bb)
+    monkeypatch.setattr("software_factory.bb.worker_acp.thread_storage", thread_storage)
+    engine = FactoryEngine(workspace=tmp_path, context=ctx, execution=bb)
     try:
         async with asyncio.timeout(15):
             waiting = await engine.run("Write the answer", "fct_worker_question")
@@ -208,7 +208,7 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
             question = waiting["interactions"][0]
             assert question["source"] == "child"
             assert not (tmp_path / "answer.txt").exists()
-            restarted = FactoryEngine(workspace=tmp_path, context=ctx, bb=bb)
+            restarted = FactoryEngine(workspace=tmp_path, context=ctx, execution=bb)
             assert (await restarted.inspect(waiting["run_id"]))["interactions"] == waiting[
                 "interactions"
             ]
