@@ -81,6 +81,47 @@ async def test_start_request_is_saved_once_and_status_has_no_side_effects(tmp_pa
         await control.start("A different request", request_id="request-1")
 
 
+async def test_start_waits_for_in_progress_settings_refresh(tmp_path, factory_yaml):
+    import asyncio
+
+    from software_factory.config import ModelChoice, Selection
+
+    workspace = tmp_path / "target"
+    workspace.mkdir()
+    init_repository(workspace, factory_yaml, "pass\n")
+    catalog_entered, release_catalog = asyncio.Event(), asyncio.Event()
+
+    class DelayedCatalog(FakeBB):
+        async def model_catalog(self):
+            catalog_entered.set()
+            await release_catalog.wait()
+            return await super().model_catalog()
+
+    async def launch(run_id):
+        pass
+
+    control = FactoryControl(
+        workspace,
+        storage_root=tmp_path / "controller",
+        execution=DelayedCatalog(workspace, {}),
+        launch=launch,
+    )
+    refresh = asyncio.create_task(
+        control.settings(
+            selection=Selection(shared=ModelChoice(model="model-b", reasoning_level="low"))
+        )
+    )
+    await asyncio.wait_for(catalog_entered.wait(), timeout=2)
+    asyncio.get_running_loop().call_later(0.05, release_catalog.set)
+    _, started = await asyncio.gather(
+        refresh, control.start("Write the answer", request_id="after-settings")
+    )
+    saved = await control.status(started["run_id"])
+    assert saved["status"] == "pending"
+    settings = await control.settings(run_id=started["run_id"])
+    assert settings["resolved_settings"]["effective"]["plan"]["model"] == "model-b"
+
+
 async def test_bb_to_mcp_answer_preserves_run_settings_deadlines_and_dispatches(
     tmp_path, factory_yaml
 ):
@@ -159,6 +200,40 @@ async def test_other_workspace_cannot_inspect_or_cancel_a_run(tmp_path, factory_
         with pytest.raises(ValueError, match="different workspace"):
             await operation(run_id)
     assert (await control.status(run_id))["status"] == "pending"
+
+
+async def test_bb_acknowledges_answer_while_continuation_is_queued(tmp_path, factory_yaml):
+    from software_factory.acp_agent import SoftwareFactoryAgent
+    from tests.integration.test_session_continuation import (
+        RecordingBB,
+        SessionClient,
+        question_output,
+        send,
+    )
+
+    workspace = tmp_path / "target"
+    workspace.mkdir()
+    init_repository(workspace, factory_yaml, "pass\n")
+    execution = RecordingBB(workspace, [question_output(), plan_output()])
+    launches = []
+
+    async def launch(run_id):
+        launches.append(run_id)
+        if len(launches) == 1:
+            await (await control.engine(run_id)).resume(run_id)
+
+    control = FactoryControl(
+        workspace, storage_root=tmp_path / "controller", execution=execution, launch=launch
+    )
+    agent = SoftwareFactoryAgent(control.context, execution, launch)
+    client = SessionClient()
+    agent.on_connect(client)
+    session = await agent.new_session(str(workspace))
+    await send(agent, session.session_id, "Write the answer")
+    question = (await control.status(client.run_id))["interactions"][0]["interaction_id"]
+    await send(agent, session.session_id, f'/answer {question} {{"format":"Text"}}')
+    assert "Answer saved" in client.messages[-1]
+    assert "Which output format?" not in client.messages[-1]
 
 
 async def test_cancellation_is_visible_before_cleanup_and_settings_are_frozen(

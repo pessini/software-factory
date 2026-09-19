@@ -1,0 +1,498 @@
+{
+  "date": "2026-09-19",
+  "scope": "Independent native execution and BB controls; no desktop Codex integration or Router test.",
+  "environment": {
+    "python": "3.14.7",
+    "bb": "0.43.1",
+    "apple_container": "1.0.0",
+    "worker_image": "software-factory-worker:0.154.0",
+    "host_codex_cli": "0.155.1",
+    "mcp_sdk": "1.30.0",
+    "plugin_sdk_declared": "0.4.47",
+    "plugin_build_sdk": "0.4.87"
+  },
+  "authorization": "User approved live tests on generated temporary source, using the lowest supported effort. No test requested commit or push.",
+  "selected_model": "gpt-5.6-luna",
+  "selected_effort": "low",
+  "native_cli": {
+    "run_id": "fct_108a6cd480f7",
+    "status": "ready_for_review",
+    "workspace_path": "/private/var/folders/ml/5wj85bp13tg74bd12v1cvppr0000gn/T/pytest-of-pessini/pytest-27/test_native_workflow_without_b0/target",
+    "controller_state": "idle",
+    "deadline_at": 1789822050.800332,
+    "overall_expires_at": 1789822050.800332,
+    "operations": [
+      {
+        "operation_id": "fct_108a6cd480f7:baseline:behavior:1:check",
+        "step": "baseline:behavior",
+        "kind": "check",
+        "role": null,
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": null,
+        "execution_id": "8b7fe0ca7b424282a33e88344a89a3aa"
+      },
+      {
+        "operation_id": "fct_108a6cd480f7:plan:1:create",
+        "step": "plan",
+        "kind": "create",
+        "role": "planner",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_7a93bb691da901f5fa2167a784fc5457",
+        "execution_id": "01a0b9af-d01c-73e1-9ee5-9b2a8c90e83e"
+      },
+      {
+        "operation_id": "fct_108a6cd480f7:build:1:create",
+        "step": "build",
+        "kind": "create",
+        "role": "builder",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_b9e7f345be6c2897084f14e3629e55ba",
+        "execution_id": "01a0b9b0-79ad-7e32-aaf5-91c2389c92b9"
+      },
+      {
+        "operation_id": "fct_108a6cd480f7:test:behavior:1:check",
+        "step": "test:behavior",
+        "kind": "check",
+        "role": null,
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": null,
+        "execution_id": "6a6c06341b6f4ffb809f48b034b628e9"
+      },
+      {
+        "operation_id": "fct_108a6cd480f7:review:1:create",
+        "step": "review",
+        "kind": "create",
+        "role": "reviewer",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_5dec118973ffb0683dcee11f70be4a4f",
+        "execution_id": "01a0b9b1-1f98-7641-a78a-9bffb540edb1"
+      }
+    ],
+    "receipts": [
+      {
+        "operation_id": "fct_108a6cd480f7:build:1:create",
+        "container_id": "factory-e1e56bee928cc59f50bbc60c55aff1cc",
+        "request_hash": "9f9ee2a42e2446fd0b4475facced5749df3f2c8e54ba8fd073aa3236ee6e77e2",
+        "status": "completed",
+        "provider_thread_id": "01a0b9b0-793e-7541-b53f-c3ef214c9dd6",
+        "execution_id": "01a0b9b0-79ad-7e32-aaf5-91c2389c92b9",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "accept-edits"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      },
+      {
+        "operation_id": "fct_108a6cd480f7:review:1:create",
+        "container_id": "factory-390bf83cdf79b2b3af6af46acbfa0d02",
+        "request_hash": "6ea8d7d3cd15b0b7f6da16c7ca73a95ee73a8ddf8663fbb9003ee21bd7759215",
+        "status": "completed",
+        "provider_thread_id": "01a0b9b1-1f26-7a92-8fb5-a0bd7235c5bf",
+        "execution_id": "01a0b9b1-1f98-7641-a78a-9bffb540edb1",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      },
+      {
+        "operation_id": "fct_108a6cd480f7:plan:1:create",
+        "container_id": "factory-d281ba7cef849c2e59d4683dea9dc563",
+        "request_hash": "c198667a7e70a56d8e1d737a23f3242ffc78fafb1db0351fc429ecf31326e353",
+        "status": "completed",
+        "provider_thread_id": "01a0b9af-cfac-7fa2-9afb-fcea67b56a0e",
+        "execution_id": "01a0b9af-d01c-73e1-9ee5-9b2a8c90e83e",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      }
+    ],
+    "final_report_sha256": null,
+    "source_record_sha256": "53be324cd5aaaa7e68dee28b44726772dd033c58771bd13d08d49b76ad02a76d",
+    "source_record": "/tmp/factory-issue9-acceptance-native/native-acceptance-0ef533feae9b45d38fba8b570ff89b22.json"
+  },
+  "bb_continuation": {
+    "run_id": "fct_fb6c2110e63c",
+    "status": "ready_for_review",
+    "workspace_path": "/private/tmp/factory-issue9-bb-90c4cdf9",
+    "controller_state": "idle",
+    "deadline_at": 1789822967.41764,
+    "overall_expires_at": 1789823427.8427851,
+    "operations": [
+      {
+        "operation_id": "fct_fb6c2110e63c:baseline:behavior:1:check",
+        "step": "baseline:behavior",
+        "kind": "check",
+        "role": null,
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": null,
+        "execution_id": "fd2035ddfe26430eba45bac2bca8e0d0"
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:plan:1:create",
+        "step": "plan",
+        "kind": "create",
+        "role": "planner",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_83c572db7dd507c3a2a5da75dc393a4e",
+        "execution_id": "01a0b9bc-9b97-7e12-892a-a17387a1cb95"
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:plan:2:clarification",
+        "step": "plan",
+        "kind": "clarification",
+        "role": "planner",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_83c572db7dd507c3a2a5da75dc393a4e",
+        "execution_id": "01a0b9be-6066-7143-b332-8108705a0ea7"
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:build:1:create",
+        "step": "build",
+        "kind": "create",
+        "role": "builder",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_7ce618d7711391c882cd42678773ac69",
+        "execution_id": "01a0b9be-c41e-7e61-83c2-f8bc6ed9aade"
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:test:behavior:1:check",
+        "step": "test:behavior",
+        "kind": "check",
+        "role": null,
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": null,
+        "execution_id": "3804893e8a8546a3af8656686580d500"
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:review:1:create",
+        "step": "review",
+        "kind": "create",
+        "role": "reviewer",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_c37fa88d9dfa1807478b22775d78558e",
+        "execution_id": "01a0b9bf-6a5f-7df1-a05c-b4c5a55130ef"
+      }
+    ],
+    "receipts": [
+      {
+        "operation_id": "fct_fb6c2110e63c:build:1:create",
+        "container_id": "factory-6c7f627bfa7a6e2415aefdce5a35efe5",
+        "request_hash": "4774eab698d99d1a1ccfefee1ca8578ad3aae454940541dccfab60b0b7926625",
+        "status": "completed",
+        "provider_thread_id": "01a0b9be-c3bd-74c3-b0c4-49da91af55bf",
+        "execution_id": "01a0b9be-c41e-7e61-83c2-f8bc6ed9aade",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "accept-edits"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:plan:1:create",
+        "container_id": "factory-cae221f52281e0e0d9be46742096d35e",
+        "request_hash": "74a3c956f9c78d7b7921b6a4919f267ed9eb5c676f0ffed4f7fc5b9490db6aa8",
+        "status": "completed",
+        "provider_thread_id": "01a0b9bc-9b25-7261-b85d-0caeca4fc97c",
+        "execution_id": "01a0b9bc-9b97-7e12-892a-a17387a1cb95",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:plan:2:clarification",
+        "container_id": "factory-85e519e74c5f6070aa8f873442f4109a",
+        "request_hash": "2cd1392bd7f8f2ae828dbe0ab109d292ede410c79bd884a8784f935b85c2279d",
+        "status": "completed",
+        "provider_thread_id": "01a0b9bc-9b25-7261-b85d-0caeca4fc97c",
+        "execution_id": "01a0b9be-6066-7143-b332-8108705a0ea7",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      },
+      {
+        "operation_id": "fct_fb6c2110e63c:review:1:create",
+        "container_id": "factory-8247d9719e2995660d2af1eefbf82b8e",
+        "request_hash": "bb98e4c26fa0f7255975c72b448b709aa3b8671cd91b451cff72a82432dc355a",
+        "status": "completed",
+        "provider_thread_id": "01a0b9bf-69f6-7423-aa5f-afc3c43ef989",
+        "execution_id": "01a0b9bf-6a5f-7df1-a05c-b4c5a55130ef",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      }
+    ],
+    "final_report_sha256": "6f982d14823b95c977539fe4d16343c927d5eb23bea256d0fa84e3af675174d3",
+    "bb_task_id": "thr_y86n2fwdxq",
+    "bb_environment_id": "env_vwinnztcb5",
+    "checks": {
+      "settings_saved_in_panel": true,
+      "settings_survived_page_reload": true,
+      "start_during_panel_reload": true,
+      "task_runtime_closed_while_waiting": true,
+      "same_question_after_reconnect": true,
+      "bb_answer_accepted": true,
+      "bb_resume_did_not_duplicate_work": true,
+      "repeated_cli_answer_did_not_dispatch_or_extend_deadlines": true
+    },
+    "pending_interaction": {
+      "interaction_id": "fct_fb6c2110e63c:plan:1",
+      "run_id": "fct_fb6c2110e63c",
+      "source": "planner",
+      "operation_id": null,
+      "questions": [
+        {
+          "id": "prefix",
+          "question": "Which exact prefix should format_label add before each name?",
+          "options": [
+            "Item:",
+            "Name:"
+          ]
+        }
+      ],
+      "answers": null,
+      "state": "waiting"
+    },
+    "saved_answer": {
+      "prefix": "Item: "
+    },
+    "deadline_before_answer": 1789822887.8427851,
+    "overall_expiry_before_answer": 1789823427.8427851,
+    "final_cleanup": {
+      "no_recorded_live_processes": true,
+      "matching_container_labels": true,
+      "containers_stopped": true,
+      "protected_files_match_initial_commit": true
+    }
+  },
+  "bb_cancellation": {
+    "run_id": "fct_a47949c35623",
+    "status": "cancelled",
+    "workspace_path": "/private/tmp/factory-issue9-cancel",
+    "controller_state": "idle",
+    "deadline_at": 1789823251.7343302,
+    "overall_expires_at": 1789823791.7343302,
+    "operations": [
+      {
+        "operation_id": "fct_a47949c35623:baseline:behavior:1:check",
+        "step": "baseline:behavior",
+        "kind": "check",
+        "role": null,
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": null,
+        "execution_id": "cfc21996cc7f442eafb432edb11c965a"
+      },
+      {
+        "operation_id": "fct_a47949c35623:plan:1:create",
+        "step": "plan",
+        "kind": "create",
+        "role": "planner",
+        "state": "completed",
+        "dispatch_count": 1,
+        "thread_id": "worker_21fcdd858e2cb8b1e10b17b8581a8098",
+        "execution_id": "01a0b9c2-2451-7073-aae5-81a05623c6ba"
+      },
+      {
+        "operation_id": "fct_a47949c35623:build:1:create",
+        "step": "build",
+        "kind": "create",
+        "role": "builder",
+        "state": "stopped",
+        "dispatch_count": 1,
+        "thread_id": "worker_56329e2b90a14c6c704589cc32a6c588",
+        "execution_id": "01a0b9c2-d11d-74a3-8b68-74bc3f8c972e"
+      }
+    ],
+    "receipts": [
+      {
+        "operation_id": "fct_a47949c35623:build:1:create",
+        "container_id": "factory-fd359590a9ae86e078cfa4999c413f8d",
+        "request_hash": "bd1731ab11acb29b00279c887b7b324625c4d69471fd5c6ccc6e3d9f0cc0e70a",
+        "status": "stopped",
+        "provider_thread_id": "01a0b9c2-d0c8-7fa3-8acf-dfa6d8ecf639",
+        "execution_id": "01a0b9c2-d11d-74a3-8b68-74bc3f8c972e",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "accept-edits"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      },
+      {
+        "operation_id": "fct_a47949c35623:plan:1:create",
+        "container_id": "factory-5ecbbeae0027378512a538154020b292",
+        "request_hash": "28b604b077e7c04d415a533e92a93124989c121a89027b9bb5b23f016e186f5d",
+        "status": "completed",
+        "provider_thread_id": "01a0b9c2-23f0-7372-9c53-29a75a57fa37",
+        "execution_id": "01a0b9c2-2451-7073-aae5-81a05623c6ba",
+        "reported": {
+          "provider": "codex",
+          "model": "gpt-5.6-luna",
+          "reasoning_level": "low",
+          "permission_mode": "auto"
+        },
+        "stopped": true,
+        "usage": null,
+        "connection_evidence": {
+          "worker_runtime": "codex",
+          "runtime_version": "0.154.0",
+          "model_connection": "native",
+          "requested_model": "gpt-5.6-luna",
+          "actual_model": "gpt-5.6-luna",
+          "requested_effort": "low",
+          "effective_effort": "low"
+        }
+      }
+    ],
+    "final_report_sha256": "dea3fbdb4bd389410683ebc5d94b5e55831bd2917652960e9682a65bf6cb52cd",
+    "bb_task_id": "thr_s895snxs9h",
+    "step_when_cancelled": "build",
+    "initial_response_status": "stopping",
+    "confirmed_final_status": "cancelled",
+    "review_dispatched": false,
+    "final_cleanup": {
+      "no_recorded_live_processes": true,
+      "matching_container_labels": true,
+      "containers_stopped": true,
+      "protected_files_match_initial_commit": true
+    }
+  },
+  "limits": [
+    "The BB app stayed open for other work. Only the generated test task runtime was closed and reopened.",
+    "The native test had all BB_* variables removed and used no BB services; it did not stop the desktop BB application.",
+    "The native test started through CLI and inspected through a fresh real MCP stdio connection. It did not register tools in the Codex desktop app.",
+    "The native temporary pytest workspace was removed by later pytest retention. Its externally saved JSON record supplied this summary; the final report hash is unavailable.",
+    "Cancelled Builder output is not treated as completed work.",
+    "Router support and external provider compatibility are not established."
+  ],
+  "normal_checks": {
+    "command": "bash scripts/check.sh",
+    "passed": 355,
+    "skipped": 22,
+    "failed": 0,
+    "duration_seconds": 854.65,
+    "report": ".checks/tests.xml",
+    "lint": "passed",
+    "format": "passed",
+    "mypy": "passed",
+    "plugin_types": "passed",
+    "shell_syntax": "passed",
+    "standards_review_findings": 0,
+    "spec_review_new_findings": 0
+  }
+}

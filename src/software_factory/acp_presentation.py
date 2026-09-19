@@ -96,8 +96,6 @@ class ACPPresentation:
     ) -> None:
         run_id = result["run_id"]
         summary = f"Run {run_id}: {result['status']}."
-        if result.get("error"):
-            summary += "\n" + str(result["error"])
         pending = [
             Interaction.model_validate(item)
             for item in result.get("interactions", [])
@@ -105,7 +103,17 @@ class ACPPresentation:
         ]
         if pending:
             summary += "\n\n" + "\n\n".join(item.display() for item in pending)
-        elif result.get("status") in FINAL_STATUSES and result.get("final_report_path"):
+        elif result["status"] == "waiting_for_input" and any(
+            item["state"] in {"answered", "delivered"} for item in result.get("interactions", [])
+        ):
+            summary += "\nAnswer saved. Use /status to read continuation progress."
+        elif result.get("error"):
+            summary += "\n" + str(result["error"])
+        if (
+            not pending
+            and result.get("status") in FINAL_STATUSES
+            and result.get("final_report_path")
+        ):
             path = Path(str(result["final_report_path"]))
             if path.is_file():
                 summary += "\n\n" + path.read_text(encoding="utf-8")

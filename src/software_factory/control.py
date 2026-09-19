@@ -16,7 +16,7 @@ from software_factory.config import FactoryConfig, Selection, load_config
 from software_factory.context import FactoryContext, checkpoint_path
 from software_factory.engine import FactoryEngine, new_run_id
 from software_factory.execution import ExecutionManager
-from software_factory.ownership import command_lease, session_lease
+from software_factory.ownership import command_lease
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain, group_alive, process_identity
 from software_factory.settings import resolve_config
@@ -118,7 +118,7 @@ class FactoryControl:
                 raise ValueError("session belongs to a different workspace")
             if session is None:
                 await self.store.save_session(self.context.session_id, self.workspace)
-            with session_lease(self.store.path, self.context.session_id):
+            async with command_lease(self.store.path, self.context.session_id):
                 session = await self.store.session(self.context.session_id)
                 assert session is not None
                 if session["run_id"]:
@@ -258,7 +258,7 @@ class FactoryControl:
             return FactoryConfig.model_validate_json(artifacts.read_text("config.json")).model_dump(
                 mode="json"
             )
-        with session_lease(self.store.path, self.context.session_id):
+        async with command_lease(self.store.path, self.context.session_id):
             session = await self.store.session(self.context.session_id)
             if session is None:
                 await self.store.save_session(self.context.session_id, self.workspace)

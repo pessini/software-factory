@@ -7,9 +7,9 @@ interface use the same Factory control operations and run IDs.
 
 See [interface setup](docs/factory-interfaces.md) and
 [existing-run compatibility](docs/interface-migration.md). The independent native
-path is implemented; live workflow acceptance and optional Codex Router support
-remain incomplete for issue #9. Local container permission checks and model
-discovery are separate from a live workflow acceptance run.
+path passed real CLI and BB workflow tests, including saved questions, reconnect,
+and cancellation. See the short [before-and-after explanation](docs/factory-explained.html).
+Codex desktop integration and optional Router support remain deferred for issue #9.
 
 Earlier live acceptance used the [protected local BB worker](docs/protected-worker.md)
 with BB 0.42.1, Apple Container 1.0.0, and the Codex provider CLI 0.154.0.
@@ -107,5 +107,4 @@ Model and effort choices for every active step, including the focused reviewers
 and judge, are
 available through the [BB Factory panel](bb-plugin-factory-controls/README.md).
 See [model settings](docs/model-settings.md) for saved settings and presets,
-and [BB compatibility](docs/bb-settings-compatibility.md) for the tested interface
-and the remaining live-execution limit.
+and [current BB verification](docs/issue-9-acceptance.md) for the tested interface.

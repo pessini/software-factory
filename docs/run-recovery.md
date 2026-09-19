@@ -1,5 +1,12 @@
 # Run ownership, cancellation, and recovery
 
+This page records the original BB-backed recovery design. For new context-version-2
+runs, use [independent job recovery](interface-migration.md#independent-job-recovery)
+and [shared control commands](factory-interfaces.md). In that path Factory owns
+workers, `ready_for_review` is the successful outcome, and command return does
+not mean the detached job has finished. The historical child-task and `accepted`
+details below apply to old BB records.
+
 SQLite is the source of truth for a run's status. A LangGraph checkpoint records
 where to continue. A checkpoint cannot replace a stored stop request or final
 outcome. Use `inspect` to see the current status, operations, processes, and events.

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Software Factory — before and now</title>
+<style>
+  :root { color-scheme: light dark; --paper:light-dark(#f6f5ef,#171b1b); --ink:light-dark(#172b2a,#e5ede8); --soft:light-dark(#536562,#a9b8b2); --line:light-dark(#cad3cb,#40504a); --wash:light-dark(#e4ece4,#233a32); --accent:light-dark(#225d49,#a2d5b9); }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1000px; margin:auto; padding:42px 34px 50px; }
+  .eyebrow, .number { font:12px/1.5 ui-monospace,monospace; text-transform:uppercase; letter-spacing:.12em; color:var(--soft); }
+  header { padding-bottom:28px; border-bottom:1px solid var(--line); }
+  h1 { max-width:750px; font:500 clamp(32px,5vw,52px)/1.1 Georgia,serif; letter-spacing:-.03em; margin:16px 0; }
+  h2 { font:500 27px/1.2 Georgia,serif; margin:6px 0 14px; }
+  h3 { font-size:16px; margin:0 0 8px; }
+  p { margin:0 0 14px; max-width:75ch; }
+  .intro { font-size:18px; max-width:710px; }
+  section { margin-top:28px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; }
+  .switch { display:flex; gap:6px; }
+  button { font:inherit; padding:8px 16px; border:1px solid var(--line); border-radius:6px; background:transparent; color:var(--ink); cursor:pointer; }
+  button[aria-pressed="true"] { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  button:focus-visible, a:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
+  .flow { display:grid; grid-template-columns:1fr 34px 1.2fr 34px 1fr; align-items:stretch; gap:10px; margin:22px 0 16px; }
+  .node { padding:19px 18px; border:1px solid var(--line); min-width:0; }
+  .node.owner { background:var(--wash); border-color:var(--accent); }
+  .node strong { display:block; font-size:18px; margin-bottom:7px; }
+  .node span { display:block; color:var(--soft); font-size:14px; }
+  .arrow { align-self:center; text-align:center; font-size:23px; color:var(--soft); }
+  #diagram-note { min-height:3.1em; color:var(--soft); }
+  .twocol { display:grid; grid-template-columns:1fr 1fr; gap:36px; padding-top:24px; border-top:1px solid var(--line); }
+  ul, ol { padding-left:21px; margin:8px 0 0; }
+  li { margin:8px 0; }
+  .key { color:var(--accent); font-weight:650; }
+  .later { border-top:1px solid var(--line); padding-top:24px; }
+  .later-grid { display:grid; grid-template-columns:1fr 1fr; gap:36px; }
+  .tested { margin-top:26px; border-top:1px solid var(--line); padding-top:20px; }
+  .tested p { font-size:14px; color:var(--soft); }
+  footer { display:flex; flex-wrap:wrap; gap:18px; margin-top:22px; font-size:13px; }
+  a { color:var(--accent); text-underline-offset:3px; }
+  code { font-size:.88em; }
+  @media(max-width:620px) {
+    main { padding:26px 20px; }
+    .flow { grid-template-columns:1fr; gap:4px; }
+    .arrow { transform:rotate(90deg); font-size:20px; }
+    .node { padding:14px 16px; }
+    .twocol, .later-grid { grid-template-columns:1fr; gap:22px; }
+    #diagram-note { min-height:0; }
+    button { min-height:44px; }
+  }
+  @media print { .switch { display:none; } main { padding:18px; } section { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Software Factory / Issue 9 / 19 September 2026</div>
+    <h1>The work belongs to Factory.<br>The app is your control screen.</h1>
+    <p class="intro">You give Factory a request. It plans the work, makes changes, runs checks, and reviews the result. This change lets the same saved run be controlled from more than one place.</p>
+  </header>
+
+  <section aria-labelledby="design-heading">
+    <div class="row">
+      <div><div class="number">01 / The change</div><h2 id="design-heading">Who owns the run?</h2></div>
+      <div class="switch" aria-label="Compare the designs">
+        <button type="button" id="before" aria-pressed="false">Before</button>
+        <button type="button" id="now" aria-pressed="true">Now</button>
+      </div>
+    </div>
+    <div id="diagram" class="flow" aria-live="polite">
+      <div class="node" id="entry"><strong id="entry-title">BB or the command line</strong><span id="entry-detail">Send a request. Read progress. Answer questions. Stop a run.</span></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node owner" id="owner"><strong id="owner-title">Factory</strong><span id="owner-detail">Owns the run ID, saved records, model choices, time limits, and worker processes.</span></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node"><strong>Protected workers</strong><span id="worker-detail">Use the native Codex model connection to plan, edit, and review.</span></div>
+    </div>
+    <p id="diagram-note">Factory stores records outside the target repository. Work can continue after its control screen closes. Reconnect with the same run ID.</p>
+  </section>
+
+  <section class="twocol">
+    <div>
+      <div class="number">02 / What I changed</div><h2>Removed the BB dependency</h2>
+      <ul>
+        <li><strong>Own storage and identity.</strong> New runs use Factory records, separate from BB conversations.</li>
+        <li><strong>Own workers.</strong> Factory starts and stops protected worker processes. It does not need BB child tasks.</li>
+        <li><strong>Shared controls.</strong> BB and the command line use the same start, status, answer, resume, and cancel operations.</li>
+        <li><strong>Safe recovery.</strong> Factory checks saved work before it continues. An uncertain request is not sent a second time.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="number">03 / What stays the same</div><h2>The workflow still has rules</h2>
+      <p>LangGraph already controlled the order of the steps. It still does. Python keeps the records and runs the checks.</p>
+      <ul>
+        <li>Planner and Reviewer can read source. Builder can change permitted source files.</li>
+        <li>Git data, credentials, policy, and saved evidence stay protected.</li>
+        <li>One run can write to a workspace at a time.</li>
+        <li><code>ready_for_review</code> means the checks passed. It does not grant new permission to push, merge, or deploy.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="twocol">
+    <div>
+      <div class="number">04 / A normal run</div><h2>Start in BB. Keep the run ID.</h2>
+      <ol>
+        <li>Select <strong>Software Factory</strong> in BB. Choose worker models and effort in the <strong>Factory</strong> panel; BB’s general model menu does not set these choices.</li>
+        <li>Send your request. Factory saves a run ID and starts the work.</li>
+        <li>Use <code>/status</code> for progress and <code>/answer</code> for a saved question.</li>
+        <li>After reopening BB, use <code>/status</code> or <code>/attach RUN_ID</code>. Use <code>/cancel</code> to stop the actual run.</li>
+      </ol>
+    </div>
+    <div>
+      <div class="number">05 / Old work</div><h2>Existing records are preserved</h2>
+      <p>Old BB runs keep their original records and recovery path. They are not silently moved into the new storage.</p>
+      <p>New runs use Factory-owned records. Closing a view and cancelling a run are separate actions. Cancellation is complete only after the workers have stopped.</p>
+    </div>
+  </section>
+
+  <section class="later" aria-labelledby="later-heading">
+    <div class="number">06 / The next setup</div><h2 id="later-heading">Codex control and Router are separate additions</h2>
+    <div class="later-grid">
+      <div><h3>Codex as another control screen</h3><p>The local tool connection is implemented using MCP, a tool protocol. Later, we can register it in Codex and test a separate task with read-only access to the target. This does not require changing this active conversation.</p></div>
+      <div><h3>Router for external models</h3><p>Router is optional. It would connect protected workers to other model providers. It is <strong>not required</strong> for the native Codex model connection, and could serve work started from either app. Installation and route testing remain for later.</p></div>
+    </div>
+  </section>
+
+  <section class="tested" aria-label="Verification">
+    <p><span class="key">Real command-line and BB workflows passed.</span> Planner, Builder, and Reviewer used GPT-5.6-Luna at low effort. The BB test restored a saved question after reconnect, accepted its answer, and finished. A separate cancellation test confirmed worker exit. Repeated controls did not start duplicate work.</p>
+  </section>
+  <footer>
+    <a href="issue-9-acceptance.md">Verification record</a>
+    <a href="factory-interfaces.md">Control setup</a>
+    <a href="interface-migration.md">Old-run recovery</a>
+  </footer>
+</main>
+<script>
+  const before = document.getElementById('before');
+  const now = document.getElementById('now');
+  function show(old) {
+    before.setAttribute('aria-pressed',String(old)); now.setAttribute('aria-pressed',String(!old));
+    document.getElementById('entry').classList.toggle('owner',old);
+    document.getElementById('owner').classList.toggle('owner',!old);
+    document.getElementById('entry-title').textContent = old ? 'BB' : 'BB or the command line';
+    document.getElementById('entry-detail').textContent = old ? 'Provided conversation identity, storage location, model discovery, and child tasks.' : 'Send a request. Read progress. Answer questions. Stop a run.';
+    document.getElementById('owner-title').textContent = old ? 'Factory inside the BB flow' : 'Factory';
+    document.getElementById('owner-detail').textContent = old ? 'LangGraph already chose the steps. Python already saved state and ran quality checks.' : 'Owns the run ID, saved records, model choices, time limits, and worker processes.';
+    document.getElementById('worker-detail').textContent = old ? 'Launched through BB child tasks. The container already enforced protection.' : 'Use the native Codex model connection to plan, edit, and review.';
+    document.getElementById('diagram-note').textContent = old ? 'The workflow depended on BB for its operating context. Another application could not independently operate the same run.' : 'Factory stores records outside the target repository. Work can continue after its control screen closes. Reconnect with the same run ID.';
+  }
+  before.addEventListener('click',()=>show(true)); now.addEventListener('click',()=>show(false));
+</script>
+</body>
+</html>

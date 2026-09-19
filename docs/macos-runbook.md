@@ -1,8 +1,8 @@
 # macOS runbook
 
-This setup uses the [protected local worker](protected-worker.md), verified with
-BB 0.42.1 and Apple Container 1.0.0. Build the worker image and register both the
-Factory parent and `software-factory-worker` ACP agent before starting a run.
+New runs use Factory-owned protected workers. The current checks use BB 0.43.1,
+Apple Container 1.0.0, and worker image `software-factory-worker:0.154.0`.
+BB is an optional control screen. It does not own new worker processes or records.
 The repository targets Python 3.14 and manages dependencies with `uv`.
 
 ## 1. Check existing prerequisites
@@ -30,14 +30,15 @@ npx bb-app@latest
 npx --package bb-app bb --help
 ```
 
-The factory uses a standalone `bb` executable when one is on `PATH`; otherwise
-it automatically uses `npx --package bb-app bb`. Override this only when needed:
+The installed macOS application also includes the CLI:
 
 ```bash
-export FACTORY_BB_COMMAND="/absolute/path/to/bb"
+node /Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/dist/bb.js --help
 ```
 
-Authenticate a supported coding provider through that provider's normal CLI.
+Native Factory execution does not need the BB CLI. The old BB recovery path can
+still use `FACTORY_BB_COMMAND` to select a different BB executable.
+Authenticate the native Codex provider through its normal CLI.
 The protected worker mounts the existing Codex login read-only; it never copies
 it into factory configuration, Git objects, or evidence.
 
@@ -53,11 +54,17 @@ uv run software-factory graph --format mermaid
 Expose the stable command path BB will launch:
 
 ```bash
-uv tool install --editable .
+uv export --frozen --no-dev --no-emit-project --no-hashes \
+  --format requirements-txt --output-file /tmp/factory-constraints.txt
+uv tool install --editable . --constraints /tmp/factory-constraints.txt
 command -v software-factory
 ```
 
 This uses `uv`; the project never invokes `pip install`.
+For an existing tool installation, add `--reinstall` so new locked dependencies,
+including the MCP server, are installed. Build and check the worker image using
+the commands in [protected worker setup](protected-worker.md). The older worker
+ACP registration in that document is needed only for legacy BB runs.
 
 ## 3. Register the ACP provider
 
@@ -89,6 +96,8 @@ bb plugin reload provider-acp
 
 BB prefixes the configured ID, so the provider is internally named
 `acp-software-factory` and displayed as **Software Factory**.
+Install or reload the [Factory panel](../bb-plugin-factory-controls/README.md).
+There is no worker ACP registration requirement for new native runs.
 
 ## 4. Prepare a target repository
 
@@ -121,27 +130,37 @@ The demo fixture already contains the policy, hook, and `.worktreeinclude`.
 
 ## 5. Run from BB
 
-1. Start BB with `npx bb-app@latest` and open the target repository.
+1. Open the installed BB app, or start it with `npx bb-app@latest`.
 2. Create a thread in a new managed worktree.
 3. Select **Software Factory** as the provider.
-4. Submit a bounded feature request with observable acceptance criteria.
+4. Open **New tab → Factory** in the right panel and choose the worker models.
+5. Submit a bounded feature request with observable acceptance criteria.
 
-The parent thread shows graph phases and tool activity. Planner, Builder, and
-Reviewer appear as visible child threads in the same managed worktree. The
-successful result is `ready_for_review`. A run can also finish as `failed`,
+Use `/inspect` as the first message if you want to create the task and set its
+choices before starting work. It does not start a model request. The Factory
+panel controls the actual worker model and effort; BB's general conversation
+menu can still show **Agent default / Medium** for this ACP provider.
+
+Factory returns the run ID. Use `/status` to read saved phases, questions, and
+results. Planner, Builder, and Reviewer run in protected containers; BB child
+tasks are not required. The successful result is `ready_for_review`.
+A run can also finish as `failed`,
 `blocked`, or `cancelled`, or pause as `waiting_for_input` or `recovery_needed`.
 Old `accepted` records do not prove Phase 1 acceptance.
 
-Version-2 artifacts are written to `$BB_THREAD_STORAGE/factory/artifacts/<run-id>/`; durable checkpoints and the
-side-effect ledger are written to
-`$BB_THREAD_STORAGE/factory/checkpoints.sqlite`. No LangSmith account is used.
+New records are in `~/Library/Application Support/software-factory/factory/`
+on macOS: `checkpoints.sqlite` stores saved state and `artifacts/<run-id>/`
+stores evidence. Use `FACTORY_HOME` or global `--storage` to select another
+private directory outside the target. All control screens must use that same
+location. See [storage and access rules](factory-interfaces.md).
 
 ## 6. Operate a run
 
-Inside the owning BB thread environment:
+From the target workspace, with or without BB:
 
 ```bash
 software-factory doctor
+software-factory start 'Bounded request' --request-id my-request-1
 software-factory inspect fct_...
 software-factory resume fct_...
 software-factory answer fct_... INTERACTION_ID '{"question-id":"answer"}'
@@ -149,19 +168,20 @@ software-factory retry fct_...
 software-factory cancel fct_...
 ```
 
-In the BB parent task, use `/status`, `/continue`, `/retry`,
-`/answer INTERACTION_ID ANSWER`, or `/cancel`. Use `/new REQUEST` only after the
+In the BB task, use `/status`, `/continue`, `/retry`,
+`/answer INTERACTION_ID {"question-id":"answer"}`, or `/cancel`. Use `/new REQUEST` only after the
 current run ends. Set model choices through the Factory panel; `/settings` is
-not a supported task command. Stop the parent task to release a connection that
-BB still shows as active after cancellation; inspect its queue before sending
-anything again.
+not a supported task command. `/attach RUN_ID` connects another BB task to the
+saved run in the same workspace. Stopping the BB task releases its connection;
+use `/cancel` to stop Factory work.
 
-`resume` reuses persisted specialist thread IDs, preserves the original absolute
-run deadline, and reconciles a child by its
-run-scoped title if a process crashed before saving the returned ID. `cancel`
-persists cancellation before stopping the active BB child or process group, so
-the running workflow cannot advance afterward; it leaves the worktree intact
-for inspection.
+`resume` checks saved operation records and exact worker identities before it
+continues. It keeps the saved model choices and overall expiry. An unanswered
+question pauses the work budget; answering it once adjusts that budget once.
+Repeated identical answers do not dispatch again. `cancel` saves the stop request
+before cleanup and reports `cancelled` only after worker exit is confirmed.
+The worktree remains available for inspection. Use the
+[legacy recovery procedure](interface-migration.md) for old BB-owned runs.
 
 ## Current verification boundary
 
@@ -169,7 +189,7 @@ Automated tests cover clean success, deterministic repair, bounded routing,
 invalid-envelope correction, preservation of unexpected file/index/reference
 changes, ignored-file checks without Git object writes, evidence integrity, in-process and cross-process
 cancellation (including spawn races), and crash-after-spawn reconciliation. A
-real-provider run requires the installed protected worker, a running local BB
-server, and an existing provider login. Follow [issue #6 acceptance](acceptance.md)
-to run and record those checks. Passing the simulated suite alone does not mark
-the release usable.
+real native run requires the installed protected worker and an existing provider
+login. BB is required only when testing the BB control screen. See
+[issue 9 verification](issue-9-acceptance.md) for the real native and BB evidence.
+Codex desktop registration and external Router support remain separate work.

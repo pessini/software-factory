@@ -103,6 +103,9 @@ to Python SDK 1.30.0. Only the native model connection is enabled in this change
 Codex Router is not yet supported. No external route, private container bridge,
 or live routed-model acceptance has been established. Do not configure a wider
 router listener or mount host credential directories to work around this gap.
-Issue #9 remains open until Router work and live workflow acceptance are complete.
+Real CLI and BB workflows passed with `gpt-5.6-luna / low` on 19 September 2026.
+The BB check covered settings, start, status, a saved question, task reconnect,
+answer, resume, and confirmed cancellation. Issue #9 remains open for the deferred
+Codex desktop integration and Router work.
 See [the verification record](issue-9-acceptance.md) for tested versions, simulated
 results, local permission probes, and the remaining acceptance procedure.
