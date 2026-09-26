@@ -1,0 +1,7 @@
+{
+  "purpose": "Locally served static assets; no runtime package install required.",
+  "packages": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@phosphor-icons/core": "2.1.1"
+  }
+}
