@@ -14,7 +14,7 @@ Document first. Sources, versions, decisions, document previews, and approval of
 similar visual weight. The same documents and navigation appeared in several places.
 The inferred starting dials were variance 4, motion 1, density 7.
 
-Keep: the green identity, Software Factory name, existing route and variant parameter,
+Keep: the Software Factory name, existing route and variant parameter,
 Plan & handoff / Questions / History navigation, source links, grouped answer submission,
 exact revision approval, and visible simulation state. There is no indexed public site,
 analytics integration, legal text, or SEO migration to preserve.
@@ -44,7 +44,8 @@ B and C turn their side navigation into compact groups above the content.
 - `VISUAL_DENSITY: 4`: short summaries first, full evidence on demand.
 - Native HTML and custom CSS, not a claimed implementation of a named design system.
 - Self-hosted Geist; original Phosphor regular glyphs in a local sprite.
-- One restrained green accent; neutral surfaces; one theme across the complete page.
+- Neutral white, gray, and charcoal throughout, including buttons, focus rings, and panels.
+  The user rejected the green palette on 2026-09-29. Light and dark modes now have no color tint.
 - Controls use 8px corners, main grouped surfaces use 14px, small symbols use smaller
   corners. Lines and spacing separate most content; cards identify pending review or approval.
 
@@ -61,9 +62,9 @@ Checked in the actual local browser on 2026-09-25:
 - No browser warnings or errors during the checked flows.
 - JavaScript syntax, HTML resource paths, and no visible em-dash copy.
 
-Light-theme text contrast against the main surfaces is at least 4.55:1 for muted text
-and 6.31:1 for accent text. The focus ring is at least 3.80:1. Form boundaries use the
-muted token. Dark-theme contrast and primary button colors were also checked.
+The original green palette passed text and focus contrast checks but was rejected by the
+user. The neutral replacement retains separate text, surface, border, and focus tokens.
+Form boundaries use the muted token. Text, focus, and button contrast are checked in both modes.
 
 The applicable preflight checks cover color/theme consistency, shape rules, typography,
 copy, desktop navigation, control wrapping, keyboard focus, responsive collapse, and
