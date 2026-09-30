@@ -33,7 +33,7 @@ print(json.dumps({"thread": {"id": "child-123"}}))
     context = BBContext("parent-1", "project-1", "environment-1", tmp_path / "storage")
     client = BBClient(context, tmp_path, (str(executable),))
     agent = AgentConfig(provider="codex", reasoning_level="high", permission_mode="full")
-    thread_id = await client.spawn_child("builder", "Implement it", agent, "fct_test:builder")
+    thread_id = await client.start_worker("builder", "Implement it", agent, "fct_test:builder")
     argv = json.loads(log.read_text(encoding="utf-8"))
     assert thread_id == "child-123"
     assert argv[:2] == ["thread", "spawn"]
@@ -99,7 +99,7 @@ print(json.dumps({"threads": [
     context = BBContext("parent-1", "project-1", "environment-1", tmp_path / "storage")
     client = BBClient(context, tmp_path, (str(executable),))
 
-    thread_id = await client.find_child("planner", "fct_test:planner")
+    thread_id = await client.find_worker("planner", "fct_test:planner")
 
     assert thread_id == "child-123"
 

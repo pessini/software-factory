@@ -111,7 +111,7 @@ async def test_clean_success_path(tmp_path: Path, factory_yaml: str) -> None:
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", "fct_success")
@@ -145,7 +145,7 @@ async def test_failed_test_repairs_in_same_builder_thread(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", "fct_repair")
@@ -172,7 +172,7 @@ async def test_spawn_is_durable_before_wait(tmp_path: Path, factory_yaml: str) -
         workspace=tmp_path,
         context=ctx,
         config=load_config(tmp_path),
-        bb=bb,
+        execution=bb,
         store=store,
         artifacts=ArtifactStore(
             tmp_path, "fct_crash", storage_root=ctx.thread_storage / "factory" / "artifacts"
@@ -205,7 +205,7 @@ async def test_spawn_is_reconciled_when_process_crashes_before_id_is_saved(
         workspace=tmp_path,
         context=ctx,
         config=load_config(tmp_path),
-        bb=bb,
+        execution=bb,
         store=store,
         artifacts=ArtifactStore(
             tmp_path, "fct_spawn_window", storage_root=ctx.thread_storage / "factory" / "artifacts"
@@ -241,7 +241,7 @@ async def test_graph_resume_reattaches_after_process_interruption(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     with pytest.raises(NodeCancelledError):
@@ -278,7 +278,7 @@ async def test_protected_change_is_preserved_and_fails_run(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
     )
     result = await engine.run("Write the correct answer", "fct_protected")
@@ -303,7 +303,7 @@ async def test_planner_blocked_status_is_terminal(tmp_path: Path, factory_yaml: 
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(tmp_path, {"planner": [{"output": blocked}]}),
+        execution=FakeBB(tmp_path, {"planner": [{"output": blocked}]}),
         database_path=database(tmp_path),
     )
 
@@ -339,7 +339,7 @@ async def test_resume_honors_persisted_run_deadline(tmp_path: Path, factory_yaml
     engine = FactoryEngine(
         workspace=tmp_path,
         context=ctx,
-        bb=FakeBB(tmp_path, {}),
+        execution=FakeBB(tmp_path, {}),
         database_path=database(tmp_path),
     )
 
@@ -373,7 +373,7 @@ async def test_each_step_receives_its_saved_model_choice(tmp_path: Path, factory
             "reviewer": [{"output": review_output(False)}, {"output": review_output()}],
         },
     )
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     selected = Selection(
         steps={
             "plan": ModelChoice(model="model-b", reasoning_level="low"),
@@ -419,7 +419,7 @@ async def test_invalid_model_is_rejected_before_child_creation(
 
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
     bb = FakeBB(tmp_path, {})
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run(
         "Write the answer",
         selection=Selection(steps={"repair": ModelChoice(model="model-a", reasoning_level="low")}),
@@ -450,7 +450,7 @@ async def test_restart_uses_snapshot_when_project_policy_changes_before_bootstra
             raise asyncio.CancelledError()
 
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, event_sink=interrupt
+        workspace=tmp_path, context=context(tmp_path), execution=bb, event_sink=interrupt
     )
     with pytest.raises(NodeCancelledError):
         await engine.run(
@@ -475,7 +475,7 @@ async def test_restart_uses_snapshot_when_project_policy_changes_before_bootstra
         ],
         tmp_path,
     )
-    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await restarted.resume("fct_settings_restart")
     assert result["status"] == "ready_for_review", result
     assert all(

@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from software_factory.bb.client import BBError
+from software_factory.execution import ExecutionError
 from software_factory.processes import finish_process, start_process
 
 WORKER_IMAGE = "software-factory-worker:0.154.0"
@@ -21,7 +21,7 @@ async def container_command(*args: str, timeout_seconds: float = 30) -> str:
     try:
         output, error = await asyncio.wait_for(process.communicate(), timeout_seconds)
         if process.returncode:
-            raise BBError(error.decode(errors="replace").strip(), "container")
+            raise ExecutionError(error.decode(errors="replace").strip(), "container")
         return output.decode()
     finally:
         await asyncio.shield(finish_process(process, identity))
@@ -30,18 +30,18 @@ async def container_command(*args: str, timeout_seconds: float = 30) -> str:
 async def inspect_container(name: str, operation_id: str) -> dict[str, Any] | None:
     try:
         values = json.loads(await container_command("inspect", name))
-    except BBError as exc:
+    except ExecutionError as exc:
         if "container not found:" in str(exc):
             return None
         raise
     if not isinstance(values, list) or len(values) != 1:
-        raise BBError("container returned an invalid identity", "protocol")
+        raise ExecutionError("container returned an invalid identity", "protocol")
     value: dict[str, Any] = values[0]
     if (
         value.get("id") != name
         or value["configuration"].get("labels", {}).get(OWNER_LABEL) != operation_id
     ):
-        raise BBError(
+        raise ExecutionError(
             "container identity does not match the saved request; refusing to alter it",
             "configuration",
         )
@@ -89,13 +89,13 @@ class ContainerProvider:
         if await inspect_container(self.name, self.operation_id) is not None:
             if before_create is not None:
                 before_create()
-            raise BBError(
+            raise ExecutionError(
                 "this request already has a container; reconcile it before continuing", "recovery"
             )
         self.provider_home.mkdir(parents=True, exist_ok=True, mode=0o700)
         auth = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
         if self.authenticate and not auth.is_file():
-            raise BBError(
+            raise ExecutionError(
                 "the supported worker requires an existing Codex file login", "configuration"
             )
         mounts: list[tuple[Path, str, bool]] = [
@@ -154,7 +154,7 @@ class ContainerProvider:
         ]
         for source, target, read_only in mounts:
             if any(char in str(source) + target for char in (":", "\n")):
-                raise BBError(
+                raise ExecutionError(
                     "container mount paths cannot contain colons or newlines", "configuration"
                 )
             args.extend(["--volume", f"{source}:{target}" + (":ro" if read_only else "")])
@@ -182,7 +182,7 @@ class ContainerProvider:
         await container_command(*args, timeout_seconds=60)
         current = await inspect_container(self.name, self.operation_id)
         if current is None:
-            raise BBError("created container cannot be inspected", "recovery")
+            raise ExecutionError("created container cannot be inspected", "recovery")
         self.process, self.process_id = await start_process(
             ["container", "start", "--attach", "--interactive", self.name],
             Path("/tmp"),
@@ -198,7 +198,7 @@ class ContainerProvider:
             },
         )
         if "/0.154.0 " not in result.get("userAgent", ""):
-            raise BBError(
+            raise ExecutionError(
                 "worker provider version does not match the tested version", "configuration"
             )
 
@@ -233,7 +233,7 @@ class ContainerProvider:
                     future = self.pending[message["id"]]
                     if not future.done():
                         if "error" in message:
-                            future.set_exception(BBError(str(message["error"]), "provider"))
+                            future.set_exception(ExecutionError(str(message["error"]), "provider"))
                         else:
                             future.set_result(message.get("result"))
         except Exception as exc:
@@ -241,7 +241,7 @@ class ContainerProvider:
         finally:
             for future in self.pending.values():
                 if not future.done():
-                    future.set_exception(BBError("provider connection closed", "connection"))
+                    future.set_exception(ExecutionError("provider connection closed", "connection"))
             await self.notifications.put({"method": "connection/closed"})
 
     async def reject_request(self, request_id: Any) -> None:
@@ -276,4 +276,4 @@ class ContainerProvider:
         if self.error_reader is not None:
             await self.error_reader
         if not stopped:
-            raise BBError("container exit cannot be confirmed", "recovery")
+            raise ExecutionError("container exit cannot be confirmed", "recovery")

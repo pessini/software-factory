@@ -1,5 +1,11 @@
 # Protected BB worker
 
+This page records the legacy BB-owned worker path. New native runs use
+[Factory-owned workers](factory-interfaces.md) with the same container protection.
+The image build and permission checks below still apply; worker ACP registration
+is required only for legacy recovery. See the [current setup](macos-runbook.md)
+and [issue 9 live evidence](issue-9-acceptance.md).
+
 The default adapter supports local BB 0.42.1, Apple Container 1.0.0, and the
 Codex provider CLI 0.154.0. The authenticated acceptance tests passed on
 10 September 2026. See [the saved evidence](live-worker-acceptance.json).

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from software_factory.config import (
+    STEP_ROLES,
     AgentConfig,
+    FactoryConfig,
     ModelChoice,
     ModelOption,
     ReviewMode,
@@ -12,6 +16,21 @@ from software_factory.config import (
     Step,
     review_steps,
 )
+
+
+def change_selection(selection: Selection, config_id: str, value: str) -> Selection:
+    updated = selection.model_copy(deep=True)
+    if config_id == "preset":
+        updated.preset = None if value == "inherit" else value
+    elif config_id == "shared" or config_id in STEP_ROLES:
+        choice = ModelChoice() if value == "inherit" else ModelChoice.model_validate_json(value)
+        if config_id == "shared":
+            updated.shared = choice
+        else:
+            updated.steps[cast(Step, config_id)] = choice
+    else:
+        raise ValueError(f"unknown setting: {config_id}")
+    return updated
 
 
 def resolve_choices(
@@ -65,4 +84,21 @@ def resolve_choices(
         effective[step] = AgentConfig.model_validate(values)
     return SettingsSnapshot(
         config_version=config_version, requested=selected, effective=effective, catalog=catalog
+    )
+
+
+def resolve_config(
+    config: FactoryConfig, selection: Selection, catalog: list[ModelOption]
+) -> SettingsSnapshot:
+    return resolve_choices(
+        {
+            role: config.agents.for_role(role)
+            for role in set(review_steps(config.review_mode).values())
+        },
+        config.settings,
+        config.presets,
+        selection,
+        catalog,
+        config.version,
+        config.review_mode,
     )

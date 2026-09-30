@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from software_factory.acp_agent import SoftwareFactoryAgent
 from software_factory.bb import BBContext
+from software_factory.bb.legacy_acp import SoftwareFactoryAgent
 from tests.conftest import FakeBB
 
 
@@ -136,27 +136,35 @@ async def test_disconnected_initial_update_releases_session_claim(
 async def test_panel_changes_the_loaded_session(
     tmp_path: Path, factory_yaml: str, monkeypatch
 ) -> None:
+    from software_factory.acp_agent import SoftwareFactoryAgent
     from software_factory.config import ModelChoice
+    from software_factory.context import FactoryContext
     from software_factory.panel import PanelRequest, panel_request
 
     (tmp_path / ".factory").mkdir()
     (tmp_path / ".factory/factory.yaml").write_text(factory_yaml)
-    context = BBContext("parent", "project", "environment", tmp_path / "storage")
+    context = FactoryContext.open(
+        tmp_path, storage_root=tmp_path.parent / (tmp_path.name + "-controller")
+    )
     bb = FakeBB(tmp_path, {})
-    monkeypatch.setattr("software_factory.panel.BBClient.from_context", lambda *_: bb)
     agent = SoftwareFactoryAgent(context, bb)
     first = await agent.new_session(str(tmp_path))
     second = await agent.new_session(str(tmp_path))
     await agent.load_session(str(tmp_path), first.session_id)
     value = ModelChoice(provider="fake", model="model-b", reasoning_level="low").model_dump_json()
     result = await panel_request(
-        tmp_path, context, PanelRequest(action="change", config_id="repair", value=value)
+        tmp_path,
+        context,
+        PanelRequest(action="change", config_id="repair", value=value),
+        execution=bb,
     )
     assert result["sessionId"] == first.session_id
-    _, selected = await agent.settings(tmp_path).read(first.session_id)
-    assert selected.steps["repair"].model == "model-b"
-    _, other = await agent.settings(tmp_path).read(second.session_id)
-    assert "repair" not in other.steps
+    selected = ModelChoice.model_validate(
+        (await agent.control(tmp_path, first.session_id).settings())["selection"]["steps"]["repair"]
+    )
+    assert selected.model == "model-b"
+    other = (await agent.control(tmp_path, second.session_id).settings())["selection"]
+    assert "repair" not in other["steps"]
 
 
 async def test_step_controls_show_models_with_the_required_permissions(
@@ -212,7 +220,7 @@ async def test_acp_wire_protocol_saves_and_reloads_config_options(
 
     launcher = """import asyncio, os, acp
 from pathlib import Path
-from software_factory.acp_agent import SoftwareFactoryAgent
+from software_factory.bb.legacy_acp import SoftwareFactoryAgent
 from software_factory.bb import BBContext
 from tests.conftest import FakeBB
 root = Path(os.environ['FACTORY_TEST_WORKSPACE'])
@@ -256,7 +264,7 @@ async def test_restart_releases_claim_when_controller_died_before_run_creation(
     launcher = """import asyncio, os, sys
 from pathlib import Path
 from acp.schema import TextContentBlock
-from software_factory.acp_agent import SoftwareFactoryAgent
+from software_factory.bb.legacy_acp import SoftwareFactoryAgent
 from software_factory.bb import BBContext
 from tests.conftest import FakeBB
 root = Path(sys.argv[1])

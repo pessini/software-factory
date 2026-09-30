@@ -52,7 +52,7 @@ def scripts() -> dict:
 async def test_handoff_requires_three_separate_reviews_and_a_judge(tmp_path, factory_yaml):
     init_repository(tmp_path, factory_yaml + "\nreview_mode: focused\n", "raise SystemExit(0)\n")
     bb = FakeBB(tmp_path, scripts())
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer")
     assert result["status"] == "ready_for_review", result.get("error")
     handoff = result["handoff"]
@@ -76,7 +76,7 @@ async def test_invalid_review_can_be_corrected_once_with_the_same_settings(
     responses = scripts()
     responses[role].insert(0, {"output": "invalid JSON"})
     bb = FakeBB(tmp_path, responses)
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer")
     assert result["status"] == "ready_for_review", result.get("error")
     step = "code_review" if role == "code_reviewer" else "judge"
@@ -126,7 +126,7 @@ async def test_judge_removes_unsupported_claims_and_merges_duplicates_before_rev
     responses["judge"] = [{"output": json.dumps(rejected)}, {"output": judge_output()}]
     responses["builder"].append({"output": build_output(), "action": write_answer("good")})
     bb = FakeBB(tmp_path, responses)
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Write the answer"
     )
     assert result["status"] == "ready_for_review", result.get("error")
@@ -158,7 +158,7 @@ async def test_judge_can_accept_when_only_unsupported_findings_remain(tmp_path, 
         }
     ]
     result = await FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=FakeBB(tmp_path, responses)
+        workspace=tmp_path, context=context(tmp_path), execution=FakeBB(tmp_path, responses)
     ).run("Write the answer")
     assert result["status"] == "ready_for_review", result.get("error")
     assert not result["handoff"]["findings"]
@@ -186,7 +186,7 @@ async def test_a_partial_required_review_cannot_supply_approval(tmp_path, factor
         {"output": invalid},
     ]
     bb = FakeBB(tmp_path, responses)
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Write the answer"
     )
     assert result["status"] == ("recovery_needed" if failure == "failed_provider" else "blocked")
@@ -211,15 +211,15 @@ async def test_restart_keeps_saved_reviews_and_does_not_repeat_provider_dispatch
     class InterruptedBB(FakeBB):
         interrupted = False
 
-        async def spawn_child(self, role, prompt, agent, spawn_key):
-            thread_id = await super().spawn_child(role, prompt, agent, spawn_key)
+        async def start_worker(self, role, prompt, agent, spawn_key):
+            thread_id = await super().start_worker(role, prompt, agent, spawn_key)
             if role == "judge" and interruption == "judge_dispatched" and not self.interrupted:
                 self.interrupted = True
                 raise asyncio.CancelledError()
             return thread_id
 
-        async def tell(self, thread_id, message):
-            result = await super().tell(thread_id, message)
+        async def continue_worker(self, thread_id, message):
+            result = await super().continue_worker(thread_id, message)
             if interruption == "correction_dispatched" and not self.interrupted:
                 self.interrupted = True
                 raise asyncio.CancelledError()
@@ -238,14 +238,14 @@ async def test_restart_keeps_saved_reviews_and_does_not_repeat_provider_dispatch
             raise asyncio.CancelledError()
 
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, event_sink=interrupt
+        workspace=tmp_path, context=context(tmp_path), execution=bb, event_sink=interrupt
     )
     selection = Selection(steps={"judge": ModelChoice(model="model-b", reasoning_level="low")})
     with pytest.raises(NodeCancelledError):
         await engine.run("Write the answer", "fct_focused_restart", selection=selection)
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).resume(
-        "fct_focused_restart"
-    )
+    result = await FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=bb
+    ).resume("fct_focused_restart")
     assert result["status"] == "ready_for_review", result.get("error")
     assert bb.spawn_counts == {role: 1 for role in scripts()}
     assert result["execution_summary"]["steps"]["judge"]["requested"]["model"] == "model-b"
@@ -269,7 +269,7 @@ async def test_cancellation_stops_the_active_review_and_never_finalizes(
             await super().wait(thread_id)
 
     bb = WaitingBB(tmp_path, scripts())
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     task = asyncio.create_task(engine.run("Write the answer", "fct_cancel_review"))
     try:
         await asyncio.wait_for(active.wait(), 15)
@@ -295,7 +295,7 @@ async def test_a_file_change_between_reviews_stops_the_next_reviewer(tmp_path, f
 
     bb = FakeBB(tmp_path, scripts())
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, event_sink=edit_between_reviews
+        workspace=tmp_path, context=context(tmp_path), execution=bb, event_sink=edit_between_reviews
     )
     result = await engine.run("Write the answer")
     assert result["status"] == "blocked"
@@ -331,8 +331,8 @@ async def test_restart_recovers_builder_revision_edits_before_new_checks(
     class InterruptedBB(FakeBB):
         interrupted = False
 
-        async def tell(self, thread_id, message):
-            result = await super().tell(thread_id, message)
+        async def continue_worker(self, thread_id, message):
+            result = await super().continue_worker(thread_id, message)
             if (
                 self.thread_roles[thread_id] == "builder"
                 and interruption == "revision_dispatched"
@@ -355,14 +355,14 @@ async def test_restart_recovers_builder_revision_edits_before_new_checks(
             raise asyncio.CancelledError()
 
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, event_sink=interrupt
+        workspace=tmp_path, context=context(tmp_path), execution=bb, event_sink=interrupt
     )
     with pytest.raises(NodeCancelledError):
         await engine.run("Write the answer", "fct_revision_restart")
     assert (tmp_path / "answer.txt").read_text() == "good"
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).resume(
-        "fct_revision_restart"
-    )
+    result = await FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=bb
+    ).resume("fct_revision_restart")
     assert result["status"] == "ready_for_review", result.get("error")
     assert result["test_attempt_count"] == 2
     assert result["execution_summary"]["steps"]["revision"]["dispatch_count"] == 1
@@ -408,7 +408,7 @@ async def test_an_invalid_judge_decision_cannot_approve_or_trigger_revision(
         judge["approved"] = True
     responses["judge"] = [{"output": json.dumps(judge)}] * 2
     bb = FakeBB(tmp_path, responses)
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Write the answer"
     )
     assert result["status"] == "blocked"
@@ -425,7 +425,7 @@ async def test_review_roles_cannot_edit_implementation_files(tmp_path, factory_y
     responses = scripts()
     responses[role][0]["action"] = write_answer("unexpected edit")
     result = await FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=FakeBB(tmp_path, responses)
+        workspace=tmp_path, context=context(tmp_path), execution=FakeBB(tmp_path, responses)
     ).run("Write the answer")
     assert result["status"] == "blocked"
     assert "read-only" in result["error"]
@@ -452,7 +452,7 @@ async def test_missing_required_review_evidence_blocks_judgment_and_finalization
     result = await FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(tmp_path, scripts()),
+        execution=FakeBB(tmp_path, scripts()),
         event_sink=remove_review,
     ).run("Write the answer")
     assert result["status"] == "blocked"
@@ -496,7 +496,7 @@ async def test_stale_judge_rejection_cannot_send_builder_over_later_user_edits(
     result = await FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(tmp_path, responses),
+        execution=FakeBB(tmp_path, responses),
         event_sink=later_edit,
     ).run("Write the answer")
     assert result["status"] == "blocked"

@@ -38,7 +38,7 @@ async def main():
     workspace, storage = map(Path, sys.argv[1:])
     bb = WaitingBB(workspace, {'planner': [{'output': plan_output()}]})
     engine = FactoryEngine(workspace=workspace,
-        context=BBContext('parent-owner', 'project-1', 'environment-1', storage), bb=bb)
+        context=BBContext('parent-owner', 'project-1', 'environment-1', storage), execution=bb)
     print(json.dumps(await engine.run('Write the answer', 'fct_owner')), flush=True)
 
 asyncio.run(main())
@@ -78,7 +78,7 @@ async def test_a_separate_process_cannot_take_an_owned_workspace(
         )
         # Resolve an alternate spelling to the same workspace before claiming it.
         bb = FakeBB(tmp_path, {"planner": [{"output": plan_output()}]})
-        contender = FactoryEngine(workspace=tmp_path / ".", context=ctx, bb=bb)
+        contender = FactoryEngine(workspace=tmp_path / ".", context=ctx, execution=bb)
         with pytest.raises(OwnershipError, match="already has an executor"):
             if competitor == "resume":
                 await contender.resume("fct_owner")
@@ -91,7 +91,7 @@ async def test_a_separate_process_cannot_take_an_owned_workspace(
         controller = FactoryEngine(
             workspace=tmp_path,
             context=BBContext("parent-owner", "project-1", "environment-1", storage),
-            bb=bb,
+            execution=bb,
         )
         cancelled = await controller.cancel_external("fct_owner")
         assert cancelled["status"] == "cancelled"
@@ -133,7 +133,7 @@ async def test_separate_workspaces_can_execute_at_the_same_time(
             FactoryEngine(
                 workspace=workspace,
                 context=context(workspace),
-                bb=bb,
+                execution=bb,
                 event_sink=wait_for_other_workspace,
             )
         )
@@ -161,7 +161,7 @@ from tests.conftest import FakeBB
 async def crash(*args, **kwargs): os._exit(83)
 RunStore.create_run = crash
 root, storage = map(Path, sys.argv[1:])
-asyncio.run(FactoryEngine(workspace=root, context=BBContext('parent-1','project-1','environment-1',storage), bb=FakeBB(root, {})).run('Write the answer', 'fct_crashed_start'))
+asyncio.run(FactoryEngine(workspace=root, context=BBContext('parent-1','project-1','environment-1',storage), execution=FakeBB(root, {})).run('Write the answer', 'fct_crashed_start'))
 """
     process = await asyncio.create_subprocess_exec(
         sys.executable, "-c", program, str(tmp_path), str(storage)
@@ -175,7 +175,7 @@ asyncio.run(FactoryEngine(workspace=root, context=BBContext('parent-1','project-
             "reviewer": [{"output": review_output()}],
         },
     )
-    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb).run(
+    result = await FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb).run(
         "Write the answer", "fct_new_start"
     )
     assert result["status"] == "ready_for_review"

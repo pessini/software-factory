@@ -8,9 +8,7 @@ from typing import cast
 
 from acp.schema import SessionConfigOptionSelect, SessionConfigSelectOption
 
-from software_factory.bb.client import BBClientProtocol
 from software_factory.config import (
-    STEP_ROLES,
     FactoryConfig,
     ModelChoice,
     ModelOption,
@@ -20,14 +18,15 @@ from software_factory.config import (
     load_config,
     review_steps,
 )
+from software_factory.execution import ExecutionManager
 from software_factory.ownership import OwnershipError, session_lease
 from software_factory.persistence import RunStore
-from software_factory.settings import resolve_choices
+from software_factory.settings import change_selection, resolve_config
 
 
 class SessionSettings:
-    def __init__(self, store: RunStore, bb: BBClientProtocol) -> None:
-        self.store, self.bb = store, bb
+    def __init__(self, store: RunStore, execution: ExecutionManager) -> None:
+        self.store, self.execution = store, execution
 
     async def recover_start(self, session_id: str) -> None:
         try:
@@ -69,23 +68,12 @@ class SessionSettings:
     def resolve(
         config: FactoryConfig, selection: Selection, catalog: list[ModelOption]
     ) -> SettingsSnapshot:
-        return resolve_choices(
-            {
-                role: config.agents.for_role(role)
-                for role in set(review_steps(config.review_mode).values())
-            },
-            config.settings,
-            config.presets,
-            selection,
-            catalog,
-            config.version,
-            config.review_mode,
-        )
+        return resolve_config(config, selection, catalog)
 
     async def options(self, session_id: str) -> list[SessionConfigOptionSelect]:
         await self.recover_start(session_id)
         config, selection = await self.read(session_id)
-        controls = self.controls(config, selection, await self.bb.model_catalog())
+        controls = self.controls(config, selection, await self.execution.model_catalog())
         await self.cache_options(session_id, config, selection, controls)
         return controls
 
@@ -183,17 +171,8 @@ class SessionSettings:
     ) -> list[SessionConfigOptionSelect]:
         await self.recover_start(session_id)
         config, selection = await self.read(session_id)
-        catalog = await self.bb.model_catalog()
-        if config_id == "preset":
-            selection.preset = None if value == "inherit" else value
-        elif config_id == "shared" or config_id in STEP_ROLES:
-            choice = ModelChoice() if value == "inherit" else ModelChoice.model_validate_json(value)
-            if config_id == "shared":
-                selection.shared = choice
-            else:
-                selection.steps[cast(Step, config_id)] = choice
-        else:
-            raise ValueError(f"unknown setting: {config_id}")
+        catalog = await self.execution.model_catalog()
+        selection = change_selection(selection, config_id, value)
         controls = self.controls(config, selection, catalog, strict=True)
         await self.save(session_id, config, selection)
         await self.cache_options(session_id, config, selection, controls)

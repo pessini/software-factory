@@ -49,7 +49,7 @@ def delivery_engine(tmp_path: Path, factory_yaml: str, **kwargs) -> FactoryEngin
     return FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(
+        execution=FakeBB(
             tmp_path,
             {
                 "planner": [{"output": plan_output()}],
@@ -209,7 +209,7 @@ async def test_restart_reconciles_pr_created_before_response_was_lost(
     result = await engine.run("Write the correct answer", "fct_lost", configuration=config)
     assert result["delivery"]["status"] == "recovery_needed"
     restarted = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=engine.bb, github=github
+        workspace=tmp_path, context=context(tmp_path), execution=engine.execution, github=github
     )
     resumed = await restarted.resume("fct_lost")
     assert resumed["delivery"]["status"] == "delivered"
@@ -318,7 +318,9 @@ async def test_authorized_review_fixes_recover_without_repeating_replies(
             "reviewer": [{"output": json.dumps(review)}],
         },
     )
-    worker = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb, github=github)
+    worker = FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=bb, github=github
+    )
     if lost_operation == "child_dispatch":
         bb.spawn_error_after_create = asyncio.CancelledError()
         with pytest.raises(NodeCancelledError):
@@ -339,7 +341,9 @@ async def test_authorized_review_fixes_recover_without_repeating_replies(
             github.cancel_response = lambda: worker.cancel_external("fct_fixes")
         interrupted = await worker.fix_reviews("fct_fixes", ["thread-1"])
         assert interrupted["delivery"]["status"] == "recovery_needed", interrupted
-    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb, github=github)
+    restarted = FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=bb, github=github
+    )
     if lost_operation.startswith("cancel_"):
         operations = await worker.store.operations("fct_fixes")
         assert any(op["kind"] == "remote" and op["state"] == "dispatching" for op in operations)
@@ -375,7 +379,10 @@ async def test_cancel_after_push_prevents_pr_creation(tmp_path: Path, factory_ya
         async def push(self, *args) -> None:
             await super().push(*args)
             other = FactoryEngine(
-                workspace=tmp_path, context=context(tmp_path), bb=engine.bb, github=self
+                workspace=tmp_path,
+                context=context(tmp_path),
+                execution=engine.execution,
+                github=self,
             )
             await other.cancel_external("fct_cancel_delivery")
 
@@ -404,7 +411,7 @@ async def test_cancel_during_remote_delivery_keeps_recovery_claim(
     engine = delivery_engine(tmp_path, factory_yaml, github=github)
     github.branches["main"] = (await git(tmp_path, "rev-parse", "HEAD")).decode().strip()
     other = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=engine.bb, github=github
+        workspace=tmp_path, context=context(tmp_path), execution=engine.execution, github=github
     )
     github.lose_response_at = operation
     github.cancel_response = lambda: other.cancel_external("fct_cancel_inflight")
@@ -507,7 +514,9 @@ async def test_missing_review_fix_evidence_prevents_push_and_resolution(
             "reviewer": [{"output": review_output()}],
         },
     )
-    worker = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb, github=github)
+    worker = FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=bb, github=github
+    )
     result = await worker.fix_reviews("fct_missing", ["thread-1"])
     assert result["delivery"]["status"] == "fixes_incomplete", result
     assert github.branches[initial["delivery"]["branch"]] == commit
@@ -612,7 +621,9 @@ async def test_later_batch_rechecks_unselected_findings_and_preserves_earlier_fi
             "reviewer": reviews,
         },
     )
-    worker = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb, github=github)
+    worker = FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=bb, github=github
+    )
     first = await worker.fix_reviews("fct_batches", ["thread-1"])
     assert first["delivery"]["status"] == "delivered", first
     second = await worker.fix_reviews("fct_batches", ["thread-2"])

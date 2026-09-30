@@ -7,61 +7,26 @@ import shlex
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any
 
 from software_factory.bb.context import BBContext
 from software_factory.config import AgentConfig, ModelOption
+from software_factory.execution import (
+    ExecutionError as BBError,
+)
+from software_factory.execution import ExecutionManager as BBClientProtocol
+from software_factory.execution import (
+    ExecutionResult as BBExecution,
+)
+from software_factory.execution import (
+    RecoveryNeeded,
+)
+from software_factory.execution import WaitingForInput as WaitingForInput
+from software_factory.execution import (
+    WorkerState as BBThreadState,
+)
 from software_factory.persistence import RunStore
 from software_factory.processes import finish_process, start_process
-
-
-class BBError(RuntimeError):
-    def __init__(self, message: str, kind: str = "provider") -> None:
-        super().__init__(message)
-        self.kind = kind
-
-
-class RecoveryNeeded(RuntimeError):
-    pass
-
-
-class WaitingForInput(RuntimeError):
-    pass
-
-
-@dataclass(frozen=True)
-class BBExecution:
-    execution_id: str
-    status: Literal["running", "completed", "waiting_for_input", "failed", "stopped"]
-    output: str | None = None
-    reported_choice: AgentConfig | None = None
-    interaction_id: str | None = None
-    usage: dict[str, int] | None = None
-
-
-@dataclass(frozen=True)
-class BBThreadState:
-    status: str
-    stopped: bool
-
-
-class BBClientProtocol(Protocol):
-    async def model_catalog(self) -> list[ModelOption]: ...
-    async def validate_workspace(self, workspace: Path) -> None: ...
-    async def check_protection(self, controller_root: Path) -> None: ...
-    async def spawn_child(
-        self, role: str, prompt: str, agent: AgentConfig, spawn_key: str
-    ) -> str: ...
-    async def find_child(self, role: str, spawn_key: str) -> str | None: ...
-    async def wait(self, thread_id: str) -> None: ...
-    async def output(self, thread_id: str) -> str: ...
-    async def tell(self, thread_id: str, message: str) -> str | None: ...
-    async def stop(self, thread_id: str) -> None: ...
-    async def inspect_thread(self, thread_id: str) -> BBThreadState: ...
-    async def reconcile_operation(
-        self, thread_id: str, operation_id: str
-    ) -> BBExecution | None: ...
-    async def execution(self, thread_id: str, execution_id: str) -> BBExecution: ...
 
 
 @dataclass
@@ -72,6 +37,9 @@ class BBClient:
     command_timeout_seconds: float = 30
     store: RunStore | None = None
     run_id: str = ""
+
+    def bind_run(self, store: RunStore, run_id: str) -> None:
+        self.store, self.run_id = store, run_id
 
     async def model_catalog(self) -> list[ModelOption]:
         providers = await self._run(
@@ -180,7 +148,7 @@ class BBClient:
         except json.JSONDecodeError as exc:
             raise BBError("BB command did not return JSON") from exc
 
-    async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
+    async def start_worker(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
         args = [
             "thread",
             "spawn",
@@ -212,7 +180,7 @@ class BBClient:
             raise BBError("BB spawn response did not include a thread ID")
         return thread_id
 
-    async def find_child(self, role: str, spawn_key: str) -> str | None:
+    async def find_worker(self, role: str, spawn_key: str) -> str | None:
         result = await self._run(
             "thread",
             "list",
@@ -244,7 +212,7 @@ class BBClient:
             raise BBError("BB output response did not include final text")
         return output
 
-    async def tell(self, thread_id: str, message: str) -> str | None:
+    async def continue_worker(self, thread_id: str, message: str) -> str | None:
         result = await self._run("thread", "tell", thread_id, message, "--mode", "steer")
         # The CLI does not expose a caller-supplied idempotency key. Only the
         # documented top-level receipt can supply a request identity.
@@ -254,7 +222,7 @@ class BBClient:
     async def stop(self, thread_id: str) -> None:
         await self._run("thread", "stop", thread_id)
 
-    async def inspect_thread(self, thread_id: str) -> BBThreadState:
+    async def inspect_worker(self, thread_id: str) -> BBThreadState:
         result = await self._run("thread", "show", thread_id)
         thread = result.get("thread") if isinstance(result, dict) else None
         if not isinstance(thread, dict) or thread.get("id") != thread_id:
@@ -327,3 +295,14 @@ def resolve_bb_command() -> tuple[str, ...]:
     if node and packaged.is_file():
         return (node, str(packaged))
     return ("npx", "--no-install", "--package", "bb-app", "bb")
+
+
+__all__ = [
+    "BBClient",
+    "BBClientProtocol",
+    "BBError",
+    "BBExecution",
+    "BBThreadState",
+    "RecoveryNeeded",
+    "WaitingForInput",
+]

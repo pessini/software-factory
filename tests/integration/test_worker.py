@@ -8,9 +8,9 @@ import pytest
 from software_factory.artifacts import ArtifactStore
 from software_factory.bb import BBContext
 from software_factory.bb.client import RecoveryNeeded
+from software_factory.bb.worker_acp import WorkerAgent
 from software_factory.config import AgentConfig, Selection, SettingsSnapshot, load_config
 from software_factory.persistence import RunStore
-from software_factory.worker import WorkerAgent
 from software_factory.worker_records import WorkerMessage
 from tests.conftest import init_repository
 
@@ -99,8 +99,8 @@ async def worker(tmp_path, factory_yaml, monkeypatch):
         assert thread == "parent"
         return parent
 
-    monkeypatch.setattr("software_factory.worker.read_bb", read_bb)
-    monkeypatch.setattr("software_factory.worker.thread_storage", storage)
+    monkeypatch.setattr("software_factory.bb.worker_acp.read_bb", read_bb)
+    monkeypatch.setattr("software_factory.bb.worker_acp.thread_storage", storage)
     Provider.instances = []
     agent = WorkerAgent(BBContext("child", "project", "environment", tmp_path / "child"), Provider)
     await agent.new_session(str(workspace))
@@ -152,7 +152,7 @@ async def test_worker_honors_saved_cancel_before_provider_start(worker):
 
 
 async def test_cancel_during_repository_discovery_is_not_lost(worker, monkeypatch):
-    from software_factory.worker import protected_paths
+    from software_factory.bb.worker_acp import protected_paths
 
     agent, message, store = worker
 
@@ -161,7 +161,7 @@ async def test_cancel_during_repository_discovery_is_not_lost(worker, monkeypatc
         await agent.cancel("child")
         return paths
 
-    monkeypatch.setattr("software_factory.worker.protected_paths", cancelled_discovery)
+    monkeypatch.setattr("software_factory.bb.worker_acp.protected_paths", cancelled_discovery)
     assert await agent.execute(message) == "worker cancelled"
     receipt = agent.records.read(message.operation_id)
     assert receipt.stopped

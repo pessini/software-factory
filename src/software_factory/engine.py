@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,14 +14,25 @@ from uuid import uuid4
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
-from software_factory.bb import BBClient, BBClientProtocol, BBContext
-from software_factory.bb.client import BBError, RecoveryNeeded, WaitingForInput
 from software_factory.cleanup import stop_owned_work
-from software_factory.config import DeliveryPolicy, FactoryConfig, Selection, load_config
+from software_factory.config import (
+    DeliveryPolicy,
+    FactoryConfig,
+    Selection,
+    load_config,
+    upgrade_config,
+)
+from software_factory.context import RunContext
 from software_factory.delivery import Delivery
 from software_factory.delivery_commands import DeliveryCommands
 from software_factory.events import EventSink, null_event_sink
 from software_factory.evidence import EVIDENCE_VERSION
+from software_factory.execution import (
+    ExecutionError,
+    ExecutionManager,
+    RecoveryNeeded,
+    WaitingForInput,
+)
 from software_factory.github_delivery import GitHubDelivery, GitHubProtocol
 from software_factory.graph import build_graph
 from software_factory.ownership import OwnershipBusy, OwnershipError, RunOwnership
@@ -27,7 +40,7 @@ from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain
 from software_factory.review_quality import ReviewFeedback, with_feedback
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
-from software_factory.session_settings import SessionSettings
+from software_factory.settings import resolve_config
 from software_factory.state import FINAL_STATUSES, FactoryState
 
 
@@ -35,8 +48,8 @@ def new_run_id() -> str:
     return f"fct_{uuid4().hex[:12]}"
 
 
-def checkpoint_path(context: BBContext) -> Path:
-    return context.thread_storage / "factory" / "checkpoints.sqlite"
+def checkpoint_path(context: RunContext) -> Path:
+    return context.storage_root / "factory" / "checkpoints.sqlite"
 
 
 class FactoryEngine:
@@ -44,17 +57,23 @@ class FactoryEngine:
         self,
         *,
         workspace: Path,
-        context: BBContext,
-        bb: BBClientProtocol | None = None,
+        context: RunContext | None = None,
+        execution: ExecutionManager | None = None,
         database_path: Path | None = None,
         event_sink: EventSink = null_event_sink,
         cancel_event: asyncio.Event | None = None,
         github: GitHubProtocol | None = None,
     ) -> None:
         self.workspace = workspace.resolve()
-        self.context = context
-        self.bb = bb or BBClient.from_context(context, self.workspace)
-        self.database_path = database_path or checkpoint_path(context)
+        from software_factory.context import FactoryContext
+
+        self.context = context or FactoryContext.open(self.workspace)
+        self.database_path = database_path or checkpoint_path(self.context)
+        if execution is None:
+            from software_factory.worker_manager import ProtectedWorkerManager
+
+            execution = ProtectedWorkerManager(self.workspace, self.context)
+        self.execution = execution
         self.store = RunStore(self.database_path)
         self.event_sink = event_sink
         self.cancel_event = cancel_event or asyncio.Event()
@@ -69,6 +88,7 @@ class FactoryEngine:
         selection: Selection | None = None,
         configuration: FactoryConfig | None = None,
         required_criteria: list[dict[str, str]] | None = None,
+        prepare_only: bool = False,
     ) -> FactoryState:
         if not request.strip():
             raise ValueError("request must not be empty")
@@ -76,17 +96,24 @@ class FactoryEngine:
         config = (
             configuration.model_copy(deep=True) if configuration else load_config(self.workspace)
         )
+        source_config = config.model_copy(deep=True)
+        if not self.context.legacy:
+            config = upgrade_config(config)
         await self.store.initialize()
         initial: FactoryState = {
             "evidence_version": EVIDENCE_VERSION,
             "run_id": run_id,
             "request": request,
             "status": "pending",
-            "bb_parent_thread_id": self.context.parent_thread_id,
-            "bb_project_id": self.context.project_id,
-            "bb_environment_id": self.context.environment_id,
+            "context_version": 1 if self.context.legacy else 2,
+            "session_id": self.context.session_id,
+            "workspace_id": "workspace_" + hashlib.sha256(os.fsencode(self.workspace)).hexdigest(),
+            "owner_uid": os.getuid(),
+            "checkpoint_thread_id": f"{self.context.session_id}:{run_id}"
+            if self.context.legacy
+            else f"factory:{run_id}",
             "workspace_path": str(self.workspace),
-            "storage_path": str(self.context.thread_storage),
+            "storage_path": str(self.context.storage_root),
             "test_repair_count": 0,
             "max_test_repairs": config.limits.max_test_repairs,
             "test_attempt_count": 0,
@@ -113,29 +140,33 @@ class FactoryEngine:
             await self.store.create_run(
                 run_id,
                 self.workspace,
-                self.context.parent_thread_id,
+                self.context.session_id,
                 deadline_at=deadline_at,
                 overall_expires_at=created_at + config.limits.overall_run_timeout_seconds,
             )
             ownership.publish_claim()
             await self.store.save_result(run_id, dict(initial))
             runtime = self._runtime(run_id, config=config)
+            if not self.context.legacy:
+                runtime.artifacts.write_json("config-source.json", source_config)
             runtime.artifacts.write_json("config.json", config)
             try:
                 async with asyncio.timeout(config.limits.total_run_timeout_seconds):
-                    await self.bb.check_protection(runtime.artifacts.root)
-                    await self.bb.validate_workspace(self.workspace)
-                    config.resolved_settings = SessionSettings.resolve(
+                    await self.execution.check_protection(runtime.artifacts.root)
+                    await self.execution.validate_workspace(self.workspace)
+                    config.resolved_settings = resolve_config(
                         config,
                         selection or Selection(),
-                        await self.bb.model_catalog(),
+                        await self.execution.model_catalog(),
                     )
                     runtime.artifacts.write_json("config.json", config)
-            except (BBError, ValueError, TimeoutError) as exc:
+            except (ExecutionError, ValueError, TimeoutError) as exc:
                 result = await runtime.finish({**initial, "error": str(exc)}, "failed")
                 if result["status"] in FINAL_STATUSES:
                     ownership.release_claim()
                 return result
+            if prepare_only:
+                return initial
             return await self._execute_owned(runtime, initial, deadline_at, ownership)
         finally:
             ownership.close()
@@ -147,8 +178,11 @@ class FactoryEngine:
             raise ValueError(f"unknown run ID: {run_id}")
         if Path(str(record["workspace"])).resolve() != self.workspace:
             raise ValueError("run belongs to a different workspace")
-        if record["parent_thread_id"] != self.context.parent_thread_id:
-            raise ValueError("run belongs to a different parent task")
+        if record["parent_thread_id"] != self.context.session_id:
+            raise ValueError("run belongs to a different Factory session")
+        saved = json.loads(record["result_json"] or "{}")
+        if not self.context.legacy and saved.get("context_version") != 2:
+            raise ValueError("legacy run requires its original BB recovery context")
         return record
 
     async def inspect(self, run_id: str) -> FactoryState:
@@ -191,7 +225,7 @@ class FactoryEngine:
         await ownership.acquire()
         try:
             runtime = self._runtime(run_id, create=False)
-            await stop_owned_work(self.store, run_id, self.bb)
+            await stop_owned_work(self.store, run_id, self.execution)
             yield runtime
         finally:
             if not any(
@@ -244,7 +278,7 @@ class FactoryEngine:
         artifacts = ArtifactStore(
             self.workspace,
             run_id,
-            storage_root=self.context.thread_storage / "factory" / "artifacts",
+            storage_root=self.context.storage_root / "factory" / "artifacts",
             create=False,
         )
         from software_factory.contracts.models import FocusedReviewEnvelope
@@ -422,7 +456,7 @@ class FactoryEngine:
             stopped = await self.store.get_run(runtime.run_id)
             target = str(stopped["stop_target"] or "cancelled") if stopped else "cancelled"
             return await runtime.finish({**saved, "error": str(exc)}, target)
-        except BBError as exc:
+        except ExecutionError as exc:
             if exc.kind == "connection":
                 return await runtime.pause(saved, "recovery_needed", str(exc))
             return await runtime.finish({**saved, "error": f"{exc.kind}: {exc}"}, "blocked")
@@ -443,7 +477,11 @@ class FactoryEngine:
             return await self._invoke(runtime, value)
 
     async def _invoke(self, runtime: FactoryRuntime, value: FactoryState | None) -> FactoryState:
-        thread_id = f"{self.context.parent_thread_id}:{runtime.run_id}"
+        thread_id = (
+            f"{self.context.session_id}:{runtime.run_id}"
+            if self.context.legacy
+            else f"factory:{runtime.run_id}"
+        )
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         async with AsyncSqliteSaver.from_conn_string(str(self.database_path)) as saver:
             graph = build_graph(runtime, saver)
@@ -469,7 +507,7 @@ class FactoryEngine:
         artifacts = ArtifactStore(
             self.workspace,
             run_id,
-            storage_root=self.context.thread_storage / "factory" / "artifacts",
+            storage_root=self.context.storage_root / "factory" / "artifacts",
             create=create,
         )
         config = config or (
@@ -484,7 +522,7 @@ class FactoryEngine:
             workspace=self.workspace,
             context=self.context,
             config=config,
-            bb=self.bb,
+            execution=self.execution,
             store=self.store,
             artifacts=artifacts,
             event_sink=self.event_sink,
@@ -494,12 +532,7 @@ class FactoryEngine:
     async def cancel_external(
         self, run_id: str, *, status: str = "cancelled", error: str = "cancelled by user"
     ) -> FactoryState:
-        await self.store.initialize()
-        record = await self.store.get_run(run_id)
-        if record is None:
-            raise ValueError(f"unknown run ID: {run_id}")
-        if Path(record["workspace"]).resolve() != self.workspace:
-            raise ValueError("run belongs to a different workspace")
+        record = await self._record(run_id)
         if record["status"] == "ready_for_review":
             saved = await self.inspect(run_id)
             delivery = saved.get("delivery", {})
@@ -557,7 +590,7 @@ class FactoryEngine:
                 artifacts = ArtifactStore(
                     self.workspace,
                     run_id,
-                    storage_root=self.context.thread_storage / "factory" / "artifacts",
+                    storage_root=self.context.storage_root / "factory" / "artifacts",
                 )
                 config = (
                     FactoryConfig.model_validate_json(artifacts.read_text("config.json"))
@@ -573,7 +606,7 @@ class FactoryEngine:
                 run_id=run_id,
                 workspace=self.workspace,
                 context=self.context,
-                bb=self.bb,
+                execution=self.execution,
                 store=self.store,
                 artifacts=artifacts,
                 config=config,
@@ -595,10 +628,9 @@ class FactoryEngine:
             "run_id": run_id,
             "final_report_path": "",
         }
-        if isinstance(self.bb, BBClient):
-            self.bb.store, self.bb.run_id = self.store, run_id
+        self.execution.bind_run(self.store, run_id)
         try:
-            await stop_owned_work(self.store, run_id, self.bb)
+            await stop_owned_work(self.store, run_id, self.execution)
         except Exception as exc:
             await self.store.set_status(run_id, "recovery_needed", str(exc), result=saved)
         else:

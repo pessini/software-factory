@@ -69,7 +69,7 @@ async def test_cancel_recovers_receipt_after_worker_crash(bridge, creation_reque
     assert records.read(receipt.operation_id).stopped
     assert records.read(receipt.operation_id).status == "stopped"
     assert records.stop_requested
-    assert (await client.inspect_thread("child")).stopped
+    assert (await client.inspect_worker("child")).stopped
 
 
 async def test_cancel_keeps_uncertain_creation_open(bridge, monkeypatch):
@@ -88,7 +88,7 @@ async def test_cancel_keeps_uncertain_creation_open(bridge, monkeypatch):
 
 async def test_dispatch_sends_only_authorized_operation_reference(bridge):
     client, records, receipt, calls = bridge
-    await client.spawn_child(
+    await client.start_worker(
         "planner",
         "Original prompt\n\nFactory operation: run:plan:1:create\n",
         receipt.requested,
@@ -103,7 +103,7 @@ async def test_dispatch_sends_only_authorized_operation_reference(bridge):
         "operation_id": receipt.operation_id,
     }
     with pytest.raises(BBError, match="saved operation"):
-        await client.spawn_child("planner", "unrecorded request", receipt.requested, "run:planner")
+        await client.start_worker("planner", "unrecorded request", receipt.requested, "run:planner")
 
 
 async def test_output_is_not_complete_until_exit_is_confirmed(bridge):
@@ -177,7 +177,7 @@ async def test_stopped_bb_task_can_retain_its_previous_error_status(bridge, monk
 
     monkeypatch.setattr(protected, "read_bb", errored)
     await client.stop("child")
-    assert (await client.inspect_thread("child")).stopped
+    assert (await client.inspect_worker("child")).stopped
 
 
 @pytest.mark.parametrize(
@@ -213,4 +213,4 @@ async def test_active_bb_handoff_requires_all_exit_evidence(
 
     monkeypatch.setattr(protected, "read_bb", active)
     monkeypatch.setattr(protected, "inspect_container", inspect)
-    assert (await client.inspect_thread("child")).stopped is expected
+    assert (await client.inspect_worker("child")).stopped is expected

@@ -22,32 +22,40 @@ from tests.integration.test_factory_engine import (
 )
 
 
+@pytest.mark.parametrize("interface", ["legacy", "factory"])
 @pytest.mark.parametrize(
     "interruption", ["before_create", "after_create", "after_result", "correction"]
 )
 async def test_restart_reconciles_the_saved_request_before_any_new_dispatch(
-    tmp_path: Path, factory_yaml: str, interruption: str
+    tmp_path: Path, factory_yaml: str, interruption: str, interface: str
 ) -> None:
+    from software_factory.context import FactoryContext
+
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
+    run_context = (
+        context(tmp_path)
+        if interface == "legacy"
+        else FactoryContext.open(tmp_path, storage_root=context(tmp_path).storage_root)
+    )
 
     class InterruptedBB(FakeBB):
         interrupted = False
         tells = 0
 
-        async def spawn_child(
+        async def start_worker(
             self, role: str, prompt: str, agent: AgentConfig, spawn_key: str
         ) -> str:
             if role == "planner" and interruption == "before_create" and not self.interrupted:
                 self.interrupted = True
                 raise asyncio.CancelledError()
-            thread_id = await super().spawn_child(role, prompt, agent, spawn_key)
+            thread_id = await super().start_worker(role, prompt, agent, spawn_key)
             if role == "planner" and interruption == "after_create" and not self.interrupted:
                 self.interrupted = True
                 raise asyncio.CancelledError()
             return thread_id
 
-        async def tell(self, thread_id: str, message: str) -> str:
-            receipt = await super().tell(thread_id, message)
+        async def continue_worker(self, thread_id: str, message: str) -> str:
+            receipt = await super().continue_worker(thread_id, message)
             self.tells += 1
             if interruption == "correction" and not self.interrupted:
                 self.interrupted = True
@@ -80,8 +88,8 @@ async def test_restart_reconciles_the_saved_request_before_any_new_dispatch(
 
     engine = FactoryEngine(
         workspace=tmp_path,
-        context=context(tmp_path),
-        bb=bb,
+        context=run_context,
+        execution=bb,
         database_path=database(tmp_path),
         event_sink=interrupt_after_result,
     )
@@ -118,17 +126,17 @@ async def test_connection_loss_recovers_without_resending_work(
         tells = 0
         lost = False
 
-        async def spawn_child(
+        async def start_worker(
             self, role: str, prompt: str, agent: AgentConfig, spawn_key: str
         ) -> str:
-            thread_id = await super().spawn_child(role, prompt, agent, spawn_key)
+            thread_id = await super().start_worker(role, prompt, agent, spawn_key)
             if lost_response == "create" and not self.lost:
                 self.lost = True
                 raise BBError("connection reset after acceptance", "connection")
             return thread_id
 
-        async def tell(self, thread_id: str, message: str) -> str:
-            receipt = await super().tell(thread_id, message)
+        async def continue_worker(self, thread_id: str, message: str) -> str:
+            receipt = await super().continue_worker(thread_id, message)
             self.tells += 1
             if lost_response == "follow_up" and not self.lost:
                 self.lost = True
@@ -153,7 +161,10 @@ async def test_connection_loss_recovers_without_resending_work(
         },
     )
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+        workspace=tmp_path,
+        context=context(tmp_path),
+        execution=bb,
+        database_path=database(tmp_path),
     )
     result = await engine.run("Write the answer", "fct_connection_loss")
 
@@ -176,8 +187,8 @@ async def test_unrelated_or_unknown_execution_never_supplies_a_result(
     )
 
     class UnverifiedBB(FakeBB):
-        async def tell(self, thread_id: str, message: str) -> str:
-            receipt = await super().tell(thread_id, message)
+        async def continue_worker(self, thread_id: str, message: str) -> str:
+            receipt = await super().continue_worker(thread_id, message)
             return "different-receipt" if wrong_identity == "receipt" else receipt
 
         async def reconcile_operation(
@@ -203,7 +214,10 @@ async def test_unrelated_or_unknown_execution_never_supplies_a_result(
         },
     )
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+        workspace=tmp_path,
+        context=context(tmp_path),
+        execution=bb,
+        database_path=database(tmp_path),
     )
     result = await engine.run("Write the answer", "fct_unverified_result")
     assert result["status"] == "recovery_needed"
@@ -242,7 +256,10 @@ async def test_waiting_for_user_input_preserves_the_request_and_deadline(
         },
     )
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+        workspace=tmp_path,
+        context=context(tmp_path),
+        execution=bb,
+        database_path=database(tmp_path),
     )
     waiting = await asyncio.wait_for(engine.run("Write the answer", "fct_question"), 10)
     assert waiting["status"] == "waiting_for_input"
@@ -285,7 +302,7 @@ async def test_connection_retry_budget_survives_restart(tmp_path: Path, factory_
             "reviewer": [{"output": review_output()}],
         },
     )
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer", "fct_retry_budget")
     assert result["status"] == "recovery_needed"
     before = next(
@@ -293,7 +310,7 @@ async def test_connection_retry_budget_survives_restart(tmp_path: Path, factory_
     )
     assert before["retry_count"] == 2
 
-    resumed_engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    resumed_engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     still_offline = await resumed_engine.resume(result["run_id"])
     assert still_offline["status"] == "recovery_needed"
     assert (
@@ -327,11 +344,11 @@ async def test_unconfirmed_stop_keeps_ownership_until_child_exit_is_confirmed(
         ) -> BBExecution | None:
             return None
 
-        async def inspect_thread(self, thread_id: str) -> BBThreadState:
+        async def inspect_worker(self, thread_id: str) -> BBThreadState:
             return BBThreadState("stopping", self.confirms_stop)
 
     bb = UncertainBB(tmp_path, {"planner": [{"output": plan_output()}]})
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer", "fct_stop_uncertain")
     assert result["status"] == "recovery_needed"
     if damaged_artifact:
@@ -344,7 +361,7 @@ async def test_unconfirmed_stop_keeps_ownership_until_child_exit_is_confirmed(
     contender = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=FakeBB(tmp_path, {}),
+        execution=FakeBB(tmp_path, {}),
         database_path=database(tmp_path).with_name("other.sqlite"),
     )
     with pytest.raises(OwnershipError, match="reserved for recovery"):
@@ -365,7 +382,7 @@ async def test_environment_must_match_the_owned_workspace_before_dispatch(
 ) -> None:
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
     bb = FakeBB(tmp_path / "different-workspace", {})
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer", "fct_wrong_environment")
     assert result["status"] == "failed"
     assert "owned workspace" in result["error"]

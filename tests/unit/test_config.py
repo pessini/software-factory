@@ -16,6 +16,22 @@ def test_loads_strict_policy(tmp_path: Path, factory_yaml: str) -> None:
     assert config.safety.allow_push is False
 
 
+def test_connection_conversion_preserves_original_policy_and_authorization(factory_yaml):
+    import yaml
+
+    from software_factory.config import upgrade_config
+
+    original = FactoryConfig.model_validate(yaml.safe_load(factory_yaml))
+    before = original.model_dump()
+    converted = upgrade_config(original)
+    assert original.model_dump() == before
+    assert converted.version == 2
+    assert converted.worker_connection.model_connection == "native"
+    assert converted.model_dump(exclude={"version", "worker_connection"}) == original.model_dump(
+        exclude={"version", "worker_connection"}
+    )
+
+
 def test_rejects_shell_commands(factory_yaml: str) -> None:
     import yaml
 

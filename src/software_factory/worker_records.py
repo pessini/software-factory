@@ -21,7 +21,7 @@ class WorkerMessage(ConfigModel):
 
 
 class WorkerReceipt(ConfigModel):
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 1
     operation_id: str
     container_id: str
     request_hash: str
@@ -40,6 +40,7 @@ class WorkerReceipt(ConfigModel):
     usage: dict[str, int] | None = None
     question: str | None = None
     interaction_id: str | None = None
+    connection_evidence: dict[str, str | None] | None = None
 
 
 def request_key(operation_id: str) -> str:
@@ -57,6 +58,20 @@ class WorkerRecords:
     def request_stop(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         with (self.root / "stop-requested").open("a") as handle:
+            handle.flush()
+            os.fsync(handle.fileno())
+        directory = os.open(self.root, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+    @property
+    def stop_confirmed(self) -> bool:
+        return (self.root / "stop-confirmed").is_file()
+
+    def confirm_stop(self) -> None:
+        with (self.root / "stop-confirmed").open("a") as handle:
             handle.flush()
             os.fsync(handle.fileno())
         directory = os.open(self.root, os.O_RDONLY)
@@ -98,7 +113,7 @@ class WorkerRecords:
         temporary = path.with_suffix(".tmp")
         with temporary.open("w", encoding="utf-8") as handle:
             os.chmod(temporary, 0o600)
-            json.dump(receipt.model_dump(mode="json"), handle)
+            json.dump(receipt.model_dump(mode="json", exclude_none=True), handle)
             handle.flush()
             os.fsync(handle.fileno())
         temporary.replace(path)

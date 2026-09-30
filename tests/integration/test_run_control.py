@@ -72,7 +72,7 @@ async def test_cancellation_at_a_node_boundary_cannot_become_accepted(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
         event_sink=cancel_after_review,
     )
@@ -102,8 +102,8 @@ async def test_resume_after_repair_dispatch_does_not_send_the_repair_twice(
     class InterruptedRepairBB(FakeBB):
         tell_count = 0
 
-        async def tell(self, thread_id: str, message: str) -> str:
-            receipt = await super().tell(thread_id, message)
+        async def continue_worker(self, thread_id: str, message: str) -> str:
+            receipt = await super().continue_worker(thread_id, message)
             self.tell_count += 1
             if self.tell_count == 1:
                 raise asyncio.CancelledError()
@@ -122,7 +122,10 @@ async def test_resume_after_repair_dispatch_does_not_send_the_repair_twice(
         },
     )
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+        workspace=tmp_path,
+        context=context(tmp_path),
+        execution=bb,
+        database_path=database(tmp_path),
     )
     with pytest.raises(NodeCancelledError):
         await engine.run("Write the answer", "fct_repair_restart")
@@ -144,7 +147,10 @@ async def test_failed_wait_stops_the_child_before_a_final_outcome(
     bb = FakeBB(tmp_path, {"planner": [{"output": plan_output()}]})
     bb.wait_error = RuntimeError("provider failed during wait")
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, database_path=database(tmp_path)
+        workspace=tmp_path,
+        context=context(tmp_path),
+        execution=bb,
+        database_path=database(tmp_path),
     )
     result = await engine.run("Write the answer", "fct_wait_failure")
 
@@ -176,7 +182,7 @@ async def test_cancel_after_acceptance_returns_the_existing_result(
     engine = FactoryEngine(
         workspace=tmp_path,
         context=context(tmp_path),
-        bb=bb,
+        execution=bb,
         database_path=database(tmp_path),
         event_sink=cancel_on_acceptance,
     )
@@ -200,7 +206,7 @@ async def test_step_deadline_stops_a_child_with_a_hanging_wait(
             await asyncio.Event().wait()
 
     bb = HangingBB(tmp_path, {"planner": [{"output": plan_output()}]})
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await asyncio.wait_for(engine.run("Write the answer", "fct_step_timeout"), 5)
     assert result["status"] == "blocked"
     assert "step time limit exceeded" in result["error"]

@@ -69,7 +69,7 @@ class ProtectedBBClient(BBClient):
             parent_thread_id=self.context.parent_thread_id, operation_id=match[1]
         ).model_dump_json()
 
-    async def spawn_child(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
+    async def start_worker(self, role: str, prompt: str, agent: AgentConfig, spawn_key: str) -> str:
         if agent.provider != "codex":
             raise BBError("This protected worker supports only Codex", "configuration")
         result = await self._run(
@@ -97,7 +97,7 @@ class ProtectedBBClient(BBClient):
             raise BBError("BB worker creation returned no child identity", "protocol")
         return str(thread["id"])
 
-    async def tell(self, thread_id: str, message: str) -> str | None:
+    async def continue_worker(self, thread_id: str, message: str) -> str | None:
         await self._records(thread_id)
         await self._run("thread", "tell", thread_id, self._message(message), "--mode", "steer")
         return None
@@ -170,11 +170,11 @@ class ProtectedBBClient(BBClient):
 
     async def wait(self, thread_id: str) -> None:
         while True:
-            if (await self.inspect_thread(thread_id)).stopped:
+            if (await self.inspect_worker(thread_id)).stopped:
                 return
             await asyncio.sleep(0.1)
 
-    async def inspect_thread(self, thread_id: str) -> BBThreadState:
+    async def inspect_worker(self, thread_id: str) -> BBThreadState:
         records = await self._records(thread_id)
         child = await read_bb(f"threads/{quote(thread_id, safe='')}")
         queued = await read_bb(f"threads/{quote(thread_id, safe='')}/queued-messages")
@@ -226,7 +226,7 @@ class ProtectedBBClient(BBClient):
             except OwnershipError:
                 await asyncio.sleep(0.1)
                 continue
-            if (await self.inspect_thread(thread_id)).stopped:
+            if (await self.inspect_worker(thread_id)).stopped:
                 return
             await asyncio.sleep(0.1)
         raise RecoveryNeeded("BB worker exit is not confirmed; ownership is retained")

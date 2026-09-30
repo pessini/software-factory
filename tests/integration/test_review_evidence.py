@@ -59,7 +59,7 @@ def scripted_engine(
         },
     )
     kwargs = {"event_sink": event_sink} if event_sink else {}
-    return FactoryEngine(workspace=workspace, context=context(workspace), bb=bb, **kwargs)
+    return FactoryEngine(workspace=workspace, context=context(workspace), execution=bb, **kwargs)
 
 
 async def test_review_cannot_use_an_unhashed_symlink_target_as_source_evidence(
@@ -272,7 +272,9 @@ async def test_restart_cannot_reuse_checks_after_inputs_change(tmp_path, factory
         plan = json.loads(store.read_text("plan.json"))
         plan["acceptance_criteria"][0]["description"] = "A different requirement"
         store.write_json("plan.json", plan)
-    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=engine.bb)
+    restarted = FactoryEngine(
+        workspace=tmp_path, context=context(tmp_path), execution=engine.execution
+    )
     result = await restarted.resume(run_id)
     assert result["status"] == "blocked"
     assert "stale evidence" in result["error"]
@@ -314,11 +316,11 @@ async def test_unresolved_fixed_and_reopened_findings_survive_restart(tmp_path, 
             raise asyncio.CancelledError()
 
     engine = FactoryEngine(
-        workspace=tmp_path, context=context(tmp_path), bb=bb, event_sink=interrupt
+        workspace=tmp_path, context=context(tmp_path), execution=bb, event_sink=interrupt
     )
     with pytest.raises(NodeCancelledError):
         await engine.run("Write the answer", "fct_finding_restart")
-    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await restarted.resume("fct_finding_restart")
     assert result["status"] == "ready_for_review", result.get("error")
     findings = result["handoff"]["findings"]
@@ -357,7 +359,7 @@ async def test_request_delimiters_cannot_create_instruction_boundaries(tmp_path,
     engine = scripted_engine(tmp_path)
     result = await engine.run(request)
     assert result["status"] == "ready_for_review", result.get("error")
-    for _, prompt in engine.bb.prompts:
+    for _, prompt in engine.execution.prompts:
         blocks = re.findall(r"<factory_data>\n(.*?)\n</factory_data>", prompt, re.DOTALL)
         assert len(blocks) == 1
         assert json.loads(blocks[0])["original_request"] == request
@@ -409,7 +411,7 @@ async def test_report_retains_provider_usage_when_available(tmp_path, factory_ya
             "reviewer": [{"output": review_output()}],
         },
     )
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer")
     assert result["status"] == "ready_for_review", result.get("error")
     for step in ("plan", "build", "review"):
@@ -451,7 +453,7 @@ async def test_two_distinct_defects_at_one_location_keep_separate_ids(tmp_path, 
             ],
         },
     )
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await engine.run("Write the answer")
     assert result["status"] == "ready_for_review", result.get("error")
     assert set(result["handoff"]["findings"]) == {"finding-001", "finding-002"}

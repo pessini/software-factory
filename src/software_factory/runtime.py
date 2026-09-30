@@ -13,14 +13,20 @@ from typing import Any, cast
 from pydantic import BaseModel, ValidationError
 
 from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
-from software_factory.bb import BBClient, BBClientProtocol, BBContext
-from software_factory.bb.client import BBError, BBExecution, RecoveryNeeded, WaitingForInput
 from software_factory.cleanup import stop_owned_work
 from software_factory.config import STEP_ROLES, AgentConfig, FactoryConfig, QualityCommand, Step
+from software_factory.context import RunContext
 from software_factory.contracts import BuildEnvelope, ReviewEnvelope
 from software_factory.contracts.models import JudgeEnvelope
 from software_factory.events import EventSink, FactoryEvent, null_event_sink
 from software_factory.evidence import RunEvidence
+from software_factory.execution import (
+    ExecutionError,
+    ExecutionManager,
+    ExecutionResult,
+    RecoveryNeeded,
+    WaitingForInput,
+)
 from software_factory.persistence import RunStore
 from software_factory.processes import (
     CleanupUncertain,
@@ -45,9 +51,9 @@ class FactoryRuntime:
         *,
         run_id: str,
         workspace: Path,
-        context: BBContext,
+        context: RunContext,
         config: FactoryConfig,
-        bb: BBClientProtocol,
+        execution: ExecutionManager,
         store: RunStore,
         artifacts: ArtifactStore,
         event_sink: EventSink = null_event_sink,
@@ -57,9 +63,8 @@ class FactoryRuntime:
         self.workspace = workspace
         self.context = context
         self.config = config
-        self.bb = bb
-        if isinstance(bb, BBClient):
-            bb.store, bb.run_id = store, run_id
+        self.execution = execution
+        execution.bind_run(store, run_id)
         self.store = store
         self.artifacts = artifacts
         self.event_sink = event_sink
@@ -118,8 +123,8 @@ class FactoryRuntime:
         before_dispatch: Callable[[], Awaitable[None]] | None = None,
     ) -> tuple[str, str]:
         await self.verify_repository()
-        await self.bb.check_protection(self.artifacts.root)
-        await self.bb.validate_workspace(self.workspace)
+        await self.execution.check_protection(self.artifacts.root)
+        await self.execution.validate_workspace(self.workspace)
         await self.check_cancelled()
         step = step or role
         settings = self.config.resolved_settings
@@ -155,7 +160,7 @@ class FactoryRuntime:
         spawn_key = await self.store.prepare_child_spawn(self.run_id, conversation_role)
         if thread_id is None:
             thread_id = await self._read_retry(
-                lambda: self.bb.find_child(role, spawn_key), operation
+                lambda: self.execution.find_worker(role, spawn_key), operation
             )
         if operation["state"] == "prepared":
             await self.check_cancelled()
@@ -168,18 +173,19 @@ class FactoryRuntime:
             try:
                 if thread_id is None:
                     thread_id = await self._controlled(
-                        lambda: self.bb.spawn_child(role, tagged_prompt, agent, spawn_key),
+                        lambda: self.execution.start_worker(role, tagged_prompt, agent, spawn_key),
                         operation,
                     )
                 elif kind != "create" or tell_existing:
                     existing_thread: str = thread_id
                     await self._activate_child(conversation_role, existing_thread)
                     execution_id = await self._controlled(
-                        lambda: self.bb.tell(existing_thread, tagged_prompt), operation
+                        lambda: self.execution.continue_worker(existing_thread, tagged_prompt),
+                        operation,
                     )
                     operation["execution_id"] = execution_id
                     await self.store.update_operation(operation_id, execution_id=execution_id)
-            except BBError as exc:
+            except ExecutionError as exc:
                 if exc.kind != "connection":
                     raise
                 await self.emit(
@@ -190,7 +196,7 @@ class FactoryRuntime:
                 )
                 if thread_id is None:
                     thread_id = await self._read_retry(
-                        lambda: self.bb.find_child(role, spawn_key), operation
+                        lambda: self.execution.find_worker(role, spawn_key), operation
                     )
                 if thread_id is None:
                     raise RecoveryNeeded(
@@ -201,7 +207,7 @@ class FactoryRuntime:
             raise RecoveryNeeded(f"cannot establish whether child creation ran: {operation_id}")
         await self._activate_child(conversation_role, thread_id)
         execution = await self._read_retry(
-            lambda: self.bb.reconcile_operation(thread_id, operation_id), operation
+            lambda: self.execution.reconcile_operation(thread_id, operation_id), operation
         )
         if execution is None:
             raise RecoveryNeeded(
@@ -221,7 +227,7 @@ class FactoryRuntime:
         if completed.status == "waiting_for_input":
             await self._require_saved_answer(completed, thread_id)
         if completed.status != "completed" or completed.output is None:
-            raise BBError(f"{role} execution ended with status {completed.status}")
+            raise ExecutionError(f"{role} execution ended with status {completed.status}")
         reported = completed.reported_choice
         await self.emit(
             step,
@@ -234,6 +240,7 @@ class FactoryRuntime:
                 "verification": "verified" if reported else "unverified",
                 "execution_id": completed.execution_id,
                 "usage": completed.usage,
+                "connection": completed.connection_evidence,
             },
         )
         if reported and (reported.provider, reported.model, reported.reasoning_level) != (
@@ -241,11 +248,13 @@ class FactoryRuntime:
             agent.model,
             agent.reasoning_level,
         ):
-            raise BBError(
+            raise ExecutionError(
                 "provider reported a different model or effort; automatic substitution is forbidden",
                 "configuration",
             )
-        inspection = await self._read_retry(lambda: self.bb.inspect_thread(thread_id), operation)
+        inspection = await self._read_retry(
+            lambda: self.execution.inspect_worker(thread_id), operation
+        )
         if not inspection.stopped:
             raise RecoveryNeeded(
                 f"execution returned output but child work still runs: {thread_id}"
@@ -260,19 +269,21 @@ class FactoryRuntime:
 
     async def _wait_execution(
         self, thread_id: str, execution_id: str, operation: dict[str, Any]
-    ) -> BBExecution:
-        waiter = asyncio.create_task(self._read_retry(lambda: self.bb.wait(thread_id), operation))
+    ) -> ExecutionResult:
+        waiter = asyncio.create_task(
+            self._read_retry(lambda: self.execution.wait(thread_id), operation)
+        )
         try:
             while True:
                 current = await self._read_retry(
-                    lambda: self.bb.execution(thread_id, execution_id), operation
+                    lambda: self.execution.execution(thread_id, execution_id), operation
                 )
                 if current.execution_id != execution_id:
                     raise RecoveryNeeded("execution changed while waiting")
                 if current.status == "waiting_for_input":
                     await self._require_saved_answer(current, thread_id)
                 if current.status in {"failed", "stopped"}:
-                    raise BBError(f"child execution {current.status}")
+                    raise ExecutionError(f"child execution {current.status}")
                 if waiter.done() and current.status != "waiting_for_input":
                     await waiter
                     return current
@@ -286,7 +297,7 @@ class FactoryRuntime:
                 waiter.cancel()
             await asyncio.gather(waiter, return_exceptions=True)
 
-    async def _require_saved_answer(self, execution: BBExecution, thread_id: str) -> None:
+    async def _require_saved_answer(self, execution: ExecutionResult, thread_id: str) -> None:
         if execution.interaction_id:
             interaction = await self.store.interaction(self.run_id, execution.interaction_id)
             if interaction is not None:
@@ -328,7 +339,7 @@ class FactoryRuntime:
         while True:
             try:
                 return await self._controlled(action, operation)
-            except BBError as exc:
+            except ExecutionError as exc:
                 if exc.kind != "connection":
                     raise
                 retry = await self.store.claim_retry(
@@ -456,7 +467,7 @@ class FactoryRuntime:
             return envelope
         except ValueError as first_error:
             await self.verify_repository()
-            await self.bb.check_protection(self.artifacts.root)
+            await self.execution.check_protection(self.artifacts.root)
             await self.check_cancelled()
             from software_factory.prompts import data_block
 
@@ -487,8 +498,8 @@ class FactoryRuntime:
     async def _activate_child(self, role: str, thread_id: str) -> None:
         if await self.store.save_child(self.run_id, role, thread_id):
             return
-        await self.bb.stop(thread_id)
-        inspection = await self.bb.inspect_thread(thread_id)
+        await self.execution.stop(thread_id)
+        inspection = await self.execution.inspect_worker(thread_id)
         if not inspection.stopped:
             raise RecoveryNeeded(f"cannot confirm that {thread_id} stopped")
         for operation in await self.store.operations(self.run_id):
@@ -498,7 +509,21 @@ class FactoryRuntime:
 
     async def reconcile_owned_work(self) -> None:
         """Do not dispatch a new writer until old local processes are accounted for."""
+        operations = await self.store.operations(self.run_id)
+        workers = set((await self.store.list_children(self.run_id)).values())
+        for operation in operations:
+            if operation["kind"] not in {"check", "remote"}:
+                worker_id = operation["thread_id"] or await self.execution.find_worker(
+                    str(operation["role"]).split(":", 1)[0], f"{self.run_id}:{operation['role']}"
+                )
+                if worker_id:
+                    workers.add(worker_id)
         for process_record in await self.store.processes(self.run_id):
+            if str(process_record["kind"]).startswith("worker:"):
+                if str(process_record["kind"])[7:] not in workers:
+                    raise RecoveryNeeded("a worker process has no matching saved operation")
+                # Protected workers survive controller exit. Reconcile their exact receipts below.
+                continue
             group = int(process_record["process_group"])
             await stop_group(group, str(process_record["identity"]))
             await self.store.clear_process(str(process_record["process_id"]))
@@ -515,13 +540,15 @@ class FactoryRuntime:
                 or operation["kind"] == "check"
             ):
                 continue
-            thread_id = operation["thread_id"] or await self.bb.find_child(
+            thread_id = operation["thread_id"] or await self.execution.find_worker(
                 str(operation["role"]).split(":", 1)[0], f"{self.run_id}:{operation['role']}"
             )
             if thread_id is None:
                 raise RecoveryNeeded("old child creation has an uncertain outcome")
             active_threads.add(thread_id)
-            execution = await self.bb.reconcile_operation(thread_id, operation["operation_id"])
+            execution = await self.execution.reconcile_operation(
+                thread_id, operation["operation_id"]
+            )
             if execution is None or (
                 operation["execution_id"] and operation["execution_id"] != execution.execution_id
             ):
@@ -534,14 +561,14 @@ class FactoryRuntime:
             )
         for thread_id in (await self.store.list_children(self.run_id)).values():
             if thread_id not in active_threads:
-                inspection = await self.bb.inspect_thread(thread_id)
+                inspection = await self.execution.inspect_worker(thread_id)
                 if not inspection.stopped:
                     raise RecoveryNeeded(f"unrelated work remains active in {thread_id}")
 
     async def recover(self, deadline_at: float) -> None:
         async def reconcile() -> None:
-            await self.bb.check_protection(self.artifacts.root)
-            await self.bb.validate_workspace(self.workspace)
+            await self.execution.check_protection(self.artifacts.root)
+            await self.execution.validate_workspace(self.workspace)
             await self.reconcile_owned_work()
 
         await self._controlled(
@@ -569,8 +596,8 @@ class FactoryRuntime:
                     state.get("error") or "cancelled by user",
                 )
                 try:
-                    await stop_owned_work(self.store, self.run_id, self.bb)
-                except (RecoveryNeeded, CleanupUncertain, BBError) as exc:
+                    await stop_owned_work(self.store, self.run_id, self.execution)
+                except (RecoveryNeeded, CleanupUncertain, ExecutionError) as exc:
                     return await self.pause(
                         state, "recovery_needed", str(exc), stop_if_requested=False
                     )
@@ -743,8 +770,8 @@ class FactoryRuntime:
             path = self.artifacts.write_text("final-report.md", report)
             self.artifacts.write_json("run-summary.json", run_summary(typed, str(result["status"])))
             typed["final_report_path"] = str(path)
-            self.context.thread_storage.mkdir(parents=True, exist_ok=True)
-            (self.context.thread_storage / f"factory-{self.run_id}-final-report.md").write_text(
+            self.context.storage_root.mkdir(parents=True, exist_ok=True)
+            (self.context.storage_root / f"factory-{self.run_id}-final-report.md").write_text(
                 report
             )
         except ArtifactIntegrityError:

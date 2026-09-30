@@ -5,10 +5,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from software_factory.artifacts import ArtifactIntegrityError
-from software_factory.bb.client import RecoveryNeeded, WaitingForInput
 from software_factory.contracts import BuildEnvelope, PlanEnvelope, ReviewEnvelope
 from software_factory.contracts.models import JudgeEnvelope
 from software_factory.evidence import check_passed, compare_check
+from software_factory.execution import RecoveryNeeded, WaitingForInput
 from software_factory.focused_review import run_focused_review
 from software_factory.git import capture_snapshot, changed_files, repository_root
 from software_factory.interactions import Interaction
@@ -84,8 +84,8 @@ class WorkflowNodes:
                 },
             )
             runtime.artifacts.write_json("config.json", runtime.config)
-            await runtime.bb.check_protection(runtime.artifacts.root)
-            await runtime.bb.validate_workspace(runtime.workspace)
+            await runtime.execution.check_protection(runtime.artifacts.root)
+            await runtime.execution.validate_workspace(runtime.workspace)
             runtime.artifacts.write_text("request.md", state["request"].rstrip() + "\n")
             await runtime.evidence.prepare(state["request"], runtime.config)
             await runtime.store.set_status(runtime.run_id, "running")

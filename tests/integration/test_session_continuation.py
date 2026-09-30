@@ -13,8 +13,8 @@ import pytest
 from acp.schema import TextContentBlock
 from langgraph.errors import NodeCancelledError
 
-from software_factory.acp_agent import SoftwareFactoryAgent
 from software_factory.bb.client import BBError
+from software_factory.bb.legacy_acp import SoftwareFactoryAgent
 from software_factory.config import ModelChoice
 from software_factory.engine import FactoryEngine
 from tests.conftest import FakeBB, init_repository
@@ -55,9 +55,9 @@ class RecordingBB(FakeBB):
         )
         self.answers_sent = []
 
-    async def tell(self, thread_id, message):
+    async def continue_worker(self, thread_id, message):
         self.answers_sent.append((thread_id, message))
-        return await super().tell(thread_id, message)
+        return await super().continue_worker(thread_id, message)
 
 
 class SessionClient:
@@ -87,14 +87,14 @@ async def send(agent, session_id, text):
 async def test_planner_question_survives_restart_and_answer_continues_once(tmp_path, factory_yaml):
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
     bb = RecordingBB(tmp_path, [question_output(), plan_output()])
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     waiting = await engine.run("Write the answer", "fct_saved_question")
     assert waiting["status"] == "waiting_for_input"
     question = waiting["interactions"][0]
     assert question["questions"][0]["id"] == "format"
     assert bb.spawn_counts == {"planner": 1}
 
-    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     loaded = await restarted.inspect(waiting["run_id"])
     assert loaded["interactions"] == waiting["interactions"]
     assert (await restarted.resume(waiting["run_id"]))["status"] == "waiting_for_input"
@@ -207,7 +207,7 @@ async def test_waiting_session_ignores_unrelated_messages_and_cancellation_preve
     session = await agent.new_session(str(tmp_path))
     await send(agent, session.session_id, "Write the answer")
     run_id = client.run_id
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     question = (await engine.inspect(run_id))["interactions"][0]
     restarted = SoftwareFactoryAgent(context(tmp_path), bb)
     restarted.on_connect(client)
@@ -234,12 +234,12 @@ async def test_waiting_time_preserves_work_budget_but_overall_expiry_stops_run(
 ):
     init_repository(tmp_path, factory_yaml, "raise SystemExit(0)\n")
     bb = RecordingBB(tmp_path, [question_output(), plan_output()])
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     waiting = await engine.run("Write the answer", "fct_question_timeout")
     assert waiting["status"] == "waiting_for_input"
     future = time.time() + elapsed
     monkeypatch.setattr(time, "time", lambda: future)
-    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    restarted = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     result = await restarted.answer(
         waiting["run_id"], waiting["interactions"][0]["interaction_id"], {"format": "Text"}
     )
@@ -260,8 +260,8 @@ async def test_restart_during_build_reuses_run_settings_and_child_operations(
     class InterruptedBB(RecordingBB):
         interrupted = False
 
-        async def spawn_child(self, role, prompt, agent, spawn_key):
-            child = await super().spawn_child(role, prompt, agent, spawn_key)
+        async def start_worker(self, role, prompt, agent, spawn_key):
+            child = await super().start_worker(role, prompt, agent, spawn_key)
             if role == "builder" and not self.interrupted:
                 self.interrupted = True
                 raise asyncio.CancelledError()
@@ -343,14 +343,14 @@ async def test_duplicate_answer_is_harmless_while_the_first_answer_is_running(
     entered, release = asyncio.Event(), asyncio.Event()
 
     class SlowBB(RecordingBB):
-        async def spawn_child(self, role, prompt, agent, spawn_key):
+        async def start_worker(self, role, prompt, agent, spawn_key):
             if role == "builder":
                 entered.set()
                 await release.wait()
-            return await super().spawn_child(role, prompt, agent, spawn_key)
+            return await super().start_worker(role, prompt, agent, spawn_key)
 
     bb = SlowBB(tmp_path, [question_output(), plan_output()])
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     waiting = await engine.run("Write the answer", "fct_concurrent_answer")
     interaction_id = waiting["interactions"][0]["interaction_id"]
     first = asyncio.create_task(
@@ -358,7 +358,7 @@ async def test_duplicate_answer_is_harmless_while_the_first_answer_is_running(
     )
     try:
         await asyncio.wait_for(entered.wait(), 5)
-        other = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+        other = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
         duplicate = await other.answer(waiting["run_id"], interaction_id, {"format": "Text"})
         assert duplicate["run_id"] == waiting["run_id"]
         assert duplicate["interactions"][0]["answers"] == {"format": "Text"}
@@ -376,11 +376,11 @@ async def test_duplicate_acp_answer_during_active_prompt_returns_saved_run(tmp_p
     entered, release = asyncio.Event(), asyncio.Event()
 
     class SlowBB(RecordingBB):
-        async def spawn_child(self, role, prompt, agent, spawn_key):
+        async def start_worker(self, role, prompt, agent, spawn_key):
             if role == "builder":
                 entered.set()
                 await release.wait()
-            return await super().spawn_child(role, prompt, agent, spawn_key)
+            return await super().start_worker(role, prompt, agent, spawn_key)
 
     bb = SlowBB(tmp_path, [question_output(), plan_output()])
     agent = SoftwareFactoryAgent(context(tmp_path), bb)
@@ -389,7 +389,7 @@ async def test_duplicate_acp_answer_during_active_prompt_returns_saved_run(tmp_p
     session = await agent.new_session(str(tmp_path))
     await send(agent, session.session_id, "Write the answer")
     run_id = client.run_id
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     question = (await engine.inspect(run_id))["interactions"][0]
     text = f"/answer {question['interaction_id']} Text"
     first = asyncio.create_task(send(agent, session.session_id, text))
@@ -417,7 +417,7 @@ async def test_acp_process_replays_saved_history_before_load_response(tmp_path, 
     await send(agent, session.session_id, "Write the answer")
     launcher = """import asyncio, os, acp
 from pathlib import Path
-from software_factory.acp_agent import SoftwareFactoryAgent
+from software_factory.bb.legacy_acp import SoftwareFactoryAgent
 from tests.conftest import FakeBB
 from tests.integration.test_factory_engine import context
 root = Path(os.environ['FACTORY_REPLAY_WORKSPACE'])
@@ -455,7 +455,7 @@ async def test_simultaneous_answers_are_accepted_once(tmp_path, factory_yaml, in
     session = await first.new_session(str(tmp_path))
     await send(first, session.session_id, "Write the answer")
     run_id = client.run_id
-    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+    engine = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
     question = (await engine.inspect(run_id))["interactions"][0]
     second = SoftwareFactoryAgent(context(tmp_path), bb)
     second.on_connect(SessionClient())
@@ -466,7 +466,7 @@ async def test_simultaneous_answers_are_accepted_once(tmp_path, factory_yaml, in
             send(second, session.session_id, answer),
         ]
     else:
-        other = FactoryEngine(workspace=tmp_path, context=context(tmp_path), bb=bb)
+        other = FactoryEngine(workspace=tmp_path, context=context(tmp_path), execution=bb)
         submissions = [
             owner.answer(run_id, question["interaction_id"], {"format": "Text"})
             for owner in (engine, other)
