@@ -68,8 +68,20 @@ ACP registration in that document is needed only for legacy BB runs.
 
 ## 3. Register the ACP provider
 
-Merge this entry into `~/.bb/config.json`, replacing the command with the
-absolute path printed above:
+BB 0.46 and later no longer read `customAcpAgents` from `~/.bb/config.json`.
+Register the agent through the ACP provider plugin, replacing the command with
+the absolute path printed above:
+
+```bash
+bb plugin config provider-acp set customAgents '[{"id":"software-factory","displayName":"Software Factory","command":"/ABSOLUTE/PATH/TO/software-factory","args":["acp"],"env":{"FACTORY_LOG_LEVEL":"INFO"}}]'
+bb provider list
+```
+
+`bb provider list` must include `acp-software-factory`. On BB 0.46 also set
+**Software Factory executable** in the Factory panel's plugin settings; the panel
+can no longer read the command from `config.json`.
+
+Before BB 0.46, merge this entry into `~/.bb/config.json` instead:
 
 ```json
 {

@@ -9,7 +9,9 @@ See [interface setup](docs/factory-interfaces.md) and
 [existing-run compatibility](docs/interface-migration.md). The independent native
 path passed real CLI and BB workflow tests, including saved questions, reconnect,
 and cancellation. See the short [before-and-after explanation](docs/factory-explained.html).
-Codex desktop integration and optional Router support remain deferred for issue #9.
+Codex desktop control and BB/Codex cross-interface continuation passed in both
+directions using a read-only control workspace. Optional Router support remains
+deferred for issue #9.
 
 Earlier live acceptance used the [protected local BB worker](docs/protected-worker.md)
 with BB 0.42.1, Apple Container 1.0.0, and the Codex provider CLI 0.154.0.

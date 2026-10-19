@@ -69,9 +69,41 @@ Codex supports command-based MCP servers and timeout configuration in its
 
 ## Enforced control-only setup
 
-Install `skills/factory-control` as a Codex skill. Run the outer assistant with a
-read-only filesystem profile and no permission to expand it. For the tested CLI,
-a profile file such as `~/.codex/factory-control.config.toml` can contain:
+Use a separate **control workspace** for the Codex app and CLI. It is a folder
+outside the target whose project configuration sets a read-only sandbox, registers
+the Factory MCP server for one fixed target, and installs the `factory-control` skill:
+
+```sh
+bash scripts/codex-control-workspace.sh --target /abs/target --control /abs/control
+```
+
+Open the control folder in Codex, not the target, and **trust** it. Codex ignores
+an untrusted folder's `.codex/config.toml`; the session then silently uses the
+user-level sandbox, which may be full access. Confirm the effective setting without
+a model request:
+
+```sh
+cd /abs/control && codex debug prompt-input hi | grep -o 'sandbox_mode` is `[a-z-]*`'
+```
+
+The result must be `read-only`.
+
+In the Codex desktop app, open the folder with `codex app /abs/control` and set the
+chat's permission menu to **Custom (config.toml)**. The other app modes (**Ask for
+approval**, **Approve for me**, **Full access**) replace the project setting with
+workspace write; a tested chat under **Approve for me** could write the control
+folder. The generated configuration keeps `approval_policy = "never"`, so it also
+sets `default_tools_approval_mode = "approve"` on the Factory server only.
+Without it, Codex denies every `factory_*` call because approval is disabled.
+
+The project layer sets `sandbox_mode` rather than a
+permission profile because Codex ignores `default_permissions` whenever any loaded
+layer sets `sandbox_mode`, as a user-level `danger-full-access` default does.
+The skill also tells the assistant to stop if its permission text is not read-only.
+
+A permission profile is still valid for a Codex home that sets no `sandbox_mode`.
+For the tested CLI, a profile file such as `~/.codex/factory-control.config.toml`
+can contain:
 
 ```toml
 default_permissions = "factory_control"
@@ -84,8 +116,8 @@ approval_policy = "never"
 enabled = false
 ```
 
-Select that profile for the outer assistant. Register the MCP server as a trusted
-local tool process outside the assistant's shell sandbox. Only its fixed target
+With either method, the MCP server runs as a trusted local tool process outside the
+assistant's shell sandbox. Only its fixed target
 and shared control methods may perform Factory work. Do not grant extra writable
 roots or separate write-capable target tools to this control-only assistant.
 The skill describes routing; the filesystem profile enforces the write boundary.
@@ -105,7 +137,10 @@ or live routed-model acceptance has been established. Do not configure a wider
 router listener or mount host credential directories to work around this gap.
 Real CLI and BB workflows passed with `gpt-5.6-luna / low` on 19 September 2026.
 The BB check covered settings, start, status, a saved question, task reconnect,
-answer, resume, and confirmed cancellation. Issue #9 remains open for the deferred
-Codex desktop integration and Router work.
+answer, resume, and confirmed cancellation. On 19 October 2026 the native MCP
+workflow and both desktop directions passed: a run started in BB was answered from
+the Codex desktop app, and a run started in Codex was answered from BB. That check
+used ChatGPT app 26.1013.40934, Codex CLI 0.163.0, and BB 0.46.1. Issue #9 remains
+open for Router work.
 See [the verification record](issue-9-acceptance.md) for tested versions, simulated
 results, local permission probes, and the remaining acceptance procedure.

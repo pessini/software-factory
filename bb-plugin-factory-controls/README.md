@@ -22,9 +22,10 @@ In a Software Factory task, open the right panel, select **New tab**, then
 beside each step, then send the work request in the task. Select **Reload choices**
 to read saved values after a reload. Active runs reject settings changes.
 
-The plugin uses the executable from BB's registered `software-factory` agent.
-For a custom launcher, set **Software Factory executable** in plugin settings
-to the Python project's `software-factory` executable.
+Before BB 0.46, the plugin uses the executable from BB's registered
+`software-factory` agent in `config.json`. On BB 0.46 and later, or for a custom
+launcher, set **Software Factory executable** in plugin settings to the Python
+project's `software-factory` executable.
 
 Validation:
 
