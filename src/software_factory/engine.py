@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -37,6 +37,7 @@ from software_factory.github_delivery import GitHubDelivery, GitHubProtocol
 from software_factory.graph import build_graph
 from software_factory.ownership import OwnershipBusy, OwnershipError, RunOwnership
 from software_factory.persistence import RunStore
+from software_factory.planning import PLANNING_WORKFLOW, build_planning_graph
 from software_factory.processes import CleanupUncertain
 from software_factory.review_quality import ReviewFeedback, with_feedback
 from software_factory.runtime import FactoryCancelled, FactoryRuntime
@@ -89,6 +90,8 @@ class FactoryEngine:
         configuration: FactoryConfig | None = None,
         required_criteria: list[dict[str, str]] | None = None,
         prepare_only: bool = False,
+        workflow: str = "implementation",
+        planning: dict[str, Any] | None = None,
     ) -> FactoryState:
         if not request.strip():
             raise ValueError("request must not be empty")
@@ -126,11 +129,13 @@ class FactoryEngine:
             "active_child_thread_id": None,
             "error": None,
             "required_criteria": required_criteria or [],
+            "workflow": workflow,
+            "planning": planning or {},
             "delivery": {
                 "status": "pending" if config.delivery.mode == "pull_request" else "manual"
             },
         }
-        ownership = RunOwnership(self.workspace, run_id, self.database_path)
+        ownership = self._ownership(run_id, initial)
         await ownership.acquire(publish=False)
         try:
             if await self.store.get_run(run_id) is not None:
@@ -184,6 +189,14 @@ class FactoryEngine:
         if not self.context.legacy and saved.get("context_version") != 2:
             raise ValueError("legacy run requires its original BB recovery context")
         return record
+
+    def _ownership(self, run_id: str, state: Mapping[str, Any]) -> RunOwnership:
+        return RunOwnership(
+            self.workspace,
+            run_id,
+            self.database_path,
+            workspace_scope=state.get("workflow") != PLANNING_WORKFLOW,
+        )
 
     async def inspect(self, run_id: str) -> FactoryState:
         record = await self._record(run_id)
@@ -333,7 +346,7 @@ class FactoryEngine:
             raise ValueError(
                 "legacy run cannot resume safely: execution identities and ownership were not recorded"
             )
-        ownership = RunOwnership(self.workspace, run_id, self.database_path)
+        ownership = self._ownership(run_id, saved)
         while True:
             try:
                 await ownership.acquire()
@@ -483,11 +496,16 @@ class FactoryEngine:
             else f"factory:{runtime.run_id}"
         )
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        record = await self._record(runtime.run_id)
+        workflow = json.loads(record["result_json"] or "{}").get("workflow")
         async with AsyncSqliteSaver.from_conn_string(str(self.database_path)) as saver:
-            graph = build_graph(runtime, saver)
+            graph = (
+                build_planning_graph(runtime, saver)
+                if workflow == PLANNING_WORKFLOW
+                else build_graph(runtime, saver)
+            )
             config = {"configurable": {"thread_id": thread_id}}
             if value is None and not (await graph.aget_state(config)).values:
-                record = await self._record(runtime.run_id)
                 value = cast(FactoryState, json.loads(record["result_json"] or "{}"))
             try:
                 result = await graph.ainvoke(value, config)
@@ -561,7 +579,7 @@ class FactoryEngine:
         if self.active_run_id == run_id:
             self.cancel_event.set()
             return saved
-        ownership = RunOwnership(self.workspace, run_id, self.database_path)
+        ownership = self._ownership(run_id, saved)
         for retry in range(100):
             try:
                 await ownership.acquire()

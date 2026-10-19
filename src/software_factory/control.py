@@ -80,15 +80,23 @@ class FactoryControl:
         request_id: str,
         selection: Selection | None = None,
         configuration: FactoryConfig | None = None,
+        required_criteria: list[dict[str, str]] | None = None,
+        workflow: str = "implementation",
+        planning: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not request.strip() or not request_id.strip() or len(request_id) > 200:
             raise ValueError("a request and a request ID of 1 to 200 characters are required")
-        payload = {
+        payload: dict[str, Any] = {
             "workspace": str(self.workspace),
             "request": request,
             "selection": selection.model_dump(mode="json") if selection else None,
             "configuration": configuration.model_dump(mode="json") if configuration else None,
         }
+        # Added fields join the digest only when used, so earlier request IDs still match.
+        extra = {"required_criteria": required_criteria, "workflow": workflow, "planning": planning}
+        payload.update(
+            {key: value for key, value in extra.items() if value and value != "implementation"}
+        )
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         await self.store.initialize()
         async with command_lease(self.store.path, "start:" + request_id):
@@ -143,7 +151,10 @@ class FactoryControl:
                         run_id,
                         selection=selection,
                         configuration=config,
+                        required_criteria=required_criteria,
                         prepare_only=True,
+                        workflow=workflow,
+                        planning=planning,
                     )
                 finally:
                     # Release only a claim with no saved run, operation, or process.

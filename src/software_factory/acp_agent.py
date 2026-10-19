@@ -32,6 +32,10 @@ from software_factory.panel import PanelRequest, panel_request
 from software_factory.persistence import RunStore
 from software_factory.state import FactoryState
 
+PLANNING_COMMANDS = frozenset(
+    {"plan", "plans", "plan-status", "plan-answer", "plan-revise", "plan-approve"}
+)
+
 
 class SoftwareFactoryAgent(ACPPresentation):
     def __init__(
@@ -133,6 +137,10 @@ class SoftwareFactoryAgent(ACPPresentation):
         command = first.lower().lstrip("/")
         run_id = session["run_id"]
         await self._send(session_id, update_user_message_text(request), publish=False)
+        if command in PLANNING_COMMANDS:
+            text = await self._planning(Path(str(session["cwd"])), command, argument)
+            await self._send(session_id, update_agent_message_text(text))
+            return PromptResponse(stop_reason="end_turn")
         if command == "attach":
             await control.engine(argument)
             await self.store.save_session(session_id, Path(str(session["cwd"])), argument)
@@ -173,6 +181,58 @@ class SoftwareFactoryAgent(ACPPresentation):
         await self._sync_events(session_id)
         await self._result(session_id, cast(FactoryState, result))
         return PromptResponse(stop_reason="end_turn")
+
+    async def _planning(self, workspace: Path, command: str, argument: str) -> str:
+        from software_factory.planning_control import PlanningControl, planning_summary
+        from software_factory.web import web_link
+
+        planning = PlanningControl(
+            workspace,
+            storage_root=self.factory_context.storage_root,
+            execution=self.execution,
+            launch=self.launch,
+        )
+        try:
+            if command == "plans":
+                sessions = await planning.sessions()
+                return (
+                    "\n".join(
+                        f"{item['session_id']} r{item['revision']} {item['status']}: {item['request'][:80]}"
+                        for item in sessions
+                    )
+                    or "No planning sessions. Start one with /plan REQUEST."
+                )
+            if command == "plan":
+                if not argument.strip():
+                    return "Use /plan REQUEST to start a Grill planning interview."
+                result = await planning.start(argument, request_id=uuid4().hex)
+            else:
+                target, _, rest = argument.strip().partition(" ")
+                if not target:
+                    return f"Use /{command} PLANNING_SESSION_ID ..."
+                if command == "plan-status":
+                    result = await planning.status(target)
+                elif command == "plan-answer":
+                    current = await planning.status(target)
+                    pending = current["pending"]
+                    if pending is None:
+                        return "This planning session has no pending questions."
+                    answers = json.loads(rest)
+                    if not isinstance(answers, dict):
+                        return "Send a JSON object with one answer per question ID."
+                    result = await planning.answer(target, pending["interaction_id"], answers)
+                elif command == "plan-revise":
+                    result = await planning.revise(target, rest)
+                else:
+                    result = await planning.approve(target, rest.strip())
+        except (ValueError, json.JSONDecodeError) as exc:
+            return f"Planning command failed: {exc}"
+        link = web_link(planning.storage_root, result["session_id"])
+        return planning_summary(result) + (
+            f"\nOpen in browser: {link}"
+            if link
+            else "\nRun `software-factory web` to open the planning UI."
+        )
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         # ACP cancellation ends presentation. Only the explicit /cancel control stops a job.

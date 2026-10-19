@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory Planning</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">Factory Planning</a>
+    <span class="workspace" id="workspace"></span>
+    <span class="grow"></span>
+    <span class="pill" id="connection" data-state="ok">Connected</span>
+  </header>
+  <main id="app" aria-live="polite"></main>
+  <dialog id="report-dialog">
+    <form method="dialog" class="dialog-head">
+      <strong>Implementation report</strong>
+      <button class="ghost" value="close" aria-label="Close">Close</button>
+    </form>
+    <pre id="report-text"></pre>
+  </dialog>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

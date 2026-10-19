@@ -57,7 +57,8 @@ codex mcp add software-factory -- /absolute/repo/.venv/bin/software-factory \
 ```
 
 The stdio server exposes `factory_start`, `factory_status`, `factory_answer`,
-`factory_resume`, `factory_cancel`, `factory_models`, and `factory_settings`.
+`factory_resume`, `factory_cancel`, `factory_models`, and `factory_settings`, plus the
+`factory_plan_*` planning tools described in [planning](planning.md).
 The workspace is fixed in registration, not accepted as a model-controlled tool
 argument. These tools return structured data. Save `event_position` and send it
 as `after_event` to retrieve missed events without repeating actions.
@@ -131,7 +132,7 @@ worker remains pinned to 0.154.0.
 ## Current support boundary
 
 The worker uses Apple Container 1.0.0 and Codex App Server 0.154.0. MCP is locked
-to Python SDK 1.30.0. Only the native model connection is enabled in this change.
+to Python SDK 2.3.0. Only the native model connection is enabled in this change.
 Codex Router is not yet supported. No external route, private container bridge,
 or live routed-model acceptance has been established. Do not configure a wider
 router listener or mount host credential directories to work around this gap.

@@ -48,19 +48,26 @@ async def test_mcp_disconnect_keeps_saved_cancel_and_controller_job(tmp_path, fa
             "factory_cancel",
             "factory_models",
             "factory_settings",
+            "factory_plan_start",
+            "factory_plan_list",
+            "factory_plan_status",
+            "factory_plan_answer",
+            "factory_plan_revise",
+            "factory_plan_approve",
+            "factory_plan_cancel",
         }
         result = await session.call_tool("factory_cancel", {"run_id": run_id})
-        assert not result.isError, result
-        assert result.structuredContent["status"] in {"stopping", "cancelled"}
+        assert not result.is_error, result
+        assert result.structured_content["status"] in {"stopping", "cancelled"}
     # A fresh server has no in-memory state from the first connection.
     async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
         await session.initialize()
         async with asyncio.timeout(15):
             while True:
                 result = await session.call_tool("factory_status", {"run_id": run_id})
-                assert not result.isError, result
-                if result.structuredContent["status"] == "cancelled":
+                assert not result.is_error, result
+                if result.structured_content["status"] == "cancelled":
                     break
                 await asyncio.sleep(0.1)
-        assert result.structuredContent["operations"] == []
-        assert result.structuredContent["jobs"]
+        assert result.structured_content["operations"] == []
+        assert result.structured_content["jobs"]

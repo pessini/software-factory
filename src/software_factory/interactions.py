@@ -41,7 +41,12 @@ class Interaction(BaseModel):
         for question in self.questions:
             lines.append(f"- {question.id}: {question.question}")
             if question.options:
-                lines.append("  Choices: " + "; ".join(question.options))
+                # Quote choices so leading or trailing spaces in an exact value stay visible.
+                lines.append(
+                    "  Choices: " + "; ".join(json.dumps(item) for item in question.options)
+                )
+            if question.recommendation:
+                lines.append(f"  Recommended: {json.dumps(question.recommendation)}")
         lines.append(f"Reply with /answer {self.interaction_id} ANSWER.")
         if len(self.questions) > 1:
             lines.append("Use a JSON object with one answer per question ID.")
