@@ -10,6 +10,7 @@ import time
 
 import acp
 import pytest
+from acp.connection import StreamDirection
 from acp.schema import TextContentBlock
 from langgraph.errors import NodeCancelledError
 
@@ -423,26 +424,48 @@ from tests.integration.test_factory_engine import context
 root = Path(os.environ['FACTORY_REPLAY_WORKSPACE'])
 asyncio.run(acp.run_agent(SoftwareFactoryAgent(context(root), FakeBB(root, {}))))
 """
-    replay = SessionClient()
+    incoming = []
+
+    def observe(event):
+        if event.direction == StreamDirection.INCOMING:
+            incoming.append(event.message)
+
+    def updates_before_response():
+        # The SDK schedules notification callbacks separately from responses.
+        # Inspect transport order so delayed callbacks cannot hide saved history.
+        response_index = next(i for i, message in enumerate(incoming) if "id" in message)
+        assert "error" not in incoming[response_index]
+        replay = SessionClient()
+        replay.updates = [
+            message["params"]["update"]
+            for message in incoming[:response_index]
+            if message.get("method") == "session/update"
+        ]
+        return replay
+
     async with acp.spawn_agent_process(
-        replay,
+        SessionClient(),
         sys.executable,
         "-c",
         launcher,
         env={**os.environ, "FACTORY_REPLAY_WORKSPACE": str(tmp_path)},
+        observers=[observe],
     ) as (connection, _):
         await connection.initialize(protocol_version=1)
+        incoming.clear()
         await connection.load_session(
             cwd=str(tmp_path), session_id=session.session_id, mcp_servers=[]
         )
+        replay = updates_before_response()
         assert replay.messages == original.messages
         assert replay.run_id == original.run_id
         assert any(item["sessionUpdate"] == "user_message_chunk" for item in replay.updates)
+        incoming.clear()
         result = await connection.prompt(
             session_id=session.session_id, prompt=[TextContentBlock(type="text", text="/continue")]
         )
         assert result.stop_reason == "end_turn"
-        assert "ready_for_review" in replay.messages[-1]
+        assert "ready_for_review" in updates_before_response().messages[-1]
 
 
 @pytest.mark.parametrize("interface", ["acp", "engine"])

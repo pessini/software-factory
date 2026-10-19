@@ -2,6 +2,8 @@
 
 import asyncio
 import re
+import time
+from types import SimpleNamespace
 
 import pytest
 from acp.schema import TextContentBlock
@@ -15,7 +17,7 @@ from tests.conftest import FakeBB, init_repository, render_review
 from tests.integration.test_factory_engine import build_output, context, plan_output, review_output
 
 
-@pytest.mark.parametrize("action", ["answer", "cancel", "near_timeout"])
+@pytest.mark.parametrize("action", ["answer", "cancel", "expired_while_waiting"])
 async def test_worker_question_uses_the_same_turn_after_controller_restart(
     tmp_path, factory_yaml, monkeypatch, action
 ):
@@ -23,13 +25,38 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
         tmp_path,
         factory_yaml.replace("provider: fake", "provider: codex").replace(
             "limits:\n",
-            "limits:\n  step_timeout_seconds: 1\n" if action == "near_timeout" else "limits:\n",
+            "limits:\n  step_timeout_seconds: 30\n",
         ),
         "raise SystemExit(0)\n",
     )
     ctx = context(tmp_path)
     responses = []
     providers = []
+    clock_offset = 0
+    paused_deadline = asyncio.Event()
+
+    if action == "expired_while_waiting":
+        monkeypatch.setattr(
+            "software_factory.bb.worker_acp.time",
+            SimpleNamespace(time=lambda: time.time() + clock_offset),
+        )
+        original_complete = WorkerAgent._complete
+
+        async def track_deadline(self, provider, receipt, store, deadline_scope):
+            reschedule = deadline_scope.reschedule
+            active_deadline = deadline_scope.when()
+            assert active_deadline is not None
+
+            def record_deadline(when):
+                reschedule(when)
+                # Input wait keeps the overall run expiry, but removes the step limit.
+                if provider.step == "build" and (when is None or when > active_deadline + 60):
+                    paused_deadline.set()
+
+            monkeypatch.setattr(deadline_scope, "reschedule", record_deadline)
+            return await original_complete(self, provider, receipt, store, deadline_scope)
+
+        monkeypatch.setattr(WorkerAgent, "_complete", track_deadline)
 
     class Provider:
         def __init__(self, container_id, operation_id, *args, **kwargs):
@@ -71,8 +98,6 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
             assert method == "turn/start"
             self.prompt = params["input"][0]["text"]
             if self.step == "build":
-                if action == "near_timeout":
-                    await asyncio.sleep(0.8)
                 await self.notifications.put(
                     {
                         "id": 17,
@@ -223,8 +248,13 @@ async def test_worker_question_uses_the_same_turn_after_controller_restart(
                 assert responses == [(17, {"answers": {"format": {"answers": ["Text"]}}})]
                 assert bb.spawn_counts == {"planner": 1, "builder": 1, "reviewer": 1}
             else:
-                if action == "near_timeout":
-                    await asyncio.sleep(0.35)
+                if action == "expired_while_waiting":
+                    await asyncio.wait_for(paused_deadline.wait(), 5)
+                    paused_deadline.clear()
+                    # Cross the saved step deadline only after the question is saved.
+                    # Wait for another worker check with the advanced clock.
+                    clock_offset = 60
+                    await asyncio.wait_for(paused_deadline.wait(), 5)
                     assert not next(
                         provider for provider in providers if provider.step == "build"
                     ).closed
