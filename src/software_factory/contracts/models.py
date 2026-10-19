@@ -15,6 +15,9 @@ class BlockingQuestion(Contract):
     id: str = Field(min_length=1)
     question: str = Field(min_length=1)
     options: list[str] = Field(default_factory=list)
+    # Planning interviews add a suggested answer and its reason; only a user answer decides.
+    recommendation: str | None = None
+    context: str | None = None
 
 
 class CompletionCriterion(Contract):

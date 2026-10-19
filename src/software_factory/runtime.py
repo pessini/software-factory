@@ -587,12 +587,14 @@ class FactoryRuntime:
         if record["stop_target"]:
             status = str(record["stop_target"])
         if record["status"] not in FINAL_STATUSES:
-            if status != "ready_for_review" or record["stop_target"] or self.cancel_event.is_set():
+            # A planning revision finishes successfully as "planned" without file evidence.
+            succeeded = status in {"ready_for_review", "planned"}
+            if not succeeded or record["stop_target"] or self.cancel_event.is_set():
                 if self.cancel_event.is_set() and not record["stop_target"]:
                     status = "cancelled"
                 await self.store.request_stop(
                     self.run_id,
-                    "cancelled" if status == "ready_for_review" else status,
+                    "cancelled" if status in {"ready_for_review", "planned"} else status,
                     state.get("error") or "cancelled by user",
                 )
                 try:

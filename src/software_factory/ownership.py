@@ -52,13 +52,20 @@ async def command_lease(database: Path, command_id: str) -> AsyncIterator[None]:
 class RunOwnership:
     """OS locks exclude live executors; the saved claim protects orphaned work."""
 
-    def __init__(self, workspace: Path, run_id: str, database: Path) -> None:
+    def __init__(
+        self, workspace: Path, run_id: str, database: Path, *, workspace_scope: bool = True
+    ) -> None:
         root = Path(os.environ.get("FACTORY_OWNERSHIP_DIR", user_state_path("software-factory")))
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         workspace_key = hashlib.sha256(os.fsencode(workspace.resolve())).hexdigest()
         run_key = hashlib.sha256(run_id.encode()).hexdigest()
         self.paths = [root / f"run-{run_key}.lock", root / f"workspace-{workspace_key}.lock"]
         self.claim_path = root / f"workspace-{workspace_key}.json"
+        # Read-only planning runs exclude only a second executor of the same run.
+        self.workspace_scope = workspace_scope
+        if not workspace_scope:
+            self.paths = self.paths[:1]
+            self.claim_path = root / f"run-{run_key}.json"
         self.claim = {
             "run_id": run_id,
             "database": str(database.resolve()),

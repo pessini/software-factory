@@ -9,7 +9,9 @@ See [interface setup](docs/factory-interfaces.md) and
 [existing-run compatibility](docs/interface-migration.md). The independent native
 path passed real CLI and BB workflow tests, including saved questions, reconnect,
 and cancellation. See the short [before-and-after explanation](docs/factory-explained.html).
-Codex desktop integration and optional Router support remain deferred for issue #9.
+Codex desktop control and BB/Codex cross-interface continuation passed in both
+directions using a read-only control workspace. Optional Router support remains
+deferred for issue #9.
 
 Earlier live acceptance used the [protected local BB worker](docs/protected-worker.md)
 with BB 0.42.1, Apple Container 1.0.0, and the Codex provider CLI 0.154.0.
@@ -38,6 +40,13 @@ reviewers from change size and sensitive paths. It adds Documentation Review
 when relevant and records review quality and user feedback for threshold tuning.
 The opt-in [PR delivery policy](docs/pr-delivery.md) publishes verified changes,
 tracks CI, and completes selected review fixes under saved authorization.
+
+**Plan before building.** `software-factory web` serves a local planning UI. A
+read-only Grill interviewer settles the decisions with you in adaptive rounds.
+Approving the exact plan revision starts one implementation run with that plan as
+settled input. BB (`/plan`), Codex (`factory_plan_*` tools), and the CLI control the
+same saved sessions. See [planning](docs/planning.md) and the
+[issue 10 verification](docs/issue-10-acceptance.md).
 
 The MVP provides:
 
@@ -94,6 +103,12 @@ software-factory review-feedback <run-id> <attempt> <reviewer> <finding-id> <ver
 software-factory deliver <run-id> [--policy delivery.json]
 software-factory review-threads <run-id>
 software-factory fix-reviews <run-id> --thread <thread-id>
+software-factory web [--port 4317]
+software-factory plan "request" [--request-id <id>]
+software-factory plan-status [<planning-session-id>]
+software-factory plan-answer <planning-session-id> <interaction-id> '{"question-id":"answer"}'
+software-factory plan-revise <planning-session-id> "feedback"
+software-factory plan-approve <planning-session-id> <plan-sha256>
 ```
 
 Agents cannot commit, push, or run an LLM-proposed command through the controller.

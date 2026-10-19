@@ -1,0 +1,212 @@
+{
+  "date": "2026-10-19",
+  "versions": {
+    "chatgpt_app": "26.1013.40934",
+    "codex_cli": "0.163.0",
+    "bb": "0.46.1",
+    "apple_container": "1.0.0",
+    "worker_image": "software-factory-worker:0.154.0"
+  },
+  "worker_setting": "gpt-5.6-luna / low",
+  "native_mcp": {
+    "run_id": "fct_9560843310cf",
+    "status": "ready_for_review",
+    "duration_seconds": 58.05,
+    "dispatch_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "receipts": [
+      {
+        "stopped": true,
+        "actual_model": "gpt-5.6-luna",
+        "effective_effort": "low"
+      },
+      {
+        "stopped": true,
+        "actual_model": "gpt-5.6-luna",
+        "effective_effort": "low"
+      },
+      {
+        "stopped": true,
+        "actual_model": "gpt-5.6-luna",
+        "effective_effort": "low"
+      }
+    ],
+    "raw_sha256": "92d4f3f1c34e0f3351d9c00f50ec490c9c2c522c08c7e176d0483fce077e25d6"
+  },
+  "control_workspace": {
+    "sandbox": "read-only",
+    "approval_policy": "never",
+    "network": "blocked",
+    "target_write": "denied",
+    "control_write_custom_mode": "denied",
+    "control_write_approve_for_me_mode": "succeeded (finding)"
+  },
+  "cross_interface": {
+    "fct_a0d8190947d1": {
+      "direction": "bb_start_codex_answer",
+      "status": "ready_for_review",
+      "operations": [
+        {
+          "id": "fct_a0d8190947d1:baseline:behavior:1:check",
+          "role": null,
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_a0d8190947d1:plan:1:create",
+          "role": "planner",
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_a0d8190947d1:plan:2:clarification",
+          "role": "planner",
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_a0d8190947d1:build:1:create",
+          "role": "builder",
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_a0d8190947d1:test:behavior:1:check",
+          "role": null,
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_a0d8190947d1:review:1:create",
+          "role": "reviewer",
+          "dispatch_count": 1
+        }
+      ],
+      "interactions": [
+        {
+          "id": "fct_a0d8190947d1:plan:1",
+          "answers": {
+            "prefix": "Item: "
+          }
+        }
+      ],
+      "receipts": [
+        {
+          "operation_id": "fct_a0d8190947d1:build:1:create",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        },
+        {
+          "operation_id": "fct_a0d8190947d1:plan:2:clarification",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        },
+        {
+          "operation_id": "fct_a0d8190947d1:plan:1:create",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        },
+        {
+          "operation_id": "fct_a0d8190947d1:review:1:create",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        }
+      ]
+    },
+    "fct_4968c5c750c5": {
+      "direction": "codex_start_bb_answer",
+      "status": "ready_for_review",
+      "operations": [
+        {
+          "id": "fct_4968c5c750c5:baseline:behavior:1:check",
+          "role": null,
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_4968c5c750c5:plan:1:create",
+          "role": "planner",
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_4968c5c750c5:plan:2:clarification",
+          "role": "planner",
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_4968c5c750c5:build:1:create",
+          "role": "builder",
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_4968c5c750c5:test:behavior:1:check",
+          "role": null,
+          "dispatch_count": 1
+        },
+        {
+          "id": "fct_4968c5c750c5:review:1:create",
+          "role": "reviewer",
+          "dispatch_count": 1
+        }
+      ],
+      "interactions": [
+        {
+          "id": "fct_4968c5c750c5:plan:1",
+          "answers": {
+            "prefix": "Name: "
+          }
+        }
+      ],
+      "receipts": [
+        {
+          "operation_id": "fct_4968c5c750c5:review:1:create",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        },
+        {
+          "operation_id": "fct_4968c5c750c5:plan:1:create",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        },
+        {
+          "operation_id": "fct_4968c5c750c5:plan:2:clarification",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        },
+        {
+          "operation_id": "fct_4968c5c750c5:build:1:create",
+          "stopped": true,
+          "actual_model": "gpt-5.6-luna",
+          "effective_effort": "low",
+          "runtime_version": "0.154.0",
+          "model_connection": "native"
+        }
+      ]
+    }
+  },
+  "repeat_start": {
+    "request_id": "issue9-desktop-codex-to-bb-1",
+    "returned_run_id": "fct_4968c5c750c5",
+    "new_run_created": false
+  }
+}

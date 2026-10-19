@@ -38,10 +38,11 @@ export default function plugin(bb: BbPluginApi) {
       }
       let command = (await settings.get()).executable;
       if (!command) {
+        // BB 0.46 stores agents in provider-acp plugin settings; only older config.json files have this entry.
         const config = JSON.parse(await readFile(join(bb.server.experimental_dataDir, "config.json"), "utf8"));
-        const agent = z.object({ command: z.string().min(1), args: z.array(z.string()).optional() }).parse(
-          config.customAcpAgents?.find((a: { id?: string }) => a.id === "software-factory"),
-        );
+        const legacy = config.customAcpAgents?.find((a: { id?: string }) => a.id === "software-factory");
+        if (!legacy) throw new Error("Set the Software Factory executable in plugin settings.");
+        const agent = z.object({ command: z.string().min(1), args: z.array(z.string()).optional() }).parse(legacy);
         if (agent.args && JSON.stringify(agent.args) !== JSON.stringify(["acp"])) {
           throw new Error("Set the Software Factory executable in plugin settings for this custom launch command.");
         }

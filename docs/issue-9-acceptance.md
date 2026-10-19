@@ -1,12 +1,14 @@
 # Issue 9 verification
 
-Verification date: 2026-09-19. The independent native controller and BB controls
-passed real model workflows. The user approved these tests and deferred Codex
-application setup/testing and Router installation/testing. Issue 9 remains open
-for those additions; the full external-model requirement is not implemented.
+Verification dates: 2026-09-19 and 2026-10-19. The independent native controller
+and BB controls passed real model workflows in September. In October the native
+MCP workflow, Codex desktop setup, and both BB/Codex desktop directions passed.
+Router installation and testing remain deferred. Issue 9 remains open for that work;
+the full external-model requirement is not implemented.
 
-See the [short visual explanation](factory-explained.html) and
-[compact live evidence](issue-9-live-acceptance.json).
+See the [short visual explanation](factory-explained.html),
+[compact live evidence](issue-9-live-acceptance.json), and
+[desktop evidence](issue-9-desktop-acceptance.json).
 
 ## Environment
 
@@ -87,6 +89,56 @@ The BB application was not closed, and other tasks were not stopped. The test
 closed only its own task runtime. BB's generic **Agent default / Medium** menu
 label does not select Factory worker settings; the **Factory** panel does.
 
+## Codex desktop and cross-interface runs (2026-10-19)
+
+The user approved these runs and the `gpt-5.6-luna / low` worker setting. Versions:
+ChatGPT app 26.1013.40934 (Codex), Codex CLI 0.163.0, BB 0.46.1, Apple Container
+1.0.0, worker image 0.154.0. The outer Codex assistant used the app default model.
+
+**Native MCP.** `tests/live/test_independent_workflow.py -k mcp` passed in
+**58.05 seconds** (`.checks/native-live-mcp.xml`). Run `fct_9560843310cf` reached
+`ready_for_review`. Planner, Builder, and Reviewer each dispatched once, and all
+three receipts confirmed a stopped worker and `gpt-5.6-luna / low`.
+
+**Control workspace.** `scripts/codex-control-workspace.sh` created a separate
+trusted folder for a disposable target. `codex sandbox` in that folder could read
+the target but could not write the target or the control folder, and network was
+blocked. The setup exposed three problems, now fixed or documented:
+
+1. The user's Codex home sets `sandbox_mode = "danger-full-access"`, so Codex
+   ignored the documented `default_permissions` profile. The project layer now
+   sets `sandbox_mode = "read-only"`. An untrusted folder ignores that layer and
+   silently keeps full access; the skill now tells the assistant to stop.
+2. In the desktop app, **Approve for me** replaced the project setting with
+   `workspace-write`. The assistant's probe write in the control folder succeeded,
+   and it refused the `factory_*` tools under the new skill rule. **Custom
+   (config.toml)** applied `read-only` / `never`. A repeated write was denied with
+   “Operation not permitted.” The target was unchanged throughout.
+3. With approval disabled, Codex denied the MCP calls too. Pre-approving only the
+   Factory server's tools (`default_tools_approval_mode = "approve"`) fixed this.
+
+BB 0.46.1 also stopped reading `customAcpAgents` from `~/.bb/config.json`, which
+unregistered Software Factory. Moving the same entries to `bb plugin config
+provider-acp set customAgents` restored `acp-software-factory`.
+
+| Direction | Run | Start | Question answered | Final view | Result |
+| --- | --- | --- | --- | --- | --- |
+| BB → Codex | `fct_a0d8190947d1` | BB task message | Codex desktop `factory_answer` (`Item: `) | BB `/status` | `ready_for_review` |
+| Codex → BB | `fct_4968c5c750c5` | Codex desktop `factory_start` | BB `/attach`, `/answer` (`Name: `) | Codex desktop `factory_status` | `ready_for_review` |
+
+Each run had six operations, each dispatched once. Each had four model receipts
+(Planner question, Planner continuation, Builder, Reviewer). All receipts confirmed
+`gpt-5.6-luna / low` and stopped workers. Repeating `factory_start` from Codex with
+the same request ID returned `fct_4968c5c750c5`; no new run was created. Generated
+code used the chosen prefix and tests. No commit was made, and protected
+`quality_check.py` and `.factory/factory.yaml` remained unchanged. No Factory
+worker container was left running.
+
+The desktop app was driven with accessibility input; BB tasks were created with
+the BB CLI in the target environment, and their messages were sent from the BB
+window. BB displayed question choices as `Item: ; Name:`, hiding the trailing
+spaces in the options.
+
 ## Other checks and evidence limits
 
 | Check | Result |
@@ -113,10 +165,7 @@ reported no new findings in this follow-up.
 
 ## Deferred checks
 
-Codex application setup needs a separate control-only task, an installed Factory
-MCP connection, and verified read-only access to the target. No settings in the
-current Codex conversation were changed. The already implemented local MCP server
-can also be exercised through the opt-in `-k mcp` native test later.
+Codex desktop setup and the `-k mcp` native test passed on 2026-10-19 (above).
 
 Router is optional for native work. It is a model connection for protected
 workers and can serve requests from either BB or Codex. It is not required to

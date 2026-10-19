@@ -239,8 +239,91 @@ def mcp_command(
 ) -> None:
     """Serve local MCP tools for one authorized workspace over stdio."""
     from software_factory.mcp_server import create_mcp
+    from software_factory.planning_control import PlanningControl
 
-    create_mcp(_control(workspace)).run(transport="stdio")
+    options = _cli_options.get() or {}
+    create_mcp(
+        _control(workspace),
+        PlanningControl(_workspace(workspace), storage_root=options.get("storage_root")),
+    ).run(transport="stdio")
+
+
+def _planning(workspace: Path) -> Any:
+    from software_factory.planning_control import PlanningControl
+
+    options = _cli_options.get() or {}
+    return PlanningControl(_workspace(workspace), storage_root=options.get("storage_root"))
+
+
+@app.command("plan")
+def plan_command(
+    request: str,
+    request_id: Annotated[str, typer.Option("--request-id")] = "",
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Start a Grill planning interview; answers and approval continue it."""
+    result = asyncio.run(_planning(workspace).start(request, request_id=request_id or uuid4().hex))
+    console.print_json(json.dumps(result))
+
+
+@app.command("plan-status")
+def plan_status_command(
+    session_id: Annotated[
+        str, typer.Argument(help="Planning session ID; omit to list sessions")
+    ] = "",
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Show a planning session, or list sessions for the workspace."""
+    planning = _planning(workspace)
+    result = asyncio.run(planning.status(session_id) if session_id else planning.sessions())
+    console.print_json(json.dumps(result))
+
+
+@app.command("plan-answer")
+def plan_answer_command(
+    session_id: str,
+    interaction_id: str,
+    answers: Annotated[str, typer.Argument(help="JSON object mapping question IDs to answers")],
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Submit one planning round."""
+    payload = json.loads(answers)
+    if not isinstance(payload, dict):
+        raise typer.BadParameter("answers must be a JSON object")
+    result = asyncio.run(_planning(workspace).answer(session_id, interaction_id, payload))
+    console.print_json(json.dumps(result))
+
+
+@app.command("plan-revise")
+def plan_revise_command(
+    session_id: str,
+    feedback: str,
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Create a new plan revision from feedback."""
+    console.print_json(json.dumps(asyncio.run(_planning(workspace).revise(session_id, feedback))))
+
+
+@app.command("plan-approve")
+def plan_approve_command(
+    session_id: str,
+    plan_hash: Annotated[str, typer.Argument(help="The exact plan sha256 being approved")],
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Approve the exact plan revision and start its one implementation run."""
+    console.print_json(json.dumps(asyncio.run(_planning(workspace).approve(session_id, plan_hash))))
+
+
+@app.command("web")
+def web_command(
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+    port: Annotated[int, typer.Option("--port")] = 4317,
+) -> None:
+    """Serve the local planning web UI for one workspace on 127.0.0.1."""
+    from software_factory.web import serve_web
+
+    options = _cli_options.get() or {}
+    serve_web(_workspace(workspace), storage_root=options.get("storage_root"), port=port)
 
 
 @app.command("answer")

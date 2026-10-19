@@ -107,8 +107,8 @@ async def test_native_workflow_without_bb(tmp_path, monkeypatch, interface):
                 result = await session.call_tool(
                     "factory_start", {"request": REQUEST, "request_id": request_id}
                 )
-                assert not result.isError, result
-                started = result.structuredContent
+                assert not result.is_error, result
+                started = result.structured_content
         run_id = started["run_id"]
         record.update(run_id=run_id, workspace=str(workspace), storage=str(storage))
         # Reconnect after the initiating CLI or MCP process has exited.
@@ -117,8 +117,8 @@ async def test_native_workflow_without_bb(tmp_path, monkeypatch, interface):
             async with asyncio.timeout(390):
                 while True:
                     response = await session.call_tool("factory_status", {"run_id": run_id})
-                    assert not response.isError, response
-                    status = response.structuredContent
+                    assert not response.is_error, response
+                    status = response.structured_content
                     if status["status"] in FINAL_STATUSES or status["status"] == "recovery_needed":
                         break
                     await asyncio.sleep(1)

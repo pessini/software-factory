@@ -8,12 +8,16 @@ RunStatus = Literal[
     "stopping",
     "accepted",
     "ready_for_review",
+    "planned",
     "failed",
     "blocked",
     "cancelled",
 ]
 
-FINAL_STATUSES = frozenset({"accepted", "ready_for_review", "failed", "blocked", "cancelled"})
+# "planned": a planning revision finished with an immutable plan awaiting human approval.
+FINAL_STATUSES = frozenset(
+    {"accepted", "ready_for_review", "planned", "failed", "blocked", "cancelled"}
+)
 TRANSITIONS: dict[str, frozenset[str]] = {
     "pending": frozenset(
         {"running", "waiting_for_input", "stopping", "recovery_needed", "failed", "blocked"}
@@ -25,6 +29,7 @@ TRANSITIONS: dict[str, frozenset[str]] = {
             "stopping",
             "accepted",
             "ready_for_review",
+            "planned",
             "failed",
             "blocked",
         }
@@ -78,3 +83,5 @@ class FactoryState(TypedDict, total=False):
     review_quality: dict[str, Any]
     delivery: dict[str, Any]
     required_criteria: list[dict[str, str]]
+    workflow: str
+    planning: dict[str, Any]

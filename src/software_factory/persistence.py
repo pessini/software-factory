@@ -42,6 +42,20 @@ class RunStore:
                     input_hash TEXT NOT NULL,
                     run_id TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS factory_planning_revisions (
+                    session_id TEXT NOT NULL,
+                    revision INTEGER NOT NULL,
+                    run_id TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (session_id, revision)
+                );
+                CREATE TABLE IF NOT EXISTS factory_planning_handoffs (
+                    run_id TEXT PRIMARY KEY,
+                    plan_hash TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    implementation_run_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
                 CREATE TABLE IF NOT EXISTS factory_jobs (
                     job_id TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL,
@@ -572,6 +586,71 @@ class RunStore:
             )
             row = await cursor.fetchone()
             return Interaction.from_record(dict(row)) if row else None
+
+    async def add_planning_revision(self, session_id: str, revision: int, run_id: str) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            cursor = await db.execute(
+                "SELECT run_id FROM factory_planning_revisions WHERE session_id = ? AND revision = ?",
+                (session_id, revision),
+            )
+            row = await cursor.fetchone()
+            if row is not None:
+                if row[0] != run_id:
+                    raise ValueError("this planning revision already has a different run")
+                return
+            await db.execute(
+                "INSERT INTO factory_planning_revisions(session_id, revision, run_id) VALUES (?, ?, ?)",
+                (session_id, revision, run_id),
+            )
+            await db.commit()
+
+    async def planning_revisions(self, session_id: str) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM factory_planning_revisions WHERE session_id = ? ORDER BY revision",
+                (session_id,),
+            )
+            return [dict(row) for row in await cursor.fetchall()]
+
+    async def planning_sessions(self) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT session_id, MAX(revision) AS revision, MIN(created_at) AS created_at "
+                "FROM factory_planning_revisions GROUP BY session_id ORDER BY created_at DESC"
+            )
+            return [dict(row) for row in await cursor.fetchall()]
+
+    async def planning_handoff(self, run_id: str) -> dict[str, Any] | None:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM factory_planning_handoffs WHERE run_id = ?", (run_id,)
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def save_planning_handoff(
+        self, run_id: str, plan_hash: str, request_id: str, implementation_run_id: str
+    ) -> dict[str, Any]:
+        """Record the one implementation run started for an approved plan revision."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute(
+                "INSERT OR IGNORE INTO factory_planning_handoffs"
+                "(run_id, plan_hash, request_id, implementation_run_id) VALUES (?, ?, ?, ?)",
+                (run_id, plan_hash, request_id, implementation_run_id),
+            )
+            await db.commit()
+        saved = await self.planning_handoff(run_id)
+        assert saved is not None
+        if (saved["plan_hash"], saved["implementation_run_id"]) != (
+            plan_hash,
+            implementation_run_id,
+        ):
+            raise ValueError("this plan revision was already handed off with different input")
+        return saved
 
     async def save_interaction(self, interaction: Interaction) -> Interaction:
         """Save a question and the start of its waiting interval together."""
