@@ -1,0 +1,47 @@
+[
+  {
+    "viewport": "1366x768",
+    "section": "projeto-pessoal",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "1366x768",
+    "section": "tendencia",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "1366x768",
+    "section": "profissional",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "1920x1080",
+    "section": "projeto-pessoal",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "1920x1080",
+    "section": "tendencia",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "1920x1080",
+    "section": "profissional",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "3840x2160",
+    "section": "projeto-pessoal",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "3840x2160",
+    "section": "tendencia",
+    "pixelIdentical": true
+  },
+  {
+    "viewport": "3840x2160",
+    "section": "profissional",
+    "pixelIdentical": true
+  }
+]

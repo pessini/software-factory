@@ -1,0 +1,50 @@
+[
+  {
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "notesVisible": 19,
+    "lightboxOpen": true,
+    "lightboxClosed": true,
+    "navHidden": true,
+    "nextWorks": true,
+    "presentClosed": true,
+    "overflowing": {
+      "horizontal": false,
+      "chapters": []
+    }
+  },
+  {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "notesVisible": 19,
+    "lightboxOpen": true,
+    "lightboxClosed": true,
+    "navHidden": true,
+    "nextWorks": true,
+    "presentClosed": true,
+    "overflowing": {
+      "horizontal": false,
+      "chapters": []
+    }
+  },
+  {
+    "viewport": {
+      "width": 3840,
+      "height": 2160
+    },
+    "notesVisible": 19,
+    "lightboxOpen": true,
+    "lightboxClosed": true,
+    "navHidden": true,
+    "nextWorks": true,
+    "presentClosed": true,
+    "overflowing": {
+      "horizontal": false,
+      "chapters": []
+    }
+  }
+]

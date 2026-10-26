@@ -1,0 +1,372 @@
+{
+  "artifact": "agentic-software-factory-v3.html",
+  "sha256": "7D1C033265F803373B206572FF0336E184ACF9DCEE6809902C4E80F5E1865E90",
+  "profile": "new",
+  "automatedPass": true,
+  "visualReview": "pending: inspect all screenshots and add project-specific checks",
+  "results": [
+    {
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "deviceScaleFactor": 1,
+      "issues": [],
+      "zoom": 1,
+      "chapters": [
+        "projeto-pessoal",
+        "tendencia",
+        "profissional",
+        "quatro-pecas",
+        "grilling",
+        "arvore",
+        "ui-grill",
+        "ui-plano",
+        "wayfinder",
+        "wayfinder-tipos",
+        "metodos",
+        "harness",
+        "workflow",
+        "evidencia",
+        "ponte",
+        "estado",
+        "evolucao",
+        "convite",
+        "fontes"
+      ],
+      "chartCount": 0,
+      "fontFindings": [],
+      "architectureRows": [],
+      "pillHeightsCssPx": [],
+      "navigation": {
+        "position": "sticky",
+        "height": 732,
+        "top": 18
+      },
+      "activeStates": [
+        {
+          "id": "projeto-pessoal",
+          "active": "#projeto-pessoal"
+        },
+        {
+          "id": "tendencia",
+          "active": "#tendencia"
+        },
+        {
+          "id": "profissional",
+          "active": "#profissional"
+        },
+        {
+          "id": "quatro-pecas",
+          "active": "#quatro-pecas"
+        },
+        {
+          "id": "grilling",
+          "active": "#grilling"
+        },
+        {
+          "id": "arvore",
+          "active": "#arvore"
+        },
+        {
+          "id": "ui-grill",
+          "active": "#ui-grill"
+        },
+        {
+          "id": "ui-plano",
+          "active": "#ui-plano"
+        },
+        {
+          "id": "wayfinder",
+          "active": "#wayfinder"
+        },
+        {
+          "id": "wayfinder-tipos",
+          "active": "#wayfinder-tipos"
+        },
+        {
+          "id": "metodos",
+          "active": "#metodos"
+        },
+        {
+          "id": "harness",
+          "active": "#harness"
+        },
+        {
+          "id": "workflow",
+          "active": "#workflow"
+        },
+        {
+          "id": "evidencia",
+          "active": "#evidencia"
+        },
+        {
+          "id": "ponte",
+          "active": "#ponte"
+        },
+        {
+          "id": "estado",
+          "active": "#estado"
+        },
+        {
+          "id": "evolucao",
+          "active": "#evolucao"
+        },
+        {
+          "id": "convite",
+          "active": "#convite"
+        },
+        {
+          "id": "fontes",
+          "active": "#fontes"
+        }
+      ],
+      "bottomActive": "#fontes",
+      "errors": [],
+      "remoteRequests": [],
+      "automatedPass": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "deviceScaleFactor": 1,
+      "issues": [],
+      "zoom": 1,
+      "chapters": [
+        "projeto-pessoal",
+        "tendencia",
+        "profissional",
+        "quatro-pecas",
+        "grilling",
+        "arvore",
+        "ui-grill",
+        "ui-plano",
+        "wayfinder",
+        "wayfinder-tipos",
+        "metodos",
+        "harness",
+        "workflow",
+        "evidencia",
+        "ponte",
+        "estado",
+        "evolucao",
+        "convite",
+        "fontes"
+      ],
+      "chartCount": 0,
+      "fontFindings": [],
+      "architectureRows": [],
+      "pillHeightsCssPx": [],
+      "navigation": {
+        "position": "sticky",
+        "height": 864.421875,
+        "top": 18
+      },
+      "activeStates": [
+        {
+          "id": "projeto-pessoal",
+          "active": "#projeto-pessoal"
+        },
+        {
+          "id": "tendencia",
+          "active": "#tendencia"
+        },
+        {
+          "id": "profissional",
+          "active": "#profissional"
+        },
+        {
+          "id": "quatro-pecas",
+          "active": "#quatro-pecas"
+        },
+        {
+          "id": "grilling",
+          "active": "#grilling"
+        },
+        {
+          "id": "arvore",
+          "active": "#arvore"
+        },
+        {
+          "id": "ui-grill",
+          "active": "#ui-grill"
+        },
+        {
+          "id": "ui-plano",
+          "active": "#ui-plano"
+        },
+        {
+          "id": "wayfinder",
+          "active": "#wayfinder"
+        },
+        {
+          "id": "wayfinder-tipos",
+          "active": "#wayfinder-tipos"
+        },
+        {
+          "id": "metodos",
+          "active": "#metodos"
+        },
+        {
+          "id": "harness",
+          "active": "#harness"
+        },
+        {
+          "id": "workflow",
+          "active": "#workflow"
+        },
+        {
+          "id": "evidencia",
+          "active": "#evidencia"
+        },
+        {
+          "id": "ponte",
+          "active": "#ponte"
+        },
+        {
+          "id": "estado",
+          "active": "#estado"
+        },
+        {
+          "id": "evolucao",
+          "active": "#evolucao"
+        },
+        {
+          "id": "convite",
+          "active": "#convite"
+        },
+        {
+          "id": "fontes",
+          "active": "#fontes"
+        }
+      ],
+      "bottomActive": "#fontes",
+      "errors": [],
+      "remoteRequests": [],
+      "automatedPass": true
+    },
+    {
+      "viewport": {
+        "width": 3840,
+        "height": 2160
+      },
+      "deviceScaleFactor": 1,
+      "issues": [],
+      "zoom": 2,
+      "chapters": [
+        "projeto-pessoal",
+        "tendencia",
+        "profissional",
+        "quatro-pecas",
+        "grilling",
+        "arvore",
+        "ui-grill",
+        "ui-plano",
+        "wayfinder",
+        "wayfinder-tipos",
+        "metodos",
+        "harness",
+        "workflow",
+        "evidencia",
+        "ponte",
+        "estado",
+        "evolucao",
+        "convite",
+        "fontes"
+      ],
+      "chartCount": 0,
+      "fontFindings": [],
+      "architectureRows": [],
+      "pillHeightsCssPx": [],
+      "navigation": {
+        "position": "sticky",
+        "height": 1729.1875,
+        "top": 36
+      },
+      "activeStates": [
+        {
+          "id": "projeto-pessoal",
+          "active": "#projeto-pessoal"
+        },
+        {
+          "id": "tendencia",
+          "active": "#tendencia"
+        },
+        {
+          "id": "profissional",
+          "active": "#profissional"
+        },
+        {
+          "id": "quatro-pecas",
+          "active": "#quatro-pecas"
+        },
+        {
+          "id": "grilling",
+          "active": "#grilling"
+        },
+        {
+          "id": "arvore",
+          "active": "#arvore"
+        },
+        {
+          "id": "ui-grill",
+          "active": "#ui-grill"
+        },
+        {
+          "id": "ui-plano",
+          "active": "#ui-plano"
+        },
+        {
+          "id": "wayfinder",
+          "active": "#wayfinder"
+        },
+        {
+          "id": "wayfinder-tipos",
+          "active": "#wayfinder-tipos"
+        },
+        {
+          "id": "metodos",
+          "active": "#metodos"
+        },
+        {
+          "id": "harness",
+          "active": "#harness"
+        },
+        {
+          "id": "workflow",
+          "active": "#workflow"
+        },
+        {
+          "id": "evidencia",
+          "active": "#evidencia"
+        },
+        {
+          "id": "ponte",
+          "active": "#ponte"
+        },
+        {
+          "id": "estado",
+          "active": "#estado"
+        },
+        {
+          "id": "evolucao",
+          "active": "#evolucao"
+        },
+        {
+          "id": "convite",
+          "active": "#convite"
+        },
+        {
+          "id": "fontes",
+          "active": "#fontes"
+        }
+      ],
+      "bottomActive": "#fontes",
+      "errors": [],
+      "remoteRequests": [],
+      "automatedPass": true
+    }
+  ]
+}
