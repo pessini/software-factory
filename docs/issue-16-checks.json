@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "baseline_main": "1750eb3b9aeb1fec573c2fb5e5b6d5498a1dc78f",
+  "rust_version": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "cargo_version": "cargo 1.99.1 (5f94df478 2026-08-27) (Homebrew)",
+  "adk_revision": "bd1bd5f450a6489d08e14220809033401282ed67",
+  "rust": {
+    "format": "passed",
+    "types_all_targets": "passed",
+    "clippy_warnings_denied": "passed",
+    "integration_tests_passed": 14,
+    "test_log_sha256": "d0fc49dc5e1ba542c02b39a4e04d0a27d9ae943a00eaaa8f736c5e26c28b45de"
+  },
+  "python": {
+    "lint": "passed",
+    "format": "passed",
+    "strict_types": "passed",
+    "passed": 364,
+    "skipped": 22,
+    "failures": 0,
+    "errors": 0,
+    "execution": "outside sandbox after asynchronous SQLite stalled inside sandbox"
+  },
+  "review": {
+    "standards_unresolved": 0,
+    "spec_unresolved": 0
+  },
+  "source_sha256": {
+    "Cargo.lock": "274c32ec99d233185ee19368767dca1db953e6d94c1038a188828040801d227b",
+    "Cargo.toml": "83f1a6ebf994b172b8947ee3a372ea1617814ec06d79c9edc885c9e476011ea5",
+    "containers/rust-runtime.Dockerfile": "fa1eb3f5c4fbe6bccf0ad740088b059f1a26a82b68da1f20c6f596980f5417bf",
+    "rust/factory-runtime/Cargo.toml": "30ce925895a87e8fe70dd882edbd0912116a0ff656244f3857fa5c84d3bf4596",
+    "rust/factory-runtime/migrations/001.sql": "c39131a5b03f3bc85679dc020c09c2bdc924fea1b4360ec8d9289c1921b0ac7b",
+    "rust/factory-runtime/src/config.rs": "e6a4911bc7a2eabcb045bf39b8e1bad0e907adba8cf1e966b6c90132720f95f7",
+    "rust/factory-runtime/src/contracts.rs": "dc56847c285c7b6f7aa01acd4bde66cf8b22aec8d23f645f8061e93fe610c7ce",
+    "rust/factory-runtime/src/error.rs": "53cdfef280728ce5486817505e8e38ceae5fe57e5c388c7460d6072a17649f7f",
+    "rust/factory-runtime/src/graph.rs": "c5a1cd2dd0dcdd43ddb26c3254b40d25f4f6a453d5b2437732b5489cddfc3f32",
+    "rust/factory-runtime/src/lib.rs": "2931fc3da15b08b2fc9e2216b35053c105fdbce571b4128198fab15caeccd7c3",
+    "rust/factory-runtime/src/main.rs": "aec561439c1e68618a907e033e78023584605288771d583c9e619c4b01c3a9f4",
+    "rust/factory-runtime/src/runtime.rs": "495516f5b04f71e3c541d644866c2cec081ec4b21e09d67e06174f7c77d4f08e",
+    "rust/factory-runtime/src/store.rs": "f0139ad24d9edab65029e32110544265079a5d715cb154243c079b471848df89",
+    "rust/factory-runtime/src/worker.rs": "04c9531051e0e82ada58f8ee3ed244d31b786653ef5449117af8696b7685f738",
+    "rust/factory-runtime/tests/durability.rs": "dd0ea7c9e4e35c9a4c9c40dba0abad78ece3cb9d3ba39e0c8b9e15da82a15bb6",
+    "rust/factory-runtime/tests/execution.rs": "5a3e6eaf22f564fdbd7b1c10305e7922e0821a4d9c5d7e00f9d5251a87b34c11",
+    "rust/factory-runtime/tests/process_recovery.rs": "aa30e858021f2f0352f854d4916c77f08e6a539d56b40483e3ed229b77b60ad9",
+    "rust-toolchain.toml": "d13306be0ecda81ce779baa290ffb417380d525928477f16200884b5169cca33",
+    "scripts/accept-rust-container.py": "d3a2db99e683dff594900dd6332663238930a5515ddb8bcb59b00d109a0283c0",
+    "scripts/check-rust.sh": "a0d9aae275532dba3bf3f6071cbb07bc5151770934f885b1d04f7ba13cb0299a"
+  },
+  "container": {
+    "passed": true,
+    "cases_passed": 6,
+    "image_id": "sha256:75841376496a98a5ccf470b116b6890ce2d52712175d0709a729a1d6812e0e96",
+    "evidence_sha256": "5e3594795352f7b10c7d2326fd6695e69ba0bf88106ba6413add8dfe5cb3566f"
+  }
+}

@@ -13,3 +13,5 @@ __pycache__/
 .factory/runs/
 .factory/checkpoints.sqlite*
 dist/
+target/
+.factory-rust.lock
