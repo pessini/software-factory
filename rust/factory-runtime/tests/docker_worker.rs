@@ -35,7 +35,7 @@ async fn docker_quality_is_read_only_receipted_and_confirmed_stopped() {
     std::fs::create_dir_all(data.path().join("evidence/run-docker")).unwrap();
     let config = Config::new(data.path(), workspace.path()).unwrap();
     let worker = DockerWorker::open(config.clone(), DockerConfig::local(&config, None)).unwrap();
-    let request=ExecutionRequest {version:1,operation_id:"run-docker-check-1".into(),run_id:"run-docker".into(),workspace:workspace.path().to_string_lossy().into_owned(),evidence_directory:data.path().join("evidence/run-docker").to_string_lossy().into_owned(),protected_paths:vec![],deadline_at:chrono::Utc::now()+chrono::Duration::seconds(60),execution:ExecutionKind::Quality {command:QualityCommand {name:"protection".into(),argv:vec!["python3".into(),"-B".into(),"-c".into(),"import os; assert not os.path.exists('/var/run/docker.sock'); assert not os.path.exists('/data/factory-rust.sqlite');\ntry:\n open('source.txt','w').write('tampered')\n raise AssertionError('write permitted')\nexcept OSError: pass\nprint('protected')".into()],timeout_seconds:60,repeat_on_recovery:false},content_version:"test-content".into()}};
+    let request=ExecutionRequest {version:1,operation_id:"run-docker-check-1".into(),run_id:"run-docker".into(),workspace:config.workspace().to_string_lossy().into_owned(),evidence_directory:config.data_dir().join("evidence/run-docker").to_string_lossy().into_owned(),protected_paths:vec![],deadline_at:chrono::Utc::now()+chrono::Duration::seconds(60),execution:ExecutionKind::Quality {command:QualityCommand {name:"protection".into(),argv:vec!["python3".into(),"-B".into(),"-c".into(),"import os; assert not os.path.exists('/var/run/docker.sock'); assert not os.path.exists('/data/factory-rust.sqlite');\ntry:\n open('source.txt','w').write('tampered')\n raise AssertionError('write permitted')\nexcept OSError: pass\nprint('protected')".into()],timeout_seconds:60,repeat_on_recovery:false},content_version:"test-content".into()}};
     let encoded = serde_json::to_string(&request).unwrap();
     assert_eq!(
         worker
@@ -114,7 +114,7 @@ async fn native_codex_protocol_in_docker_returns_the_exact_saved_turn() {
             .replace('.', "-")
     );
     std::fs::create_dir_all(data.path().join("evidence").join(&run_id)).unwrap();
-    let request=ExecutionRequest {version:1,operation_id:format!("{run_id}-plan-1"),run_id:run_id.clone(),workspace:workspace.path().to_string_lossy().into_owned(),evidence_directory:data.path().join("evidence").join(&run_id).to_string_lossy().into_owned(),protected_paths:vec![],deadline_at:chrono::Utc::now()+chrono::Duration::seconds(120),execution:ExecutionKind::Specialist {role:"planner".into(),step:"plan".into(),agent:factory_runtime::workflow::AgentConfig {provider:"codex".into(),model:"gpt-5.6-luna".into(),reasoning_level:"low".into(),permission_mode:"auto".into()},prompt:"Read source.txt with a tool, then return exactly this JSON: {\"read\":\"original\"}. Do not edit any files.".into()}};
+    let request=ExecutionRequest {version:1,operation_id:format!("{run_id}-plan-1"),run_id:run_id.clone(),workspace:config.workspace().to_string_lossy().into_owned(),evidence_directory:config.data_dir().join("evidence").join(&run_id).to_string_lossy().into_owned(),protected_paths:vec![],deadline_at:chrono::Utc::now()+chrono::Duration::seconds(120),execution:ExecutionKind::Specialist {role:"planner".into(),step:"plan".into(),agent:factory_runtime::workflow::AgentConfig {provider:"codex".into(),model:"gpt-5.6-luna".into(),reasoning_level:"low".into(),permission_mode:"auto".into()},prompt:"Read source.txt with a tool, then return exactly this JSON: {\"read\":\"original\"}. Do not edit any files.".into()}};
     let encoded = serde_json::to_string(&request).unwrap();
     let result = worker
         .dispatch(&request.operation_id, &encoded, CancellationToken::new())
@@ -245,9 +245,9 @@ async fn docker_quality_timeout_and_large_output_are_failed_or_bounded_receipted
             version: 1,
             operation_id: format!("run-quality-regression-{name}"),
             run_id: "run-quality-regression".into(),
-            workspace: workspace.path().to_string_lossy().into_owned(),
-            evidence_directory: data
-                .path()
+            workspace: config.workspace().to_string_lossy().into_owned(),
+            evidence_directory: config
+                .data_dir()
                 .join("evidence/run-quality-regression")
                 .to_string_lossy()
                 .into_owned(),

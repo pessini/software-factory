@@ -1692,9 +1692,9 @@ mod quality_tests {
             version: 1,
             operation_id: format!("{run_id}-check"),
             run_id: run_id.clone(),
-            workspace: workspace.path().to_string_lossy().into_owned(),
-            evidence_directory: data
-                .path()
+            workspace: config.workspace().to_string_lossy().into_owned(),
+            evidence_directory: config
+                .data_dir()
                 .join("evidence")
                 .join(&run_id)
                 .to_string_lossy()
