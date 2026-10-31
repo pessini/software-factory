@@ -1,0 +1,573 @@
+{
+  "schema_version": 1,
+  "image": "factory-rust-slice:dev",
+  "cases": [
+    {
+      "case": "kill_recreate_waiting_duplicates_terminal_guard",
+      "passed": true,
+      "run": {
+        "attempts": 1,
+        "cancel_requested": false,
+        "checkpoint_thread_id": "factory:run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257",
+        "deadline_at": "2026-10-30T22:04:47.696917320Z",
+        "error": null,
+        "events": [
+          {
+            "attempt": 1,
+            "message": "Durable fake run saved",
+            "metadata": {},
+            "node": "start",
+            "run_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257",
+            "schema_version": 1,
+            "sequence": 1,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:47.696918201Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run the fake worker?",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257",
+            "schema_version": 1,
+            "sequence": 2,
+            "status": "waiting",
+            "timestamp": "2026-10-30T22:02:47.787054446Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Answer saved",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257",
+            "schema_version": 1,
+            "sequence": 3,
+            "status": "info",
+            "timestamp": "2026-10-30T22:02:48.792839294Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Operation intent saved",
+            "metadata": {},
+            "node": "fake_worker",
+            "run_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257",
+            "schema_version": 1,
+            "sequence": 4,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:49.010106298Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run finished",
+            "metadata": {},
+            "node": "finish",
+            "run_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257",
+            "schema_version": 1,
+            "sequence": 5,
+            "status": "completed",
+            "timestamp": "2026-10-30T22:02:49.030889092Z"
+          }
+        ],
+        "graph_version": "factory-fake-v1",
+        "input": {
+          "max_dispatches": 3,
+          "request": "Build a greeting",
+          "request_id": "waiting-restart",
+          "session_id": "acceptance",
+          "timeout_seconds": 120
+        },
+        "interaction": {
+          "approved": true,
+          "interaction_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257-approval-1",
+          "question": "Run the fake worker?"
+        },
+        "operation": {
+          "dispatch_count": 1,
+          "operation_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257-fake-1",
+          "result": "fake worker completed: Build a greeting",
+          "state": "completed"
+        },
+        "result": "fake worker completed: Build a greeting",
+        "revision": 9,
+        "run_id": "run-5f4f61e7465d3763d0eb490283e3313386b8165028d027c4b5a0d8dbb94d0257",
+        "scheduler_id": "cae057bd-e830-4509-a019-5da898f9cf67",
+        "schema_version": 1,
+        "status": "ready_for_review",
+        "workspace_id": "c52ddf65534b7b46035084358ab7902be4bfef220bdb503ac7039cc861905b05"
+      }
+    },
+    {
+      "case": "concurrent_workspace_resumes",
+      "passed": true,
+      "run": {
+        "attempts": 1,
+        "cancel_requested": false,
+        "checkpoint_thread_id": "factory:run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da",
+        "deadline_at": "2026-10-30T22:04:49.757224873Z",
+        "error": null,
+        "events": [
+          {
+            "attempt": 1,
+            "message": "Durable fake run saved",
+            "metadata": {},
+            "node": "start",
+            "run_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da",
+            "schema_version": 1,
+            "sequence": 1,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:49.757226057Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run the fake worker?",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da",
+            "schema_version": 1,
+            "sequence": 2,
+            "status": "waiting",
+            "timestamp": "2026-10-30T22:02:50.154108411Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Answer saved",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da",
+            "schema_version": 1,
+            "sequence": 3,
+            "status": "info",
+            "timestamp": "2026-10-30T22:02:50.560464991Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Operation intent saved",
+            "metadata": {},
+            "node": "fake_worker",
+            "run_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da",
+            "schema_version": 1,
+            "sequence": 4,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:51.051058133Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run finished",
+            "metadata": {},
+            "node": "finish",
+            "run_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da",
+            "schema_version": 1,
+            "sequence": 5,
+            "status": "completed",
+            "timestamp": "2026-10-30T22:02:51.066644956Z"
+          }
+        ],
+        "graph_version": "factory-fake-v1",
+        "input": {
+          "max_dispatches": 3,
+          "request": "Build a greeting",
+          "request_id": "concurrent-resumes",
+          "session_id": "acceptance",
+          "timeout_seconds": 120
+        },
+        "interaction": {
+          "approved": true,
+          "interaction_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da-approval-1",
+          "question": "Run the fake worker?"
+        },
+        "operation": {
+          "dispatch_count": 1,
+          "operation_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da-fake-1",
+          "result": "fake worker completed: Build a greeting",
+          "state": "completed"
+        },
+        "result": "fake worker completed: Build a greeting",
+        "revision": 9,
+        "run_id": "run-91e35aa61c33b9c4802d44b01725654002efe9676acd59e4ba9f38f9183594da",
+        "scheduler_id": "4b550375-7c81-484a-8a04-4e35704aa004",
+        "schema_version": 1,
+        "status": "ready_for_review",
+        "workspace_id": "c52ddf65534b7b46035084358ab7902be4bfef220bdb503ac7039cc861905b05"
+      }
+    },
+    {
+      "case": "before_dispatch",
+      "passed": true,
+      "run": {
+        "attempts": 2,
+        "cancel_requested": false,
+        "checkpoint_thread_id": "factory:run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935",
+        "deadline_at": "2026-10-30T22:04:51.834255216Z",
+        "error": null,
+        "events": [
+          {
+            "attempt": 1,
+            "message": "Durable fake run saved",
+            "metadata": {},
+            "node": "start",
+            "run_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935",
+            "schema_version": 1,
+            "sequence": 1,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:51.834256153Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run the fake worker?",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935",
+            "schema_version": 1,
+            "sequence": 2,
+            "status": "waiting",
+            "timestamp": "2026-10-30T22:02:52.227291558Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Answer saved",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935",
+            "schema_version": 1,
+            "sequence": 3,
+            "status": "info",
+            "timestamp": "2026-10-30T22:02:52.626909163Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Operation intent saved",
+            "metadata": {},
+            "node": "fake_worker",
+            "run_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935",
+            "schema_version": 1,
+            "sequence": 4,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:52.995090957Z"
+          },
+          {
+            "attempt": 2,
+            "message": "Run finished",
+            "metadata": {},
+            "node": "finish",
+            "run_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935",
+            "schema_version": 1,
+            "sequence": 5,
+            "status": "completed",
+            "timestamp": "2026-10-30T22:02:55.407739917Z"
+          }
+        ],
+        "graph_version": "factory-fake-v1",
+        "input": {
+          "max_dispatches": 3,
+          "request": "Build a greeting",
+          "request_id": "before_dispatch",
+          "session_id": "acceptance",
+          "timeout_seconds": 120
+        },
+        "interaction": {
+          "approved": true,
+          "interaction_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935-approval-1",
+          "question": "Run the fake worker?"
+        },
+        "operation": {
+          "dispatch_count": 2,
+          "operation_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935-fake-1",
+          "result": "fake worker completed: Build a greeting",
+          "state": "completed"
+        },
+        "result": "fake worker completed: Build a greeting",
+        "revision": 11,
+        "run_id": "run-ddc4ec6c085b9e4130e0bcab74ba67943035e1280730d09925e7ef6aec43e935",
+        "scheduler_id": "d480867c-6b9a-4a91-8fc9-1070478d74f4",
+        "schema_version": 1,
+        "status": "ready_for_review",
+        "workspace_id": "c52ddf65534b7b46035084358ab7902be4bfef220bdb503ac7039cc861905b05"
+      }
+    },
+    {
+      "case": "after_dispatch",
+      "passed": true,
+      "run": {
+        "attempts": 2,
+        "cancel_requested": false,
+        "checkpoint_thread_id": "factory:run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36",
+        "deadline_at": "2026-10-30T22:04:56.279588286Z",
+        "error": null,
+        "events": [
+          {
+            "attempt": 1,
+            "message": "Durable fake run saved",
+            "metadata": {},
+            "node": "start",
+            "run_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36",
+            "schema_version": 1,
+            "sequence": 1,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:56.279589775Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run the fake worker?",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36",
+            "schema_version": 1,
+            "sequence": 2,
+            "status": "waiting",
+            "timestamp": "2026-10-30T22:02:56.810743440Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Answer saved",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36",
+            "schema_version": 1,
+            "sequence": 3,
+            "status": "info",
+            "timestamp": "2026-10-30T22:02:57.233462213Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Operation intent saved",
+            "metadata": {},
+            "node": "fake_worker",
+            "run_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36",
+            "schema_version": 1,
+            "sequence": 4,
+            "status": "started",
+            "timestamp": "2026-10-30T22:02:57.663858661Z"
+          },
+          {
+            "attempt": 2,
+            "message": "Run finished",
+            "metadata": {},
+            "node": "finish",
+            "run_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36",
+            "schema_version": 1,
+            "sequence": 5,
+            "status": "completed",
+            "timestamp": "2026-10-30T22:03:00.184139212Z"
+          }
+        ],
+        "graph_version": "factory-fake-v1",
+        "input": {
+          "max_dispatches": 3,
+          "request": "Build a greeting",
+          "request_id": "after_dispatch",
+          "session_id": "acceptance",
+          "timeout_seconds": 120
+        },
+        "interaction": {
+          "approved": true,
+          "interaction_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36-approval-1",
+          "question": "Run the fake worker?"
+        },
+        "operation": {
+          "dispatch_count": 1,
+          "operation_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36-fake-1",
+          "result": "fake worker completed: Build a greeting",
+          "state": "completed"
+        },
+        "result": "fake worker completed: Build a greeting",
+        "revision": 10,
+        "run_id": "run-e12049358318009a83f2275b1ee05b9e9f402b4d84987e79ebfbae9b6da6bb36",
+        "scheduler_id": "9dd09f00-c95d-45fb-a91f-1a3649ca7fca",
+        "schema_version": 1,
+        "status": "ready_for_review",
+        "workspace_id": "c52ddf65534b7b46035084358ab7902be4bfef220bdb503ac7039cc861905b05"
+      }
+    },
+    {
+      "case": "after_result",
+      "passed": true,
+      "run": {
+        "attempts": 2,
+        "cancel_requested": false,
+        "checkpoint_thread_id": "factory:run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d",
+        "deadline_at": "2026-10-30T22:05:00.946647443Z",
+        "error": null,
+        "events": [
+          {
+            "attempt": 1,
+            "message": "Durable fake run saved",
+            "metadata": {},
+            "node": "start",
+            "run_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d",
+            "schema_version": 1,
+            "sequence": 1,
+            "status": "started",
+            "timestamp": "2026-10-30T22:03:00.946648488Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run the fake worker?",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d",
+            "schema_version": 1,
+            "sequence": 2,
+            "status": "waiting",
+            "timestamp": "2026-10-30T22:03:01.335986589Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Answer saved",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d",
+            "schema_version": 1,
+            "sequence": 3,
+            "status": "info",
+            "timestamp": "2026-10-30T22:03:01.731042759Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Operation intent saved",
+            "metadata": {},
+            "node": "fake_worker",
+            "run_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d",
+            "schema_version": 1,
+            "sequence": 4,
+            "status": "started",
+            "timestamp": "2026-10-30T22:03:02.152115644Z"
+          },
+          {
+            "attempt": 2,
+            "message": "Run finished",
+            "metadata": {},
+            "node": "finish",
+            "run_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d",
+            "schema_version": 1,
+            "sequence": 5,
+            "status": "completed",
+            "timestamp": "2026-10-30T22:03:04.425951696Z"
+          }
+        ],
+        "graph_version": "factory-fake-v1",
+        "input": {
+          "max_dispatches": 3,
+          "request": "Build a greeting",
+          "request_id": "after_result",
+          "session_id": "acceptance",
+          "timeout_seconds": 120
+        },
+        "interaction": {
+          "approved": true,
+          "interaction_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d-approval-1",
+          "question": "Run the fake worker?"
+        },
+        "operation": {
+          "dispatch_count": 1,
+          "operation_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d-fake-1",
+          "result": "fake worker completed: Build a greeting",
+          "state": "completed"
+        },
+        "result": "fake worker completed: Build a greeting",
+        "revision": 10,
+        "run_id": "run-b6720586c3282dc57515654cdfac2144a93f4dc4978918eadfb4b91b59d6f16d",
+        "scheduler_id": "db0439e3-2111-44ce-86de-cd3a0628e5b0",
+        "schema_version": 1,
+        "status": "ready_for_review",
+        "workspace_id": "c52ddf65534b7b46035084358ab7902be4bfef220bdb503ac7039cc861905b05"
+      }
+    },
+    {
+      "case": "after_queue_finish",
+      "passed": true,
+      "run": {
+        "attempts": 1,
+        "cancel_requested": false,
+        "checkpoint_thread_id": "factory:run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9",
+        "deadline_at": "2026-10-30T22:05:05.212720907Z",
+        "error": null,
+        "events": [
+          {
+            "attempt": 1,
+            "message": "Durable fake run saved",
+            "metadata": {},
+            "node": "start",
+            "run_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9",
+            "schema_version": 1,
+            "sequence": 1,
+            "status": "started",
+            "timestamp": "2026-10-30T22:03:05.212722026Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run the fake worker?",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9",
+            "schema_version": 1,
+            "sequence": 2,
+            "status": "waiting",
+            "timestamp": "2026-10-30T22:03:05.636660825Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Answer saved",
+            "metadata": {},
+            "node": "approval",
+            "run_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9",
+            "schema_version": 1,
+            "sequence": 3,
+            "status": "info",
+            "timestamp": "2026-10-30T22:03:06.027632758Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Operation intent saved",
+            "metadata": {},
+            "node": "fake_worker",
+            "run_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9",
+            "schema_version": 1,
+            "sequence": 4,
+            "status": "started",
+            "timestamp": "2026-10-30T22:03:06.457182132Z"
+          },
+          {
+            "attempt": 1,
+            "message": "Run finished",
+            "metadata": {},
+            "node": "finish",
+            "run_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9",
+            "schema_version": 1,
+            "sequence": 5,
+            "status": "completed",
+            "timestamp": "2026-10-30T22:03:06.863641563Z"
+          }
+        ],
+        "graph_version": "factory-fake-v1",
+        "input": {
+          "max_dispatches": 3,
+          "request": "Build a greeting",
+          "request_id": "after_queue_finish",
+          "session_id": "acceptance",
+          "timeout_seconds": 120
+        },
+        "interaction": {
+          "approved": true,
+          "interaction_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9-approval-1",
+          "question": "Run the fake worker?"
+        },
+        "operation": {
+          "dispatch_count": 1,
+          "operation_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9-fake-1",
+          "result": "fake worker completed: Build a greeting",
+          "state": "completed"
+        },
+        "result": "fake worker completed: Build a greeting",
+        "revision": 9,
+        "run_id": "run-e2dbd76c061100ae46aace04ddbc3ef6305dc257f0bde23b323c5947b66b26e9",
+        "scheduler_id": "786e5dcd-0247-4136-93f8-94e7f66d4c26",
+        "schema_version": 1,
+        "status": "ready_for_review",
+        "workspace_id": "c52ddf65534b7b46035084358ab7902be4bfef220bdb503ac7039cc861905b05"
+      }
+    }
+  ],
+  "image_id": "sha256:75841376496a98a5ccf470b116b6890ce2d52712175d0709a729a1d6812e0e96",
+  "docker_version": "{\"Client\":{\"Platform\":{\"Name\":\"Docker Engine - Community\"},\"Version\":\"29.9.2\",\"ApiVersion\":\"1.52\",\"DefaultAPIVersion\":\"1.56\",\"GitCommit\":\"a82e528901\",\"GoVersion\":\"go1.27.3\",\"Os\":\"linux\",\"Arch\":\"amd64\",\"BuildTime\":\"Tue Oct 20 11:24:07 2026\",\"Context\":\"default\"},\"Server\":{\"Platform\":{\"Name\":\"\"},\"Version\":\"29.1.3\",\"ApiVersion\":\"1.52\",\"MinAPIVersion\":\"1.44\",\"Os\":\"linux\",\"Arch\":\"amd64\",\"Components\":[{\"Name\":\"Engine\",\"Version\":\"29.1.3\",\"Details\":{\"ApiVersion\":\"1.52\",\"Arch\":\"amd64\",\"BuildTime\":\"Wed Apr 29 16:41:06 2026\",\"Experimental\":\"false\",\"GitCommit\":\"29.1.3-0ubuntu3~24.04.2\",\"GoVersion\":\"go1.24.4\",\"KernelVersion\":\"6.18.33.2-microsoft-standard-WSL2\",\"MinAPIVersion\":\"1.44\",\"Os\":\"linux\"}},{\"Name\":\"containerd\",\"Version\":\"2.2.1\",\"Details\":{\"GitCommit\":\"\"}},{\"Name\":\"runc\",\"Version\":\"1.3.4-0ubuntu1~24.04.1\",\"Details\":{\"GitCommit\":\"\"}},{\"Name\":\"docker-init\",\"Version\":\"0.19.0\",\"Details\":{\"GitCommit\":\"\"}}],\"GitCommit\":\"29.1.3-0ubuntu3~24.04.2\",\"GoVersion\":\"go1.24.4\",\"KernelVersion\":\"6.18.33.2-microsoft-standard-WSL2\",\"BuildTime\":\"2026-04-29T16:41:06.000000000+00:00\"}}",
+  "passed": true
+}

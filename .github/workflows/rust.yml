@@ -1,0 +1,34 @@
+name: Rust durable slice
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install latest Homebrew toolchain and verify the tested pin
+        run: |
+          brew update
+          brew install rust
+          echo "$(brew --prefix rust)/bin" >> "$GITHUB_PATH"
+          test "$("$(brew --prefix rust)/bin/rustc" --version | cut -d' ' -f2)" = 1.99.1
+      - run: bash scripts/check-rust.sh
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build -f containers/rust-runtime.Dockerfile -t factory-rust-slice:dev .
+      - run: python3 scripts/accept-rust-container.py --image factory-rust-slice:dev --output .checks/rust-container.json
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rust-container-evidence
+          path: .checks/rust-container.json
+          include-hidden-files: true
