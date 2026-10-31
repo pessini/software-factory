@@ -16,6 +16,8 @@ pub struct StartRequest {
     pub request: String,
     pub timeout_seconds: u32,
     pub max_dispatches: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implementation: Option<crate::workflow::ImplementationInput>,
 }
 
 impl StartRequest {
@@ -26,10 +28,14 @@ impl StartRequest {
             request: request.into(),
             timeout_seconds: 3600,
             max_dispatches: 3,
+            implementation: None,
         }
     }
 
     pub fn validate(&self) -> Result<()> {
+        if let Some(implementation) = &self.implementation {
+            implementation.validate()?;
+        }
         for id in [&self.request_id, &self.session_id] {
             if id.is_empty()
                 || id.len() > 128
@@ -63,12 +69,16 @@ pub enum Status {
     Stopping,
     ReadyForReview,
     Failed,
+    Blocked,
     Cancelled,
 }
 
 impl Status {
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::ReadyForReview | Self::Failed | Self::Cancelled)
+        matches!(
+            self,
+            Self::ReadyForReview | Self::Failed | Self::Blocked | Self::Cancelled
+        )
     }
 }
 
@@ -131,11 +141,62 @@ pub struct Run {
     pub result: Option<String>,
     pub error: Option<String>,
     pub events: Vec<Event>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<Box<crate::workflow::WorkflowState>>,
 }
 
 impl Run {
+    pub fn delivery_pending(&self) -> bool {
+        self.delivery_refreshable()
+            && self.workflow.as_ref().is_some_and(|s| {
+                !["delivered", "ci_failed", "ci_unavailable", "blocked"]
+                    .iter()
+                    .any(|v| s.delivery["status"] == *v)
+            })
+    }
+
+    pub(crate) fn delivery_refreshable(&self) -> bool {
+        self.status == Status::ReadyForReview
+            && self.workflow.as_ref().is_some_and(|s| {
+                s.parent_run_id.is_none()
+                    && (self
+                        .input
+                        .implementation
+                        .as_ref()
+                        .is_some_and(|i| i.config.delivery.mode == "pull_request")
+                        || s.delivery["policy"]["mode"] == "pull_request")
+                    && !["no_change", "cancelled"]
+                        .iter()
+                        .any(|v| s.delivery["status"] == *v)
+            })
+    }
+
+    pub fn expires_at(&self) -> DateTime<Utc> {
+        self.workflow
+            .as_ref()
+            .filter(|w| w.wait_started_at.is_some())
+            .and_then(|w| w.overall_deadline_at)
+            .unwrap_or(self.deadline_at)
+    }
+    pub fn waiting_for_answers(&self) -> bool {
+        self.interaction
+            .as_ref()
+            .is_some_and(|q| q.approved.is_none())
+            || self
+                .workflow
+                .as_ref()
+                .is_some_and(|w| w.interaction.as_ref().is_some_and(|q| q.answers.is_none()))
+    }
     pub fn check_version(&self) -> Result<()> {
-        if self.schema_version != SCHEMA_VERSION || self.graph_version != GRAPH_VERSION {
+        let graph = if self.input.implementation.is_some() {
+            crate::workflow::GRAPH_VERSION
+        } else {
+            GRAPH_VERSION
+        };
+        if self.schema_version != SCHEMA_VERSION
+            || self.graph_version != graph
+            || self.input.implementation.is_some() != self.workflow.is_some()
+        {
             return Err(Error::Incompatible(format!(
                 "run {} uses state {} / graph {}; expected {} / {}. Keep the previous binary or migrate explicitly",
                 self.run_id, self.schema_version, self.graph_version, SCHEMA_VERSION, GRAPH_VERSION

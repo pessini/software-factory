@@ -2,6 +2,8 @@
 pub enum Error {
     #[error("invalid configuration: {0}")]
     Config(String),
+    #[error("stale or changed evidence: {0}")]
+    Integrity(String),
     #[error("identity conflict: {0}")]
     Conflict(String),
     #[error("run not found: {0}")]
@@ -16,6 +18,8 @@ pub enum Error {
     Deadline,
     #[error("worker requires reconciliation: {0}")]
     Worker(String),
+    #[error("waiting for input: {0}")]
+    Waiting(String),
     #[error(transparent)]
     Storage(#[from] sqlx::Error),
     #[error(transparent)]

@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": [
+        "completed",
+        "blocked"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "changed_files": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Changed Files",
+      "type": "array"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blockers",
+      "type": "array"
+    },
+    "manual_work": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Manual Work",
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "summary",
+    "changed_files"
+  ],
+  "title": "BuildEnvelope",
+  "type": "object"
+}

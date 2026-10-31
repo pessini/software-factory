@@ -65,9 +65,11 @@ The MVP provides:
 See [`docs/macos-runbook.md`](docs/macos-runbook.md) for the macOS setup and the
 [`examples/demo-target`](examples/demo-target) fixture for a first run.
 
-An experimental [Rust/ADK durable runtime](docs/rust-runtime.md) implements the
-fake-worker SQLite vertical slice for migration step 1 (#16). It uses a separate
-database and does not replace the Python production controller.
+The experimental [Rust/ADK durable runtime](docs/rust-runtime.md) retains the
+step 1 fake slice (#16) and adds the [implementation workflow and protected Docker
+workers](docs/rust-workflow.md) for step 2 (#17). It uses a separate database.
+See the [parity checklist](docs/issue-17-parity.md). Python remains supported;
+interface integration and production cutover remain #18/#19.
 
 ## Development
 

@@ -1,6 +1,8 @@
 # Experimental Rust durable slice (#16)
 
-This is migration step 1, not a production replacement. The Python controller,
+This page documents migration step 1, not a production replacement. Step 2 adds
+[the implementation workflow and protected Docker brokers](rust-workflow.md),
+with its own graph version and [parity checklist](issue-17-parity.md). The Python controller,
 planning UI, BB/ACP and Codex/MCP interfaces remain available. See the
 [contract inventory](rust-contract-inventory.md) before extending the port.
 

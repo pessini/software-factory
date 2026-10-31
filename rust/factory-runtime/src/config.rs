@@ -23,7 +23,12 @@ impl Config {
                 "storage and workspace must be absolute file paths".into(),
             ));
         }
+        let existed = data_dir.exists();
         std::fs::create_dir_all(data_dir)?;
+        if !existed {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(data_dir, std::fs::Permissions::from_mode(0o700))?;
+        }
         let data_dir = data_dir.canonicalize()?;
         let workspace = workspace.canonicalize()?;
         if !workspace.is_dir()
