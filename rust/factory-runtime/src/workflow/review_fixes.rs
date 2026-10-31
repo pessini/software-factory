@@ -337,10 +337,26 @@ pub(crate) async fn publish(
         .await?;
     }
     let marker = format!("<!-- factory-fix-summary:{} -->", batch.id);
-    let summary = format!(
-        "Applied and verified the selected review fixes in `{}`. Required local checks and review passed. CI: {}.\n\n{marker}",
-        record.commit, result["ci"]["status"]
-    );
+    let summary_key = format!("fix-{}:summary", batch.id);
+    // The operation ledger already persists the body before dispatch. Reuse that
+    // immutable input on replay even if the freshly polled CI status changed.
+    let saved = runtime.status(id).await?;
+    let summary = match saved
+        .workflow
+        .as_ref()
+        .unwrap()
+        .remote_operations
+        .get(&summary_key)
+    {
+        Some(operation) => operation.request["body"]
+            .as_str()
+            .ok_or_else(|| Error::Config("saved review-fix summary has no body".into()))?
+            .to_owned(),
+        None => format!(
+            "Applied and verified the selected review fixes in `{}`. Required local checks and review passed. CI: {}.\n\n{marker}",
+            record.commit, result["ci"]["status"]
+        ),
+    };
     let summarized = || async {
         let pull = remote.pull(repository, batch.pull.number).await?;
         delivery::validate_pull(&pull, &record.branch, &policy.base_branch, &record.commit)?;
@@ -360,7 +376,7 @@ pub(crate) async fn publish(
     delivery::operation(
         runtime,
         id,
-        &format!("fix-{}:summary", batch.id),
+        &summary_key,
         json!({"commit":record.commit,"body":summary}),
         summarized,
         summarize,

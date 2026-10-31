@@ -665,6 +665,7 @@ struct RemoteState {
     lose_pull_response: bool,
     suppress_pull: bool,
     checks_status: Option<String>,
+    lose_summary_response: bool,
     threads: Vec<factory_runtime::workflow::delivery::ReviewThread>,
     comments: Vec<Value>,
 }
@@ -793,11 +794,14 @@ impl factory_runtime::workflow::delivery::Remote for FakeGitHub {
         Ok(self.0.lock().unwrap().comments.clone())
     }
     async fn comment(&self, _: &str, _: u64, body: &str) -> Result<()> {
-        self.0
-            .lock()
-            .unwrap()
-            .comments
-            .push(json!({"id":"summary","body":body}));
+        let mut state = self.0.lock().unwrap();
+        state.comments.push(json!({"id":"summary","body":body}));
+        if state.lose_summary_response {
+            state.lose_summary_response = false;
+            return Err(factory_runtime::Error::Worker(
+                "summary response lost".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -882,6 +886,15 @@ async fn authorized_delivery_commits_exact_tested_bytes_and_reconciles_publicati
 #[tokio::test]
 async fn authorized_selected_review_fixes_keep_product_criteria_and_resolve_only_selected_threads()
 {
+    selected_review_fixes(false).await;
+}
+
+#[tokio::test]
+async fn review_fix_summary_recovers_after_ci_changes_without_duplicate_comments() {
+    selected_review_fixes(true).await;
+}
+
+async fn selected_review_fixes(lose_summary_response: bool) {
     let data = tempfile::tempdir().unwrap();
     let root = repository();
     let provider = Arc::new(Provider::default());
@@ -941,12 +954,36 @@ async fn authorized_selected_review_fixes_keep_product_criteria_and_resolve_only
             });
     }
     github.0.lock().unwrap().checks_status = Some("pending".into());
+    if lose_summary_response {
+        github.0.lock().unwrap().lose_summary_response = true;
+        let interrupted = runtime
+            .fix_reviews_with_remote(&run.run_id, github.as_ref(), &["selected".into()])
+            .await
+            .unwrap();
+        let state = &interrupted.workflow.as_ref().unwrap().delivery;
+        assert_eq!(state["status"], "recovery_needed");
+        assert!(
+            state["error"]
+                .as_str()
+                .unwrap()
+                .contains("summary response lost")
+        );
+        github.0.lock().unwrap().checks_status = Some("passed".into());
+    }
     let fixed = runtime
         .fix_reviews_with_remote(&run.run_id, github.as_ref(), &["selected".into()])
         .await
         .unwrap();
     let delivery = &fixed.workflow.as_ref().unwrap().delivery;
-    assert_eq!(delivery["status"], "ci_pending", "{delivery}");
+    assert_eq!(
+        delivery["status"],
+        if lose_summary_response {
+            "delivered"
+        } else {
+            "ci_pending"
+        },
+        "{delivery}"
+    );
     assert_eq!(delivery["review_fix"]["status"], "completed");
     let child = runtime
         .status(delivery["verified_run_id"].as_str().unwrap())
@@ -986,6 +1023,7 @@ async fn authorized_selected_review_fixes_keep_product_criteria_and_resolve_only
         assert_eq!(state.pushes, 2);
     }
     let commit = delivery["commit"].clone();
+    github.0.lock().unwrap().checks_status = Some("pending".into());
     let pending = runtime.resume(&run.run_id).await.unwrap();
     assert_eq!(pending.workflow.unwrap().delivery["status"], "ci_pending");
     github.0.lock().unwrap().checks_status = Some("passed".into());
@@ -1614,4 +1652,75 @@ async fn exhausted_adk_recovery_keeps_ownership_when_final_worker_cleanup_is_unc
         runtime.resume(&other.run_id).await,
         Err(factory_runtime::Error::Busy)
     ));
+}
+
+#[tokio::test]
+async fn manual_delivery_and_unauthorized_review_fixes_allow_later_authorization() {
+    for attempt_review_fix in [false, true] {
+        let data = tempfile::tempdir().unwrap();
+        let root = repository();
+        let runtime = Runtime::open_with_worker(
+            Config::new(data.path(), root.path()).unwrap(),
+            Arc::new(Provider::default()),
+            Arc::new(NoFaults),
+        )
+        .await
+        .unwrap();
+        let run = runtime.start(request("later-authorization")).await.unwrap();
+        runtime.resume(&run.run_id).await.unwrap();
+        let github = FakeGitHub::default();
+        let head = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(root.path())
+            .output()
+            .unwrap()
+            .stdout;
+        github.0.lock().unwrap().branches.insert(
+            "main".into(),
+            String::from_utf8(head).unwrap().trim().into(),
+        );
+        if attempt_review_fix {
+            let error = runtime
+                .fix_reviews_with_remote(&run.run_id, &github, &["selected".into()])
+                .await
+                .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("does not authorize review fixes")
+            );
+        } else {
+            runtime
+                .deliver_with_remote(&run.run_id, &github, None)
+                .await
+                .unwrap();
+        }
+        let manual = runtime.status(&run.run_id).await.unwrap();
+        assert!(
+            manual
+                .workflow
+                .as_ref()
+                .unwrap()
+                .delivery
+                .get("policy")
+                .is_none()
+        );
+        assert_eq!(github.0.lock().unwrap().pushes, 0);
+        let delivered = runtime
+            .deliver_with_remote(&run.run_id, &github, Some(authorization()))
+            .await
+            .unwrap();
+        let delivery = &delivered.workflow.as_ref().unwrap().delivery;
+        assert_eq!(delivery["status"], "delivered", "{}", delivery["error"]);
+        let mut changed = authorization();
+        changed.repository = Some("test/other".into());
+        assert!(
+            runtime
+                .deliver_with_remote(&run.run_id, &github, Some(changed))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("destination cannot change")
+        );
+    }
 }

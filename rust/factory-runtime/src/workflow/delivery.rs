@@ -283,12 +283,17 @@ pub(crate) async fn policy(
             )?;
         }
     }
-    runtime
-        .change(id, |run| {
-            run.workflow.as_mut().unwrap().delivery["policy"] = serde_json::to_value(&selected)?;
-            Ok(())
-        })
-        .await?;
+    // A manual policy grants no publication authority. Do not freeze a destination
+    // until an explicit pull-request authorization exists.
+    if selected.mode == "pull_request" {
+        runtime
+            .change(id, |run| {
+                run.workflow.as_mut().unwrap().delivery["policy"] =
+                    serde_json::to_value(&selected)?;
+                Ok(())
+            })
+            .await?;
+    }
     Ok(selected)
 }
 pub(crate) async fn deliver(

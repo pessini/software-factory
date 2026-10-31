@@ -17,11 +17,12 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, ChildStdout, Command},
 };
 use tokio_util::sync::CancellationToken;
 
+const QUALITY_OUTPUT_LIMIT: usize = 65_536;
 const OPERATION: &str = "software-factory.operation";
 const OWNER: &str = "software-factory.controller";
 const WORKSPACE: &str = "software-factory.workspace";
@@ -289,6 +290,33 @@ impl DockerWorker {
             ));
         }
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+    async fn quality_logs(&self, receipt: &WorkerReceipt) -> Result<String> {
+        tokio::time::timeout(Duration::from_secs(30), async {
+            let mut child = Command::new(&self.docker.executable)
+                .args([
+                    "container",
+                    "logs",
+                    "--tail",
+                    "2000",
+                    receipt.container_id.as_deref().unwrap(),
+                ])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()?;
+            let (output, error) = tokio::try_join!(
+                read_quality_tail(child.stdout.take().unwrap()),
+                read_quality_tail(child.stderr.take().unwrap()),
+            )?;
+            if !child.wait().await?.success() {
+                return Err(Error::Worker(error));
+            }
+            Ok(output)
+        })
+        .await
+        .map_err(|_| Error::Worker("Docker quality logs timed out".into()))?
     }
     async fn inspect(&self, receipt: &WorkerReceipt) -> Result<Option<Value>> {
         // `docker inspect` failures are not evidence of absence. A successful
@@ -695,7 +723,7 @@ impl DockerWorker {
             .ok_or_else(|| Error::Worker("new Docker container cannot be inspected".into()))?;
         receipt.image_id = inspected["Image"].as_str().map(String::from);
         self.save(receipt)?;
-        let child = Command::new(&self.docker.executable)
+        let mut child = Command::new(&self.docker.executable)
             .args(["container", "start", "--attach", "--interactive", &id])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -708,7 +736,9 @@ impl DockerWorker {
                 command,
                 content_version,
             } => {
-                let output = child.wait_with_output().await?;
+                drop(child.stdin.take());
+                let output = read_quality_tail(child.stdout.take().unwrap()).await?;
+                let status = child.wait().await?;
                 let current = self
                     .inspect(receipt)
                     .await?
@@ -719,10 +749,10 @@ impl DockerWorker {
                     exit_code: current["State"]["ExitCode"]
                         .as_i64()
                         .and_then(|n| i32::try_from(n).ok())
-                        .or(output.status.code()),
+                        .or(status.code()),
                     timed_out: false,
                     cancelled: false,
-                    output_tail: tail(&String::from_utf8_lossy(&output.stdout), 65536),
+                    output_tail: output,
                     content_version,
                     comparison: String::new(),
                 })
@@ -787,15 +817,7 @@ impl DockerWorker {
                 if current["State"]["Running"] == true || current["State"]["Status"] == "created" {
                     return Ok(None);
                 }
-                let output = self
-                    .output(&[
-                        "container".into(),
-                        "logs".into(),
-                        "--tail".into(),
-                        "2000".into(),
-                        receipt.container_id.clone().unwrap(),
-                    ])
-                    .await?;
+                let output = self.quality_logs(receipt).await?;
                 Ok(Some(serde_json::to_string(&CheckResult {
                     name: command.name.clone(),
                     argv: command.argv.clone(),
@@ -804,7 +826,7 @@ impl DockerWorker {
                         .and_then(|n| i32::try_from(n).ok()),
                     timed_out: false,
                     cancelled: false,
-                    output_tail: tail(&output, 65536),
+                    output_tail: output,
                     content_version: content_version.clone(),
                     comparison: String::new(),
                 })?))
@@ -850,6 +872,23 @@ fn tail(text: &str, limit: usize) -> String {
         .find(|(i, _)| *i >= start)
         .map(|(i, _)| text[i..].to_owned())
         .unwrap_or_default()
+}
+/// Drain every byte so the producer cannot block, retaining a fixed-size byte
+/// tail even for a single arbitrarily long line or incomplete UTF-8 sequence.
+async fn read_quality_tail(mut reader: impl AsyncRead + Unpin) -> std::io::Result<String> {
+    let mut output = VecDeque::with_capacity(QUALITY_OUTPUT_LIMIT);
+    let mut chunk = [0; 8192];
+    loop {
+        let read = reader.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+        let discard = (output.len() + read).saturating_sub(QUALITY_OUTPUT_LIMIT);
+        output.drain(..discard);
+        output.extend(&chunk[..read]);
+    }
+    let bytes: Vec<_> = output.into_iter().collect();
+    Ok(tail(&String::from_utf8_lossy(&bytes), QUALITY_OUTPUT_LIMIT))
 }
 fn completed_output(event: &Value, receipt: &WorkerReceipt) -> Result<Option<String>> {
     if event["method"] != "turn/completed"
@@ -1385,6 +1424,7 @@ impl DockerWorker {
         };
         self.save(&receipt)?;
         let control = receipt.request.clone();
+        let mut command_timed_out = false;
         let result = {
             let work = self.run(&mut receipt, cancel.clone());
             tokio::pin!(work);
@@ -1400,7 +1440,12 @@ impl DockerWorker {
                         let run=self.control_run(&control).await?;
                         let waiting=saved.pending_input.as_ref().is_some_and(|p|!p.delivered);
                         let expiry=if waiting {run.as_ref().and_then(|r|r.workflow.as_ref().and_then(|w|w.overall_deadline_at)).unwrap_or(control.deadline_at)}else{(control.deadline_at+chrono::Duration::milliseconds(saved.waited_millis as i64)).min(run.as_ref().map(|r|r.deadline_at).unwrap_or(control.deadline_at+chrono::Duration::milliseconds(saved.waited_millis as i64)))};
-                        if chrono::Utc::now()>=expiry{break Err(Error::Deadline);}
+                        let now = chrono::Utc::now();
+                        if now>=expiry {
+                            command_timed_out = matches!(control.execution, ExecutionKind::Quality { .. })
+                                && run.as_ref().is_none_or(|run| now < run.deadline_at);
+                            break Err(Error::Deadline);
+                        }
                     }
                 }
             }
@@ -1409,6 +1454,33 @@ impl DockerWorker {
         let mut receipt = self
             .receipt(operation)?
             .ok_or_else(|| Error::Worker("worker receipt disappeared".into()))?;
+        let result = if command_timed_out {
+            // Prepare a failed check, but never return it until the exact container
+            // and all of its descendants have been confirmed stopped below.
+            let ExecutionKind::Quality {
+                command,
+                content_version,
+            } = &control.execution
+            else {
+                unreachable!()
+            };
+            match self.quality_logs(&receipt).await {
+                Ok(output_tail) => serde_json::to_string(&CheckResult {
+                    name: command.name.clone(),
+                    argv: command.argv.clone(),
+                    exit_code: None,
+                    timed_out: true,
+                    cancelled: false,
+                    output_tail,
+                    content_version: content_version.clone(),
+                    comparison: String::new(),
+                })
+                .map_err(Error::from),
+                Err(error) => Err(error),
+            }
+        } else {
+            result
+        };
         match &result {
             Ok(output) => receipt.output = Some(output.clone()),
             Err(error) => receipt.error = Some(error.to_string()),
@@ -1568,5 +1640,150 @@ impl DockerWorker {
         }
         docker.image = image;
         Ok(docker)
+    }
+}
+
+#[cfg(test)]
+mod quality_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    async fn fixture(
+        mode: &str,
+        run_expired: bool,
+    ) -> (
+        tempfile::TempDir,
+        tempfile::TempDir,
+        DockerWorker,
+        ExecutionRequest,
+    ) {
+        let data = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .arg(workspace.path())
+                .status()
+                .unwrap()
+                .success()
+        );
+        let config = Config::new(data.path(), workspace.path()).unwrap();
+        let script = data.path().join("docker");
+        fs::write(
+            &script,
+            include_str!("../../tests/fixtures/docker-quality.py"),
+        )
+        .unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(data.path().join("mode"), mode).unwrap();
+        let mut docker = DockerConfig::local(&config, None);
+        docker.executable = script;
+        docker.uid = 1000;
+        docker.gid = 1000;
+        let run_id = if run_expired {
+            let runtime = crate::Runtime::open(config.clone()).await.unwrap();
+            let mut input = crate::StartRequest::new("expired", "session", "fixture");
+            input.timeout_seconds = 1;
+            runtime.start(input).await.unwrap().run_id
+        } else {
+            "run-quality".into()
+        };
+        let request = ExecutionRequest {
+            version: 1,
+            operation_id: format!("{run_id}-check"),
+            run_id: run_id.clone(),
+            workspace: workspace.path().to_string_lossy().into_owned(),
+            evidence_directory: data
+                .path()
+                .join("evidence")
+                .join(&run_id)
+                .to_string_lossy()
+                .into_owned(),
+            protected_paths: vec![],
+            deadline_at: chrono::Utc::now()
+                + chrono::Duration::seconds(if run_expired { 60 } else { 1 }),
+            execution: ExecutionKind::Quality {
+                command: super::super::QualityCommand {
+                    name: "fixture".into(),
+                    argv: vec!["python3".into(), "-c".into(), "pass".into()],
+                    timeout_seconds: 1,
+                    repeat_on_recovery: true,
+                },
+                content_version: "content".into(),
+            },
+        };
+        let worker = DockerWorker::open(config, docker).unwrap();
+        (data, workspace, worker, request)
+    }
+
+    #[tokio::test]
+    async fn command_timeout_is_a_failed_check_after_confirmed_cleanup() {
+        let (_data, _workspace, worker, request) = fixture("timeout", false).await;
+        let input = serde_json::to_string(&request).unwrap();
+        let output = worker
+            .dispatch_local(&request.operation_id, &input, CancellationToken::new())
+            .await
+            .unwrap();
+        let check: CheckResult = serde_json::from_str(&output).unwrap();
+        assert!(check.timed_out);
+        assert!(!check.passed());
+        assert_eq!(check.content_version, "content");
+        assert!(check.output_tail.contains("before timeout"));
+        let receipt = worker.receipt(&request.operation_id).unwrap().unwrap();
+        assert!(receipt.stopped);
+        assert!(receipt.error.is_none());
+        assert_eq!(
+            worker
+                .reconcile(&request.operation_id, &input)
+                .await
+                .unwrap(),
+            Reconciliation::Completed(output)
+        );
+    }
+
+    #[tokio::test]
+    async fn run_expiry_stays_a_deadline_and_unconfirmed_cleanup_stays_an_error() {
+        for (mode, run_expired) in [("timeout", true), ("cleanup-fails", false)] {
+            let (_data, _workspace, worker, request) = fixture(mode, run_expired).await;
+            let error = worker
+                .dispatch_local(
+                    &request.operation_id,
+                    &serde_json::to_string(&request).unwrap(),
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap_err();
+            if run_expired {
+                assert!(matches!(error, Error::Deadline));
+            } else {
+                assert!(
+                    error.to_string().contains("cleanup could not be confirmed"),
+                    "{error}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn quality_output_and_recovered_logs_keep_only_the_tail() {
+        let (_data, _workspace, worker, mut request) = fixture("output", false).await;
+        request.deadline_at += chrono::Duration::seconds(10);
+        let output = worker
+            .dispatch_local(
+                &request.operation_id,
+                &serde_json::to_string(&request).unwrap(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        let check: CheckResult = serde_json::from_str(&output).unwrap();
+        assert!(check.passed());
+        assert!(check.output_tail.len() <= 65536);
+        assert!(check.output_tail.ends_with("last: é☃"));
+        let mut receipt = worker.receipt(&request.operation_id).unwrap().unwrap();
+        let recovered: CheckResult =
+            serde_json::from_str(&worker.recover_output(&mut receipt).await.unwrap().unwrap())
+                .unwrap();
+        assert_eq!(recovered.output_tail, check.output_tail);
     }
 }

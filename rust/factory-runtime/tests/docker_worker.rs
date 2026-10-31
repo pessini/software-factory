@@ -219,3 +219,81 @@ limits: {step_timeout_seconds: 120, total_run_timeout_seconds: 600}
     );
     assert_eq!(result.status, Status::ReadyForReview, "{:?}", result.error);
 }
+
+#[tokio::test]
+#[ignore = "requires local Docker daemon and pinned software-factory-worker:0.154.0 image"]
+async fn docker_quality_timeout_and_large_output_are_failed_or_bounded_receipted_checks() {
+    let data = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    git(workspace.path(), &["init", "-q"]);
+    let config = Config::new(data.path(), workspace.path()).unwrap();
+    let worker = DockerWorker::open(config.clone(), DockerConfig::local(&config, None)).unwrap();
+    for (name, program, timed_out) in [
+        (
+            "timeout",
+            "import time; print('before timeout', flush=True); time.sleep(30)",
+            true,
+        ),
+        (
+            "large-output",
+            "import os; [os.write(1, b'x' * 8192) for _ in range(16384)]; print('last: é☃')",
+            false,
+        ),
+    ] {
+        std::fs::create_dir_all(data.path().join("evidence/run-quality-regression")).unwrap();
+        let request = ExecutionRequest {
+            version: 1,
+            operation_id: format!("run-quality-regression-{name}"),
+            run_id: "run-quality-regression".into(),
+            workspace: workspace.path().to_string_lossy().into_owned(),
+            evidence_directory: data
+                .path()
+                .join("evidence/run-quality-regression")
+                .to_string_lossy()
+                .into_owned(),
+            protected_paths: vec![],
+            deadline_at: chrono::Utc::now()
+                + chrono::Duration::seconds(if timed_out { 3 } else { 60 }),
+            execution: ExecutionKind::Quality {
+                command: QualityCommand {
+                    name: name.into(),
+                    argv: vec!["python3".into(), "-c".into(), program.into()],
+                    timeout_seconds: if timed_out { 3 } else { 60 },
+                    repeat_on_recovery: true,
+                },
+                content_version: "quality-regression-content".into(),
+            },
+        };
+        let input = serde_json::to_string(&request).unwrap();
+        let output = worker
+            .dispatch(&request.operation_id, &input, CancellationToken::new())
+            .await
+            .unwrap();
+        let check: CheckResult = serde_json::from_str(&output).unwrap();
+        assert_eq!(check.timed_out, timed_out);
+        assert_eq!(check.passed(), !timed_out);
+        assert!(check.output_tail.len() <= 65536);
+        assert!(check.output_tail.contains(if timed_out {
+            "before timeout"
+        } else {
+            "last: é☃"
+        }));
+        let receipt = worker.receipt(&request.operation_id).unwrap().unwrap();
+        assert!(receipt.stopped);
+        assert_eq!(
+            worker
+                .reconcile(&request.operation_id, &input)
+                .await
+                .unwrap(),
+            Reconciliation::Completed(output)
+        );
+        assert!(
+            Command::new("docker")
+                .args(["rm", receipt.container_id.as_ref().unwrap()])
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    }
+}
