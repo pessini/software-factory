@@ -20,7 +20,7 @@ pub(crate) struct FactoryWorkflow(pub Runtime);
 #[async_trait]
 impl WorkflowExecutor for FactoryWorkflow {
     fn has_workflow(&self, id: &str) -> bool {
-        id == GRAPH_VERSION
+        [GRAPH_VERSION, crate::workflow::GRAPH_VERSION].contains(&id)
     }
     async fn execute(
         &self,
@@ -38,6 +38,11 @@ impl WorkflowExecutor for FactoryWorkflow {
     ) -> std::result::Result<Value, String> {
         if !self.has_workflow(workflow) {
             return Err("unknown graph version".into());
+        }
+        if workflow == crate::workflow::GRAPH_VERSION {
+            return crate::workflow::run_graph(&self.0, input, context)
+                .await
+                .map_err(|e| e.to_string());
         }
         self.run(input, context).await.map_err(|e| e.to_string())
     }
@@ -190,6 +195,7 @@ async fn execute_worker(runtime: &Runtime, id: &str, cancel: CancellationToken) 
     {
         Reconciliation::Completed(result) => result,
         Reconciliation::Unknown(reason) => return Err(Error::Worker(reason)),
+        Reconciliation::Waiting(reason) => return Err(Error::Waiting(reason)),
         Reconciliation::Absent => {
             runtime
                 .change(id, |run| {

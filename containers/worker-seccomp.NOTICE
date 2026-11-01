@@ -1,0 +1,5 @@
+Based on moby/profiles seccomp/default.json, licensed under Apache-2.0.
+Source: https://github.com/moby/profiles/blob/main/seccomp/default.json
+Upstream source SHA-256: 6416b47770785a41ac59073cdc77d9fe98517df2799dc83ef207e622de3053f6
+Factory adds the namespace/mount syscall allow rule required by rootless bubblewrap.
+All other Docker default syscall restrictions remain in the profile.

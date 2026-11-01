@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "BlockingQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommendation"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context"
+        }
+      },
+      "required": [
+        "id",
+        "question"
+      ],
+      "title": "BlockingQuestion",
+      "type": "object"
+    },
+    "CompletionCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "title": "CompletionCriterion",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 2,
+      "title": "Version",
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "blocked",
+        "needs_input"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "acceptance_criteria": {
+      "items": {
+        "$ref": "#/$defs/CompletionCriterion"
+      },
+      "title": "Acceptance Criteria",
+      "type": "array"
+    },
+    "implementation_steps": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 12,
+      "title": "Implementation Steps",
+      "type": "array"
+    },
+    "scope_exclusions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Scope Exclusions",
+      "type": "array"
+    },
+    "test_strategy": {
+      "minLength": 1,
+      "title": "Test Strategy",
+      "type": "string"
+    },
+    "risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "advisory_test_commands": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Advisory Test Commands",
+      "type": "array"
+    },
+    "questions": {
+      "items": {
+        "$ref": "#/$defs/BlockingQuestion"
+      },
+      "maxItems": 3,
+      "title": "Questions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "status",
+    "summary",
+    "acceptance_criteria",
+    "implementation_steps",
+    "test_strategy"
+  ],
+  "title": "PlanEnvelope",
+  "type": "object"
+}

@@ -46,7 +46,12 @@ fn decode(document: &str) -> Result<Run> {
     // Check the envelope before decoding fields that could change in a later schema.
     let value: serde_json::Value = serde_json::from_str(document)?;
     if value["schema_version"] != crate::contracts::SCHEMA_VERSION
-        || value["graph_version"] != crate::contracts::GRAPH_VERSION
+        || ![
+            crate::contracts::GRAPH_VERSION,
+            crate::workflow::GRAPH_VERSION,
+        ]
+        .iter()
+        .any(|v| value["graph_version"] == *v)
     {
         return Err(Error::Incompatible(
             "unsupported state/graph version; use the previous binary or an explicit migration"

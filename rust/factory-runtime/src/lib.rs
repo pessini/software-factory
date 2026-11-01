@@ -4,6 +4,7 @@ pub mod contracts;
 mod error;
 mod store;
 mod worker;
+pub mod workflow;
 
 pub use config::Config;
 pub use contracts::{Interaction, Operation, OperationState, Run, StartRequest, Status};

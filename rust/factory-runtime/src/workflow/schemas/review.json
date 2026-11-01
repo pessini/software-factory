@@ -1,0 +1,264 @@
+{
+  "$defs": {
+    "CriterionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "satisfied",
+            "unmet",
+            "not_verified"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "evidence": {
+          "minLength": 1,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "status",
+        "evidence",
+        "evidence_refs"
+      ],
+      "title": "CriterionResult",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "criterion_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Criterion Id"
+        },
+        "category": {
+          "enum": [
+            "correctness",
+            "security",
+            "reliability",
+            "performance",
+            "testing",
+            "scope",
+            "evidence",
+            "documentation"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "warning",
+            "suggestion"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "evidence": {
+          "minLength": 1,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "required_change": {
+          "minLength": 1,
+          "title": "Required Change",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "title",
+        "evidence",
+        "evidence_refs",
+        "required_change",
+        "confidence"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "FindingResolution": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "unresolved",
+            "fixed",
+            "reopened"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "evidence": {
+          "minLength": 1,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "finding_id",
+        "status",
+        "evidence",
+        "evidence_refs"
+      ],
+      "title": "FindingResolution",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 2,
+      "title": "Version",
+      "type": "integer"
+    },
+    "content_version": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Version",
+      "type": "string"
+    },
+    "approved": {
+      "title": "Approved",
+      "type": "boolean"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "criteria": {
+      "items": {
+        "$ref": "#/$defs/CriterionResult"
+      },
+      "minItems": 1,
+      "title": "Criteria",
+      "type": "array"
+    },
+    "resolutions": {
+      "items": {
+        "$ref": "#/$defs/FindingResolution"
+      },
+      "title": "Resolutions",
+      "type": "array"
+    },
+    "manual_work": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Manual Work",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "content_version",
+    "approved",
+    "summary",
+    "findings",
+    "criteria"
+  ],
+  "title": "ReviewEnvelope",
+  "type": "object"
+}

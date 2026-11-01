@@ -9,6 +9,7 @@ pub enum Reconciliation {
     Absent,
     Completed(String),
     Unknown(String),
+    Waiting(String),
 }
 
 /// Providers must distinguish proven absence from an uncertain dispatch. Only a
@@ -18,6 +19,14 @@ pub enum Reconciliation {
 /// discoverable through reconciliation. Protected process cleanup is part of #17.
 #[async_trait]
 pub trait Worker: Send + Sync {
+    async fn model_catalog(&self) -> Result<Vec<crate::workflow::config::ModelOption>> {
+        Ok(Vec::new())
+    }
+    /// Confirm process/container cleanup before releasing a workspace claim.
+    /// In-process adapters own no surviving external writers by default.
+    async fn stop_operation(&self, _operation_id: &str, _request: &str) -> Result<()> {
+        Ok(())
+    }
     async fn reconcile(&self, operation_id: &str, request: &str) -> Result<Reconciliation>;
     async fn dispatch(
         &self,
@@ -117,6 +126,9 @@ pub enum CrashPoint {
 /// Injection point for process-death acceptance tests; production has no faults.
 pub trait Faults: Send + Sync {
     fn hit(&self, point: CrashPoint);
+    fn hit_operation(&self, point: CrashPoint, _operation_id: &str) {
+        self.hit(point);
+    }
 }
 pub struct NoFaults;
 impl Faults for NoFaults {
