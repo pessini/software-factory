@@ -117,5 +117,5 @@ def serve_mcp(
 ) -> None:
     create_mcp(
         FactoryControl(workspace, storage_root=storage_root, session_id=session_id),
-        PlanningControl(workspace, storage_root=storage_root),
+        PlanningControl(workspace, storage_root=storage_root, session_id=session_id),
     ).run(transport="stdio")

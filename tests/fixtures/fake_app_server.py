@@ -94,7 +94,44 @@ for line in sys.stdin:
         prompt = params["input"][0]["text"]
         context = data(prompt)
         original = context.get("original_request", "")
-        if "read-only Planner" in prompt:
+        if "read-only Grill with Docs" in prompt:
+            output = {
+                "version": 1,
+                "status": "questions",
+                "summary": "Choose a recipient",
+                "questions": [
+                    {
+                        "id": "recipient",
+                        "question": "Who should be greeted?",
+                        "options": ["world"],
+                        "recommendation": "world",
+                        "context": "A public greeting",
+                    }
+                ],
+            }
+            if context.get("rounds"):
+                output = {
+                    "version": 1,
+                    "status": "ready",
+                    "summary": "Greeting planned",
+                    "decisions": [
+                        {
+                            "id": "recipient",
+                            "title": "Recipient",
+                            "decision": "world",
+                            "rationale": "The user chose world",
+                        }
+                    ],
+                    "plan": {
+                        "goal": "Greet world",
+                        "scope": ["greeting.txt"],
+                        "requirements": ["Hello, world!"],
+                        "completion_checks": [
+                            {"id": "greeting", "description": "The greeting is Hello, world!"}
+                        ],
+                    },
+                }
+        elif "read-only Planner" in prompt:
             if "[tamper]" in original:
                 try:
                     (cwd / "greeting.txt").write_text("forbidden")

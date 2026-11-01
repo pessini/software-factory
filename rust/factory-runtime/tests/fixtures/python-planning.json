@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "workspace": "/REPLACED",
+  "sessions": [
+    {
+      "session_id": "pln_saved",
+      "created_at": "2026-01-01T00:00:00Z",
+      "revisions": [
+        {
+          "source_run_id": "original-python-run",
+          "status": "planned",
+          "request": "Greet",
+          "feedback": null,
+          "snapshot": {
+            "version": 1,
+            "planning_session_id": "pln_saved",
+            "revision": 1,
+            "run_id": "original-python-run",
+            "previous_run_id": null,
+            "request": "Greet",
+            "feedback": null,
+            "summary": "Greeting planned",
+            "plan": {
+              "goal": "Greet world",
+              "scope": [
+                "Greeting"
+              ],
+              "requirements": [
+                "Say hello"
+              ],
+              "completion_checks": [
+                {
+                  "id": "greeting",
+                  "description": "Prints Hello, world!"
+                }
+              ],
+              "assumptions": [],
+              "exclusions": [],
+              "deferred": [],
+              "sources": []
+            },
+            "decisions": [],
+            "glossary": [],
+            "topics": [],
+            "affected": [],
+            "rounds": [],
+            "documents": {
+              "head": "12345678901234567890",
+              "files": {}
+            }
+          },
+          "snapshot_content": "{\"affected\": [], \"decisions\": [], \"documents\": {\"files\": {}, \"head\": \"12345678901234567890\"}, \"feedback\": null, \"glossary\": [], \"plan\": {\"assumptions\": [], \"completion_checks\": [{\"description\": \"Prints Hello, world!\", \"id\": \"greeting\"}], \"deferred\": [], \"exclusions\": [], \"goal\": \"Greet world\", \"requirements\": [\"Say hello\"], \"scope\": [\"Greeting\"], \"sources\": []}, \"planning_session_id\": \"pln_saved\", \"previous_run_id\": null, \"request\": \"Greet\", \"revision\": 1, \"rounds\": [], \"run_id\": \"original-python-run\", \"summary\": \"Greeting planned\", \"topics\": [], \"version\": 1}",
+          "plan_hash": "919220f9c3965e49ee7e771856227fac0353a924559011039a00c7c2671abfa9",
+          "documents": {
+            "head": "12345678901234567890",
+            "files": {}
+          },
+          "rounds": [],
+          "configuration": {
+            "version": 2,
+            "workflow": "simple-sdlc",
+            "review_mode": "single",
+            "review_policy": {
+              "trivial_max_lines": 10,
+              "normal_max_lines": 100,
+              "normal_max_files": 20,
+              "sensitive_paths": [],
+              "documentation_paths": [
+                "*.md",
+                "*.rst",
+                "*.txt",
+                "*.adoc",
+                "LICENSE*"
+              ],
+              "generated_paths": [
+                "*.map",
+                "*.snap",
+                "*.generated.*"
+              ]
+            },
+            "agents": {
+              "planner": {
+                "provider": "codex",
+                "model": "gpt-5.4",
+                "reasoning_level": "high",
+                "permission_mode": "auto"
+              },
+              "builder": {
+                "provider": "codex",
+                "model": "gpt-5.4",
+                "reasoning_level": "high",
+                "permission_mode": "accept-edits"
+              },
+              "reviewer": {
+                "provider": "codex",
+                "model": "gpt-5.4",
+                "reasoning_level": "high",
+                "permission_mode": "auto"
+              }
+            },
+            "quality": {
+              "commands": [
+                {
+                  "name": "check",
+                  "argv": [
+                    "true"
+                  ],
+                  "timeout_seconds": 900,
+                  "repeat_on_recovery": false
+                }
+              ]
+            },
+            "settings": {
+              "shared": {
+                "provider": null,
+                "model": null,
+                "reasoning_level": null
+              },
+              "steps": {},
+              "preset": null
+            },
+            "presets": {},
+            "resolved_settings": null,
+            "limits": {
+              "max_test_repairs": 2,
+              "max_review_revisions": 1,
+              "total_run_timeout_seconds": 7200,
+              "overall_run_timeout_seconds": 604800,
+              "step_timeout_seconds": 900,
+              "connection_retries": 2
+            },
+            "safety": {
+              "protected_paths": [],
+              "auto_commit": false,
+              "allow_push": false
+            },
+            "delivery": {
+              "mode": "manual",
+              "repository": null,
+              "base_branch": "main",
+              "work_type": "feat",
+              "issue": null,
+              "title": null,
+              "review_fixes": false
+            },
+            "worker_connection": {
+              "runtime": "codex",
+              "model_connection": "native",
+              "codex_version": "0.154.0"
+            }
+          },
+          "legacy_handoff": null,
+          "legacy_implementation": null,
+          "source_record": {
+            "events": [],
+            "error": null
+          }
+        }
+      ]
+    }
+  ]
+}

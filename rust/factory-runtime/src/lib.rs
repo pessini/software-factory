@@ -15,3 +15,7 @@ pub use worker::{CrashPoint, FakeWorker, Faults, NoFaults, Reconciliation, Worke
 mod graph;
 mod runtime;
 pub use runtime::{Runtime, Services};
+
+pub mod control;
+pub mod http;
+pub mod planning;

@@ -65,7 +65,11 @@ async fn concurrent_resumes_have_one_writer_and_saved_cancellation_stops_it() {
         .unwrap();
     let observer = Runtime::open(config.clone()).await.unwrap();
     assert_eq!(observer.resume(&id).await.unwrap().status, Status::Running);
-    assert_eq!(observer.cancel(&id).await.unwrap().status, Status::Stopping);
+    // Cleanup can finish before the cancellation call returns.
+    assert!(matches!(
+        observer.cancel(&id).await.unwrap().status,
+        Status::Stopping | Status::Cancelled
+    ));
     let cancelled = tokio::time::timeout(std::time::Duration::from_secs(5), active)
         .await
         .unwrap()

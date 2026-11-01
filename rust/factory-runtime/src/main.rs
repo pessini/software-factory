@@ -1,6 +1,5 @@
-use chrono::Utc;
 use factory_runtime::{
-    Config, CrashPoint, Error, FakeWorker, Faults, Result, Runtime, StartRequest, Status,
+    Config, CrashPoint, Error, FakeWorker, Faults, Result, Runtime, StartRequest,
 };
 use std::sync::Arc;
 
@@ -27,6 +26,7 @@ impl ProcessFaults {
             CrashPoint::AfterDispatch => "after_dispatch",
             CrashPoint::AfterResult => "after_result",
             CrashPoint::AfterQueueFinish => "after_queue_finish",
+            CrashPoint::AfterHandoffIntent => "after_handoff_intent",
         };
         if std::env::var("FACTORY_SLICE_CRASH_AT").as_deref() == Ok(name) {
             // Acceptance-only abrupt exit: no Rust destructors or shutdown hooks.
@@ -121,46 +121,40 @@ async fn command(args: Vec<String>) -> Result<()> {
             serde_json::to_value(runtime.answer(id, interaction, approved).await?)?
         }
         ("list", []) => serde_json::to_value(runtime.list().await?)?,
-        ("serve", []) => {
-            println!(
-                "{}",
-                serde_json::json!({"ready": true, "schema_version": 1})
-            );
-            let mut delivery_poll = std::collections::HashMap::new();
-            loop {
-                for run in runtime.list().await? {
-                    if (run.status.is_terminal() && !run.delivery_pending())
-                        || (run.status == Status::RecoveryNeeded
-                            && !run.cancel_requested
-                            && Utc::now() < run.expires_at())
-                    {
-                        continue;
-                    }
-                    if run.delivery_pending() {
-                        let now = tokio::time::Instant::now();
-                        if delivery_poll
-                            .get(&run.run_id)
-                            .is_some_and(|next| now < *next)
-                        {
-                            continue;
-                        }
-                        delivery_poll
-                            .insert(run.run_id.clone(), now + std::time::Duration::from_secs(5));
-                    }
-                    let waiting =
-                        run.status == Status::WaitingForInput && run.waiting_for_answers();
-                    if !waiting || run.cancel_requested || Utc::now() >= run.expires_at() {
-                        match runtime.resume(&run.run_id).await {
-                            Ok(_) | Err(Error::Busy) => (),
-                            Err(error) => return Err(error),
-                        }
-                    }
+        ("import-planning", [path]) => {
+            let control = factory_runtime::control::Control::open(runtime).await?;
+            control
+                .import_planning(serde_json::from_slice(&std::fs::read(path)?)?)
+                .await?
+        }
+        ("control", [operation, payload]) => {
+            let control = factory_runtime::control::Control::open(runtime).await?;
+            control
+                .call(operation, serde_json::from_str(payload)?)
+                .await?
+        }
+        ("serve", []) | ("web", []) => {
+            let control = factory_runtime::control::Control::open(runtime).await?;
+            let token = match std::env::var("FACTORY_HTTP_TOKEN") {
+                Ok(token) if token.len() >= 24 => token,
+                Ok(_) => {
+                    return Err(Error::Config(
+                        "FACTORY_HTTP_TOKEN must contain at least 24 characters".into(),
+                    ));
                 }
-                tokio::select! {
-                    result = tokio::signal::ctrl_c() => { result?; return Ok(()); }
-                    _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => (),
+                Err(_) => {
+                    use std::io::Read;
+                    let mut random = [0u8; 32];
+                    std::fs::File::open("/dev/urandom")?.read_exact(&mut random)?;
+                    random.iter().map(|byte| format!("{byte:02x}")).collect()
                 }
-            }
+            };
+            return factory_runtime::http::serve(
+                control,
+                &std::env::var("FACTORY_HTTP_BIND").unwrap_or_else(|_| "127.0.0.1:4317".into()),
+                &token,
+            )
+            .await;
         }
         _ => return Err(usage()),
     };
@@ -169,5 +163,5 @@ async fn command(args: Vec<String>) -> Result<()> {
 }
 
 fn usage() -> Error {
-    Error::Config("usage: factory-runtime <absolute-data-dir> <absolute-workspace> configure-docker <backend-json-file> | implement <StartRequest-json> <config-yaml> | start <StartRequest-json> | status/resume/cancel <run-id> | answer <run-id> <interaction-id> true/false | answer-questions <run-id> <interaction-id> <answers-json> | deliver <run-id> [policy-json-file] | fix-reviews <run-id> <thread-id>... | cancel-delivery <run-id> | list | serve".into())
+    Error::Config("usage: factory-runtime <absolute-data-dir> <absolute-workspace> configure-docker <backend-json-file> | implement <StartRequest-json> <config-yaml> | start <StartRequest-json> | status/resume/cancel <run-id> | answer <run-id> <interaction-id> true/false | answer-questions <run-id> <interaction-id> <answers-json> | deliver <run-id> [policy-json-file] | fix-reviews <run-id> <thread-id>... | cancel-delivery <run-id> | list | control <operation> <json> | serve".into())
 }

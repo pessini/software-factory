@@ -19,6 +19,7 @@ from software_factory.execution import ExecutionManager
 from software_factory.ownership import command_lease
 from software_factory.persistence import RunStore
 from software_factory.processes import CleanupUncertain, group_alive, process_identity
+from software_factory.remote import RemoteTransport
 from software_factory.settings import resolve_config
 from software_factory.state import FINAL_STATUSES
 from software_factory.worker_manager import ProtectedWorkerManager
@@ -34,6 +35,7 @@ class FactoryControl:
         execution: ExecutionManager | None = None,
         launch: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
+        self.remote = RemoteTransport.from_environment(workspace)
         self.workspace = workspace.expanduser().resolve(strict=True)
         self.context = FactoryContext.open(
             self.workspace, storage_root=storage_root, session_id=session_id
@@ -48,6 +50,8 @@ class FactoryControl:
         await launch_job(self.workspace, self.context, run_id)
 
     async def engine(self, run_id: str) -> FactoryEngine:
+        if self.remote:
+            raise ValueError("use the Rust control API for saved Rust runs")
         await self.store.initialize()
         run = await self.store.get_run(run_id)
         if run is None:
@@ -84,6 +88,16 @@ class FactoryControl:
         workflow: str = "implementation",
         planning: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if self.remote:
+            if configuration or required_criteria or workflow != "implementation" or planning:
+                raise ValueError("Rust execution policy is owned by the service")
+            return await self.remote.call(
+                "start",
+                request=request,
+                request_id=request_id,
+                session_id=self.context.session_id,
+                selection=selection.model_dump(mode="json") if selection else None,
+            )
         if not request.strip() or not request_id.strip() or len(request_id) > 200:
             raise ValueError("a request and a request ID of 1 to 200 characters are required")
         payload: dict[str, Any] = {
@@ -164,6 +178,8 @@ class FactoryControl:
             return await self.status(run_id)
 
     async def status(self, run_id: str, *, after_event: int = 0) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call("status", run_id=run_id, after_event=after_event)
         if after_event < 0:
             raise ValueError("event position cannot be negative")
         engine = await self.engine(run_id)
@@ -223,6 +239,10 @@ class FactoryControl:
     async def answer(
         self, run_id: str, interaction_id: str, answers: dict[str, str]
     ) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call(
+                "answer", run_id=run_id, interaction_id=interaction_id, answers=answers
+            )
         await self.engine(run_id)
         changed = await self.store.answer_interaction(run_id, interaction_id, answers)
         if changed:
@@ -230,6 +250,8 @@ class FactoryControl:
         return await self.status(run_id)
 
     async def resume(self, run_id: str) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call("resume", run_id=run_id)
         await self.engine(run_id)
         record = await self.store.get_run(run_id)
         assert record is not None
@@ -238,6 +260,8 @@ class FactoryControl:
         return await self.status(run_id)
 
     async def cancel(self, run_id: str) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call("cancel", run_id=run_id)
         engine = await self.engine(run_id)
         record = await self.store.get_run(run_id)
         assert record is not None
@@ -250,11 +274,20 @@ class FactoryControl:
         return await self.status(run_id)
 
     async def models(self) -> list[dict[str, Any]]:
+        if self.remote:
+            return await self.remote.listing("models")
         return [model.model_dump(mode="json") for model in await self.execution.model_catalog()]
 
     async def settings(
         self, *, selection: Selection | None = None, run_id: str | None = None
     ) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call(
+                "settings",
+                session_id=self.context.session_id,
+                run_id=run_id,
+                selection=selection.model_dump(mode="json") if selection is not None else None,
+            )
         await self.store.initialize()
         if run_id is not None:
             engine = await self.engine(run_id)
