@@ -19,6 +19,11 @@ def _record_path(storage_root: Path) -> Path:
 
 def web_link(storage_root: Path, session_id: str) -> str | None:
     """Return the running service's address for a session, with its access token."""
+    if origin := os.environ.get("FACTORY_CONTROL_URL"):
+        from urllib.parse import quote
+
+        token = os.environ.get("FACTORY_HTTP_TOKEN", "")
+        return f"{origin.rstrip('/')}/planning/{quote(session_id, safe='')}?token={quote(token, safe='')}"
     try:
         record = json.loads(_record_path(storage_root).read_text())
         os.kill(int(record["pid"]), 0)
@@ -157,6 +162,12 @@ def create_app(planning: Any, token: str, port: int) -> Any:
 
 
 def serve_web(workspace: Path, *, storage_root: Path | None = None, port: int = 4317) -> None:
+    from software_factory.remote import RemoteTransport
+
+    if remote := RemoteTransport.from_environment(workspace):
+        print(f"Rust planning UI: {remote.url}/?token={remote.token}", flush=True)
+        return
+
     import uvicorn
 
     from software_factory.planning_control import PlanningControl

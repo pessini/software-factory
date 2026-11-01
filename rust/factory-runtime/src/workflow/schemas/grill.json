@@ -1,0 +1,357 @@
+{
+  "$defs": {
+    "BlockingQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommendation"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context"
+        }
+      },
+      "required": [
+        "id",
+        "question"
+      ],
+      "title": "BlockingQuestion",
+      "type": "object"
+    },
+    "CompletionCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "title": "CompletionCriterion",
+      "type": "object"
+    },
+    "DecisionRecord": {
+      "additionalProperties": false,
+      "description": "A settled decision; adr=true proposes a record under docs/adr/.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "decision": {
+          "minLength": 1,
+          "title": "Decision",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "adr": {
+          "default": false,
+          "title": "Adr",
+          "type": "boolean"
+        },
+        "sources": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "decision",
+        "rationale"
+      ],
+      "title": "DecisionRecord",
+      "type": "object"
+    },
+    "FeaturePlan": {
+      "additionalProperties": false,
+      "properties": {
+        "goal": {
+          "minLength": 1,
+          "title": "Goal",
+          "type": "string"
+        },
+        "scope": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Scope",
+          "type": "array"
+        },
+        "requirements": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Requirements",
+          "type": "array"
+        },
+        "completion_checks": {
+          "items": {
+            "$ref": "#/$defs/CompletionCriterion"
+          },
+          "minItems": 1,
+          "title": "Completion Checks",
+          "type": "array"
+        },
+        "assumptions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "exclusions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "deferred": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Deferred",
+          "type": "array"
+        },
+        "sources": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "goal",
+        "scope",
+        "requirements",
+        "completion_checks"
+      ],
+      "title": "FeaturePlan",
+      "type": "object"
+    },
+    "GlossaryTerm": {
+      "additionalProperties": false,
+      "properties": {
+        "term": {
+          "minLength": 1,
+          "title": "Term",
+          "type": "string"
+        },
+        "definition": {
+          "minLength": 1,
+          "title": "Definition",
+          "type": "string"
+        }
+      },
+      "required": [
+        "term",
+        "definition"
+      ],
+      "title": "GlossaryTerm",
+      "type": "object"
+    },
+    "Topic": {
+      "additionalProperties": false,
+      "description": "One decision area; waiting topics depend on another unsettled topic.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "settled",
+            "ready",
+            "waiting"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "depends_on": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision"
+        },
+        "question_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Question Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "state"
+      ],
+      "title": "Topic",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "questions",
+        "ready",
+        "blocked"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "topics": {
+      "items": {
+        "$ref": "#/$defs/Topic"
+      },
+      "title": "Topics",
+      "type": "array"
+    },
+    "questions": {
+      "items": {
+        "$ref": "#/$defs/BlockingQuestion"
+      },
+      "maxItems": 5,
+      "title": "Questions",
+      "type": "array"
+    },
+    "glossary": {
+      "items": {
+        "$ref": "#/$defs/GlossaryTerm"
+      },
+      "title": "Glossary",
+      "type": "array"
+    },
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/DecisionRecord"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "affected": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Affected",
+      "type": "array"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FeaturePlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "version",
+    "status",
+    "summary"
+  ],
+  "title": "GrillEnvelope",
+  "type": "object"
+}

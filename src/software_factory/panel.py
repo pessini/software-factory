@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from pydantic import Field
 
-from software_factory.config import ConfigModel, FactoryConfig, Selection
+from software_factory.config import ConfigModel, FactoryConfig, ModelOption, Selection
 from software_factory.context import FactoryContext
 from software_factory.control import FactoryControl
 from software_factory.engine import checkpoint_path
@@ -56,7 +56,12 @@ async def panel_request(
         selection = change_selection(selection, request.config_id, request.value)
         saved = await control.settings(selection=selection)
     config = FactoryConfig.model_validate(saved["configuration"])
-    options = SessionSettings.controls(config, selection, await control.execution.model_catalog())
+    catalog = (
+        [ModelOption.model_validate(item) for item in await control.models()]
+        if control.remote
+        else await control.execution.model_catalog()
+    )
+    options = SessionSettings.controls(config, selection, catalog)
     await SessionSettings(store, control.execution).cache_options(
         session_id, config, selection, options
     )

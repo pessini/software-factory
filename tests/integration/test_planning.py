@@ -212,3 +212,61 @@ async def test_waiting_planning_run_does_not_reserve_the_workspace(tmp_path, fac
     )
     result = await control.start("Write the answer", request_id="impl-4")
     assert result["status"] == "ready_for_review", result.get("error")
+
+
+async def test_python_planning_export_preserves_waiting_and_exact_snapshot(tmp_path, factory_yaml):
+    import hashlib
+
+    from software_factory.planning_export import export_planning
+
+    _, _, planning, _ = setup(tmp_path, factory_yaml, [grill_questions(), grill_ready()])
+    waiting = await planning.start("Plan the answer file", request_id="export-session")
+    archive = await export_planning(planning)
+    revision = archive["sessions"][0]["revisions"][0]
+    assert revision["status"] == "waiting_for_input"
+    assert revision["rounds"][0]["interaction_id"] == waiting["pending"]["interaction_id"]
+    planned = await planning.answer(
+        waiting["session_id"], waiting["pending"]["interaction_id"], {"value": "good"}
+    )
+    archive = await export_planning(planning)
+    revision = archive["sessions"][0]["revisions"][0]
+    assert hashlib.sha256(revision["snapshot_content"].encode()).hexdigest() == planned["plan_hash"]
+    assert revision["rounds"][0]["answers"] == {"value": "good"}
+
+
+async def test_export_includes_failed_bootstrap_without_document_artifacts(tmp_path, factory_yaml):
+    from software_factory.planning_export import export_planning
+
+    workspace, _, _, _ = setup(tmp_path, factory_yaml, [])
+    nested = workspace / "nested"
+    (nested / ".factory").mkdir(parents=True)
+    (nested / ".factory/factory.yaml").write_text(factory_yaml)
+
+    async def launch(run_id):
+        await (await planning.base.engine(run_id)).resume(run_id)
+
+    planning = PlanningControl(
+        nested,
+        storage_root=tmp_path / "failed-controller",
+        execution=FakeBB(nested, {}),
+        launch=launch,
+    )
+    failed = await planning.start("Plan from a non-root checkout", request_id="failed-bootstrap")
+    assert failed["status"] == "failed"
+    revision = (await export_planning(planning))["sessions"][0]["revisions"][0]
+    assert revision["status"] == "failed" and revision["documents"] == {}
+    assert revision["source_record"]["error"] == failed["error"]
+
+
+async def test_export_retains_historical_implementation_link_and_report(tmp_path, factory_yaml):
+    from software_factory.planning_export import export_planning
+
+    _, _, planning, _ = setup(tmp_path, factory_yaml, [grill_ready()], implement=True)
+    planned = await planning.start("Plan the answer file", request_id="export-handoff")
+    approved = await planning.approve(planned["session_id"], planned["plan_hash"])
+    implementation = approved["implementation"]
+    original_report = Path(implementation["final_report_path"]).read_text()
+    revision = (await export_planning(planning))["sessions"][0]["revisions"][0]
+    assert revision["legacy_handoff"]["implementation_run_id"] == implementation["run_id"]
+    assert revision["legacy_implementation"]["report"] == original_report
+    assert revision["legacy_implementation"]["pull_request"] == implementation["pull_request"]

@@ -2,14 +2,9 @@
 # Run `just` to list commands. Long-running commands stay in the foreground;
 # stop them with Ctrl+C. Saved runs survive restarting the process.
 #
-# UI proposal for #18: embed ADK-Rust's own `adk-surface` web home and workflow
-# observer in the native server. `just start` should then print a local /ui/ URL:
-# threads and approval cards for normal use; graph, steps and state for debugging.
-# No Python service or separate frontend server is needed for that deployment.
-# Reference (at the revision pinned by this project):
-# https://github.com/zavora-ai/adk-rust/blob/bd1bd5f450a6489d08e14220809033401282ed67/docs/official_docs/surfaces/web-home.md
-# Current limitation: Factory's runtime is not wired to those UI APIs yet, so
-# `start` currently runs the durable supervisor without a browser UI.
+# The native service serves the existing planning UI and owns background runs.
+# Open the token link it prints. Configure the protected Docker backend before
+# requesting provider work; see docs/rust-interfaces.md.
 #
 # Choose a target checkout and persistent storage outside that checkout:
 #   FACTORY_WORKSPACE=/absolute/checkout just start
@@ -30,9 +25,9 @@ default:
 build:
     cargo build --locked --release -p factory-runtime
 
-# Start the native Rust supervisor; builds automatically. Ctrl+C stops it.
+# Start the native Rust service and planning UI; builds automatically.
 start:
-    @printf '%s\n' 'Starting the Rust supervisor. No browser UI in this slice yet; Ctrl+C to stop.'
+    @printf '%s\n' 'Starting the Rust service and planning UI; Ctrl+C to stop.'
     cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" serve
 
 # Example: just run greeting-1 'Build a greeting' demo-session

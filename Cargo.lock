@@ -725,7 +725,9 @@ dependencies = [
  "adk-server",
  "adk-session",
  "async-trait",
+ "axum",
  "chrono",
+ "futures",
  "globset",
  "libc",
  "regex",
@@ -737,7 +739,9 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tokio-util",
+ "tower 0.5.3",
 ]
 
 [[package]]

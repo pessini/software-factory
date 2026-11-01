@@ -3,6 +3,7 @@ FROM rust:1.99.1@sha256:09027f873d45b8ecd1dc86f1fa13b7a62b875c961f017a0e331267b3
 WORKDIR /build
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY rust/factory-runtime rust/factory-runtime
+COPY src/software_factory/web_static src/software_factory/web_static
 RUN cargo build --locked --release -p factory-runtime
 
 FROM debian:stable-slim@sha256:13e0a2e78aa0554ad5ff66e4e260c6dbcdff807eb1f39d43b9fb0288aae88b04

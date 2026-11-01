@@ -11,7 +11,7 @@ mod phases;
 mod process;
 mod project;
 mod prompts;
-mod repository;
+pub(crate) mod repository;
 pub(crate) mod review_fixes;
 mod review_policy;
 mod verified_git;
@@ -77,6 +77,8 @@ pub struct Artifact {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkflowState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planning: Option<crate::planning::PlanningState>,
     pub next: String,
     pub outcome: Option<crate::Status>,
     pub project: Option<project::Project>,
@@ -113,6 +115,7 @@ pub struct WorkflowState {
 impl Default for WorkflowState {
     fn default() -> Self {
         Self {
+            planning: None,
             next: "bootstrap".into(),
             outcome: None,
             project: None,

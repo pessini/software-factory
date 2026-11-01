@@ -20,7 +20,12 @@ pub(crate) struct FactoryWorkflow(pub Runtime);
 #[async_trait]
 impl WorkflowExecutor for FactoryWorkflow {
     fn has_workflow(&self, id: &str) -> bool {
-        [GRAPH_VERSION, crate::workflow::GRAPH_VERSION].contains(&id)
+        [
+            GRAPH_VERSION,
+            crate::workflow::GRAPH_VERSION,
+            crate::planning::GRAPH_VERSION,
+        ]
+        .contains(&id)
     }
     async fn execute(
         &self,
@@ -38,6 +43,11 @@ impl WorkflowExecutor for FactoryWorkflow {
     ) -> std::result::Result<Value, String> {
         if !self.has_workflow(workflow) {
             return Err("unknown graph version".into());
+        }
+        if workflow == crate::planning::GRAPH_VERSION {
+            return crate::planning::run_graph(&self.0, input, context)
+                .await
+                .map_err(|e| e.to_string());
         }
         if workflow == crate::workflow::GRAPH_VERSION {
             return crate::workflow::run_graph(&self.0, input, context)
