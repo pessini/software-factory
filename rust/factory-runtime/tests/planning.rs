@@ -426,16 +426,26 @@ async fn sse_reconnect_replays_then_observes_committed_live_events() {
 #[tokio::test]
 async fn python_snapshot_import_preserves_original_hash_and_is_repeatable() {
     let data = tempfile::tempdir().unwrap();
-    let workspace = tempfile::tempdir().unwrap();
-    let runtime = Runtime::open(Config::new(data.path(), workspace.path()).unwrap())
+    // macOS temporary directories can be exposed through /var -> /private/var.
+    // Exercise the same alias/canonical identity distinction on every platform.
+    let workspace_root = tempfile::tempdir().unwrap();
+    let aliases = tempfile::tempdir().unwrap();
+    let workspace = aliases.path().join("workspace");
+    std::os::unix::fs::symlink(workspace_root.path(), &workspace).unwrap();
+    let runtime = Runtime::open(Config::new(data.path(), workspace.as_path()).unwrap())
         .await
         .unwrap();
     let control = factory_runtime::control::Control::open(runtime.clone())
         .await
         .unwrap();
+    assert_ne!(workspace.as_path(), control.workspace());
+    assert_eq!(
+        control.workspace(),
+        workspace_root.path().canonicalize().unwrap()
+    );
     let mut archive: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/python-planning.json")).unwrap();
-    archive["workspace"] = json!(workspace.path());
+    archive["workspace"] = json!(control.workspace());
     control.import_planning(archive.clone()).await.unwrap();
     let status = control
         .call("plan_status", json!({"session_id":"pln_saved"}))
@@ -491,7 +501,7 @@ async fn lost_approval_response_recovers_the_saved_intent_without_dispatch_on_re
         .unwrap();
     let mut archive: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/python-planning.json")).unwrap();
-    archive["workspace"] = json!(workspace.path());
+    archive["workspace"] = json!(control.workspace());
     control.import_planning(archive).await.unwrap();
     let plan = control
         .call("plan_status", json!({"session_id":"pln_saved"}))
@@ -602,7 +612,7 @@ async fn importing_a_waiting_revision_retains_previous_settled_decisions() {
         .unwrap();
     let mut archive: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/python-planning.json")).unwrap();
-    archive["workspace"] = json!(workspace.path());
+    archive["workspace"] = json!(control.workspace());
     let revision = &mut archive["sessions"][0]["revisions"][0];
     revision["status"] = json!("waiting_for_input");
     revision["snapshot"] = json!(null);
