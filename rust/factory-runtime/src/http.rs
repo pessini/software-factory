@@ -83,6 +83,12 @@ fn authorized(headers: &HeaderMap, token: &str) -> bool {
         .unwrap_or("");
     constant_eq(supplied, token)
 }
+fn query_token(uri: &axum::http::Uri) -> Option<String> {
+    Query::<BTreeMap<String, String>>::try_from_uri(uri)
+        .ok()?
+        .0
+        .remove("token")
+}
 async fn guard(
     State(state): State<Server>,
     request: axum::extract::Request,
@@ -94,11 +100,7 @@ async fn guard(
     }
     let is_page = request.uri().path() == "/" || request.uri().path().starts_with("/planning/");
     let token_query = is_page
-        && request
-            .uri()
-            .query()
-            .and_then(|q| q.strip_prefix("token="))
-            .is_some_and(|token| constant_eq(token, &state.token));
+        && query_token(request.uri()).is_some_and(|token| constant_eq(&token, &state.token));
     if !token_query && !authorized(headers, &state.token) {
         return (
             StatusCode::UNAUTHORIZED,
@@ -137,7 +139,7 @@ async fn guard(
     response
 }
 async fn page(State(state): State<Server>, uri: axum::http::Uri) -> Response {
-    if uri.query().is_some_and(|q| q.starts_with("token=")) {
+    if query_token(&uri).is_some_and(|token| constant_eq(&token, &state.token)) {
         return Response::builder()
             .status(303)
             .header(header::LOCATION, uri.path())
@@ -422,6 +424,11 @@ pub fn public_origin(
     Ok(origin)
 }
 
+fn planning_url(origin: &str, token: &str) -> String {
+    let encoded = percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC);
+    format!("{origin}/?token={encoded}")
+}
+
 pub async fn serve(control: Control, address: &str, token: &str) -> Result<()> {
     let _service_lock = control.maintenance_lock()?;
     let host = std::env::var("FACTORY_HTTP_HOST").unwrap_or_else(|_| address.into());
@@ -440,12 +447,24 @@ pub async fn serve(control: Control, address: &str, token: &str) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!(
         "{}",
-        json!({"ready":true,"control_version":1,"url":format!("{origin}/?token={token}")})
+        json!({"ready":true,"control_version":1,"url":planning_url(&origin, token)})
     );
     let app = router(control.clone(), token.into(), host);
     tokio::select! {
         result=axum::serve(listener,app)=>{result?;Ok(())},
         result=supervise(control)=>result,
         result=tokio::signal::ctrl_c()=>{result?;Ok(())},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn startup_link_round_trips_reserved_token_characters() {
+        let token = "operator/token+with=reserved&characters";
+        let url: axum::http::Uri = super::planning_url("http://127.0.0.1:4317", token)
+            .parse()
+            .unwrap();
+        assert_eq!(super::query_token(&url).as_deref(), Some(token));
     }
 }

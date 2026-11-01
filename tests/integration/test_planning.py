@@ -270,3 +270,36 @@ async def test_export_retains_historical_implementation_link_and_report(tmp_path
     assert revision["legacy_handoff"]["implementation_run_id"] == implementation["run_id"]
     assert revision["legacy_implementation"]["report"] == original_report
     assert revision["legacy_implementation"]["pull_request"] == implementation["pull_request"]
+
+
+@pytest.mark.parametrize(
+    "controller_state,operations,error",
+    [
+        ("running", [], "reconcile the original controller"),
+        ("unavailable", [], "reconcile the original controller"),
+        ("recovery_needed", [], "reconcile the original controller"),
+        ("idle", [{"state": "dispatching"}], "reconcile worker operations"),
+        ("idle", [{"state": "prepared"}], "reconcile worker operations"),
+    ],
+)
+async def test_export_rejects_unsettled_linked_implementation(
+    tmp_path, factory_yaml, monkeypatch, controller_state, operations, error
+):
+    from software_factory.planning_export import export_planning
+
+    _, _, planning, _ = setup(tmp_path, factory_yaml, [grill_ready()], implement=True)
+    planned = await planning.start("Plan the answer file", request_id="unsettled-export")
+    approved = await planning.approve(planned["session_id"], planned["plan_hash"])
+    implementation_id = approved["implementation"]["run_id"]
+    original_status = planning.base.status
+
+    async def status(run_id, **kwargs):
+        result = await original_status(run_id, **kwargs)
+        if run_id == implementation_id:
+            assert result["status"] == "ready_for_review"
+            result.update(controller_state=controller_state, operations=operations)
+        return result
+
+    monkeypatch.setattr(planning.base, "status", status)
+    with pytest.raises(ValueError, match=error):
+        await export_planning(planning)

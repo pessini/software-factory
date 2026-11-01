@@ -24,6 +24,9 @@ pub struct PlanningInput {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct PlanningState {
+    /// Turns whose read-only protection check completed before any human-input pause.
+    #[serde(default)]
+    pub checked_turns: std::collections::BTreeSet<String>,
     #[serde(default)]
     pub snapshot_content: Option<String>,
     #[serde(default)]
@@ -365,10 +368,35 @@ async fn interview(
             cancel.clone(),
         )
         .await?;
-        guard.check_protection(
-            &repository::snapshot(&runtime.config.workspace, protected).await?,
-            true,
-        )?;
+        let interaction_id = format!("{id}:grill:{round}");
+        // Existing saved questions also prove the turn passed protection. This
+        // keeps waiting runs written before checked_turns (and imports) resumable.
+        let workflow = run.workflow.as_ref().unwrap();
+        let checked = state.checked_turns.contains(&key)
+            || workflow
+                .interaction
+                .as_ref()
+                .is_some_and(|q| q.interaction_id == interaction_id)
+            || workflow.interactions.contains_key(&interaction_id);
+        if !checked {
+            guard.check_protection(
+                &repository::snapshot(&runtime.config.workspace, protected).await?,
+                true,
+            )?;
+            runtime
+                .change(id, |r| {
+                    r.workflow
+                        .as_mut()
+                        .unwrap()
+                        .planning
+                        .as_mut()
+                        .unwrap()
+                        .checked_turns
+                        .insert(key.clone());
+                    Ok(())
+                })
+                .await?;
+        }
         let envelope: GrillEnvelope = serde_json::from_str(&output)?;
         envelope.validate()?;
         artifacts::write(runtime, id, &format!("grill-round-{round}.json"), &envelope).await?;

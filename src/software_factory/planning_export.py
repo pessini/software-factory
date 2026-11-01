@@ -12,6 +12,14 @@ from software_factory.planning_control import PlanningControl
 from software_factory.state import FINAL_STATUSES
 
 
+def _require_quiescent(run: dict[str, Any]) -> None:
+    run_id = run["run_id"]
+    if run["controller_state"] in {"running", "unavailable", "recovery_needed"}:
+        raise ValueError(f"{run_id}: reconcile the original controller before export")
+    if any(op["state"] not in {"completed", "stopped"} for op in run["operations"]):
+        raise ValueError(f"{run_id}: reconcile worker operations before export")
+
+
 async def export_planning(planning: PlanningControl) -> dict[str, Any]:
     if planning.remote:
         raise ValueError("export must read the original local Python storage")
@@ -23,10 +31,7 @@ async def export_planning(planning: PlanningControl) -> dict[str, Any]:
             run = await planning.base.status(run_id)
             if run["status"] not in FINAL_STATUSES | {"waiting_for_input"}:
                 raise ValueError(f"{run_id}: stop or finish active Python work before export")
-            if run["controller_state"] in {"running", "unavailable", "recovery_needed"}:
-                raise ValueError(f"{run_id}: reconcile the original controller before export")
-            if any(op["state"] not in {"completed", "stopped"} for op in run["operations"]):
-                raise ValueError(f"{run_id}: reconcile worker operations before export")
+            _require_quiescent(run)
             handoff = await planning.store.planning_handoff(run_id)
             implementation = None
             if handoff:
@@ -36,6 +41,7 @@ async def export_planning(planning: PlanningControl) -> dict[str, Any]:
                 )
                 if implementation["status"] not in FINAL_STATUSES:
                     raise ValueError(f"{run_id}: finish or cancel its implementation before export")
+                _require_quiescent(implementation)
                 report_path = implementation.get("final_report_path")
                 if report_path:
                     impl_artifacts = ArtifactStore(

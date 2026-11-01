@@ -266,7 +266,6 @@ impl Runtime {
             })
             .await?;
         let run = self.ensure_scheduled(&run).await?;
-        let run = self.ensure_scheduled(&run).await?;
         if !run.status.is_terminal() {
             self.services
                 .queue
@@ -325,6 +324,7 @@ impl Runtime {
                 Ok(())
             })
             .await?;
+        let run = self.ensure_scheduled(&run).await?;
         if !run.status.is_terminal() {
             self.services
                 .queue

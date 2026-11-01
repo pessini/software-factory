@@ -80,6 +80,7 @@ quality:
 
 #[derive(Default)]
 struct Interviewer {
+    tamper_round: Option<usize>,
     receipts: std::sync::Mutex<std::collections::BTreeMap<String, (String, String)>>,
 }
 #[async_trait::async_trait]
@@ -105,6 +106,15 @@ impl factory_runtime::Worker for Interviewer {
     ) -> factory_runtime::Result<String> {
         let request: factory_runtime::workflow::ExecutionRequest = serde_json::from_str(input)?;
         assert!(request.read_only());
+        if self
+            .tamper_round
+            .is_some_and(|round| id.ends_with(&format!("grill-{round}")))
+        {
+            std::fs::write(
+                std::path::Path::new(&request.workspace).join("worker-edit.txt"),
+                "unauthorized write",
+            )?;
+        }
         assert!(std::path::Path::new(&request.evidence_directory).is_dir());
         let result=if id.ends_with("grill-1") {json!({"version":1,"status":"questions","summary":"Choose a recipient","questions":[{"id":"recipient","question":"Who?","options":["world"],"recommendation":"world","context":"A public greeting"}],"plan":null})} else {json!({"version":1,"status":"ready","summary":"Greeting planned","questions":[],"decisions":[{"id":"recipient","title":"Recipient","decision":"world","rationale":"User selected world","adr":true}],"glossary":[{"term":"Greeting","definition":"A welcome"}],"plan":{"goal":"Greet world","scope":["Greeting"],"requirements":["Say hello to world"],"completion_checks":[{"id":"greeting","description":"Prints Hello, world!"}],"assumptions":[],"exclusions":[],"deferred":[],"sources":[]}})}.to_string();
         self.receipts
@@ -117,6 +127,16 @@ impl factory_runtime::Worker for Interviewer {
 
 #[tokio::test]
 async fn answers_restart_exact_approval_and_revision_are_durable() {
+    planning_journey(None).await;
+}
+
+#[tokio::test]
+async fn planning_rejects_worker_writes_on_first_and_later_turns() {
+    planning_journey(Some(1)).await;
+    planning_journey(Some(2)).await;
+}
+
+async fn planning_journey(tamper_round: Option<usize>) {
     use factory_runtime::control::Control;
     use std::{process::Command, sync::Arc};
     let data = tempfile::tempdir().unwrap();
@@ -161,7 +181,10 @@ quality: {commands: [{name: check, argv: ["true"]}]}
         );
     }
     let config = Config::new(data.path(), root.path()).unwrap();
-    let worker = Arc::new(Interviewer::default());
+    let worker = Arc::new(Interviewer {
+        tamper_round,
+        ..Default::default()
+    });
     let runtime = Runtime::open_with_worker(
         config.clone(),
         worker.clone(),
@@ -180,14 +203,32 @@ quality: {commands: [{name: check, argv: ["true"]}]}
         .unwrap();
     let id = start["session_id"].as_str().unwrap();
     let run = start["run_id"].as_str().unwrap();
-    assert_eq!(
-        runtime.resume(run).await.unwrap().status,
-        factory_runtime::Status::WaitingForInput
+    let first_turn = runtime.resume(run).await.unwrap();
+    if tamper_round == Some(1) {
+        assert_eq!(first_turn.status, factory_runtime::Status::Blocked);
+        assert!(
+            first_turn
+                .error
+                .unwrap()
+                .contains("protected repository state changed")
+        );
+        return;
+    }
+    assert_eq!(first_turn.status, factory_runtime::Status::WaitingForInput);
+    assert!(
+        first_turn
+            .workflow
+            .unwrap()
+            .planning
+            .unwrap()
+            .checked_turns
+            .contains("grill-1")
     );
     let waiting = control
         .call("plan_status", json!({"session_id":id}))
         .await
         .unwrap();
+    std::fs::write(root.path().join("user-edit.txt"), "changed while waiting").unwrap();
     let answer = json!({"session_id":id,"interaction_id":waiting["pending"]["interaction_id"],"answers":{"recipient":"world"}});
     control.call("plan_answer", answer.clone()).await.unwrap();
     control.call("plan_answer", answer).await.unwrap();
@@ -195,10 +236,18 @@ quality: {commands: [{name: check, argv: ["true"]}]}
     let restarted = Runtime::open_with_worker(config, worker, Arc::new(factory_runtime::NoFaults))
         .await
         .unwrap();
-    assert_eq!(
-        restarted.resume(run).await.unwrap().status,
-        factory_runtime::Status::Planned
-    );
+    let second_turn = restarted.resume(run).await.unwrap();
+    if tamper_round == Some(2) {
+        assert_eq!(second_turn.status, factory_runtime::Status::Blocked);
+        assert!(
+            second_turn
+                .error
+                .unwrap()
+                .contains("protected repository state changed")
+        );
+        return;
+    }
+    assert_eq!(second_turn.status, factory_runtime::Status::Planned);
     let control = Control::open(restarted.clone()).await.unwrap();
     let planned = control
         .call("plan_status", json!({"session_id":id}))
@@ -633,6 +682,21 @@ async fn importing_a_waiting_revision_retains_previous_settled_decisions() {
         .unwrap();
     assert_eq!(run.input.planning.unwrap().previous, Some(previous));
     assert_eq!(status["pending"]["questions"][0]["id"], "scope");
+    assert!(run.scheduler_id.is_none());
+    control.call("plan_answer", json!({"session_id":"pln_saved", "interaction_id":status["pending"]["interaction_id"], "answers":{"scope":"yes"}})).await.unwrap();
+    let answered = runtime
+        .status(status["run_id"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert!(answered.scheduler_id.is_some());
+    assert_eq!(
+        answered.workflow.unwrap().interactions
+            [status["pending"]["interaction_id"].as_str().unwrap()]
+        .answers
+        .as_ref()
+        .unwrap()["scope"],
+        "yes"
+    );
 }
 
 #[test]
@@ -649,4 +713,79 @@ fn public_proxy_requires_https_even_when_the_backend_binds_loopback() {
         public_origin(local, "localhost:4317", None).unwrap(),
         "http://localhost:4317"
     );
+}
+
+#[tokio::test]
+async fn browser_token_query_is_decoded_and_exchanged_for_a_working_cookie() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let data = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let control = factory_runtime::control::Control::open(
+        Runtime::open(Config::new(data.path(), workspace.path()).unwrap())
+            .await
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let token = "operator/token+with=reserved&characters";
+    let app = factory_runtime::http::router(control, token.into(), "127.0.0.1:4317".into());
+    for path in [
+        "/?token=operator%2Ftoken%2Bwith%3Dreserved%26characters",
+        "/planning/saved?view=plan&token=operator%2Ftoken%2Bwith%3Dreserved%26characters",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("host", "127.0.0.1:4317")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 303);
+        assert_eq!(
+            response.headers()["location"],
+            path.split('?').next().unwrap()
+        );
+        let cookie = response.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap();
+        let authenticated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/sessions")
+                    .header("host", "127.0.0.1:4317")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authenticated.status(), 200);
+    }
+    for path in [
+        "/?token=wrong",
+        "/?token=operator%252Ftoken%252Bwith%253Dreserved%2526characters",
+        "/api/sessions?token=operator%2Ftoken%2Bwith%3Dreserved%26characters",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("host", "127.0.0.1:4317")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 401);
+    }
 }

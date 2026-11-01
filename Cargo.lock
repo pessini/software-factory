@@ -730,6 +730,7 @@ dependencies = [
  "futures",
  "globset",
  "libc",
+ "percent-encoding",
  "regex",
  "serde",
  "serde_json",
