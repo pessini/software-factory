@@ -996,8 +996,13 @@ impl Worker for DockerWorker {
                 if self.stop_requested(&receipt.request).await? {
                     return Err(Error::Cancelled);
                 }
-                let deadline = receipt.request.deadline_at
+                let operation_deadline = receipt.request.deadline_at
                     + chrono::Duration::milliseconds(receipt.waited_millis as i64);
+                let deadline = self
+                    .control_run(&receipt.request)
+                    .await?
+                    .map(|run| run.deadline_at.min(operation_deadline))
+                    .unwrap_or(operation_deadline);
                 if chrono::Utc::now() >= deadline {
                     return Err(Error::Deadline);
                 }
@@ -1129,6 +1134,33 @@ impl Drop for Rpc {
 impl DockerWorker {
     /// Catalog inspection makes no coding turn and never selects a fallback.
     pub async fn catalog(&self) -> Result<Vec<super::config::ModelOption>> {
+        // Catalog RPCs bypass the run supervisor. Bound them across HTTP calls
+        // and maintenance CLI processes sharing this controller data directory.
+        let catalog_lock = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.config.data_dir().join("docker-catalog.lock"))?;
+        catalog_lock.try_lock().map_err(|_| Error::Busy)?;
+        let records = self.config.data_dir().join("worker-records");
+        if records.exists() {
+            for entry in fs::read_dir(records)? {
+                let path = entry?.path();
+                if path.extension().is_none_or(|extension| extension != "json") {
+                    continue;
+                }
+                let mut saved: WorkerReceipt = serde_json::from_slice(&regular(&path)?)?;
+                if matches!(&saved.request.execution,
+                    ExecutionKind::Specialist { step, .. } if step == "catalog")
+                    && !saved.stopped
+                {
+                    // A controller death can leave a catalog outside supervision.
+                    // Confirm its exact labeled identity stopped before replacing it.
+                    self.stop(&mut saved).await?;
+                }
+            }
+        }
         let run_id = format!(
             "run-catalog-{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()

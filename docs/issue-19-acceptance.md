@@ -40,9 +40,10 @@ commands, and the existing Docker acceptance harness.
   whole receipt/checkout recovery, and refusal to overwrite existing state.
 - `scripts/accept-rust-production.py`: real Compose controller image, host socket
   group/non-root identity, stable same-path binds, saved planning/approval state
-  across clean-directory restore, exact revision approval, implementation checks
+  across clean-directory restore (same planned revision/hash awaiting approval), exact revision approval, implementation checks
   and report, actual in-flight provider-turn controller recreation, operation
-  dispatch counts and worker mount/resource/cleanup inspection. Provider is
+  dispatch counts, bounded catalog admission, SSE reconnect/replay, cancellation
+  remaining `stopping` until cleanup, and worker mount/resource/cleanup inspection. Provider is
   explicitly simulated. Generated evidence is `.checks/issue-19-production.json`.
 
 An initial arbitrary-timing recreation landed in the saved Docker-create window
@@ -60,8 +61,38 @@ same identity/labels until completion or the saved deadline, checks cancellation
 and never starts another turn. The production acceptance keeps the immediate
 restart as the regression; no diagnostic delay remains.
 
-Final validation commands/results and the saved production record are added after
-the final review and checks.
+Final validation passed on 2026-11-05; see the [saved production record](acceptance/issue-19.json).
+
+| Check | Result |
+| --- | --- |
+| `bash scripts/check-rust.sh` | Formatting, all-target typecheck, Clippy; **57 passed**, 4 opt-in tests ignored |
+| `bash scripts/check.sh` | Lint, formatting, mypy; **378 passed**, 22 opt-in tests skipped |
+| `cargo test --locked -p factory-runtime --test docker_worker docker_quality -- --ignored` | **2 passed**, real Docker quality/timeout/output/cleanup regressions; no provider calls |
+| `scripts/accept-rust-container.py --image software-factory-controller:issue-19` | **6 cases passed**, real production image, volumes, abrupt deaths and dispatch recovery |
+| `scripts/accept-rust-production.py` | **Passed**: restored exact plan hash/revision, 5 implementation operations each dispatched once, 10 stopped worker inspections, SSE replay, in-flight recreation, cancellation and deterministic catalog admission |
+
+Tested Rust is 1.99.1, ADK revision is
+`bd1bd5f450a6489d08e14220809033401282ed67`, Docker Engine is 29.1.3, and the
+retained Python checks used 3.14.10. Controller image ID is
+`sha256:7213c322cd6694dd6792ac0b0d1fcbcfa1118281d66e71eecd262fe964d5af39`.
+The JSON records the simulated worker image ID and final source hashes; its
+`source_base` is the implementation commit before the reviewed corrections.
+Main was checked again after final acceptance and remained at the SHA above.
+
+## Standards
+
+No outstanding findings. The review corrected recovery's deadline clamp to the
+saved current run budget and replaced a scheduling-dependent catalog concurrency
+test with a deterministic external-provider gate. Final re-review passed.
+
+## Spec
+
+No outstanding actionable implementation findings. The review corrected unbounded
+catalog admission and changed the backup acceptance from a saved interview to a
+completed exact plan awaiting approval. Final re-review confirmed both fixes.
+The documented release-evidence gap below remains open.
+
+Standards: **0 findings**. Spec: **0 actionable code findings, 1 release-evidence gap**.
 
 ## Gates remaining before production cutover
 

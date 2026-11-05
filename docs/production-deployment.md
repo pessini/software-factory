@@ -107,7 +107,10 @@ read-only. The established [worker policy](rust-workflow.md) supplies separate P
 namespaces, non-root IDs, dropped capabilities, seccomp, read-only roots, 2 CPUs,
 2 GiB memory and 256 PIDs per worker; quality commands have no network. The
 controller defaults to one supervised run (maximum supported setting 16), 2 CPUs,
-2 GiB and 256 PIDs. Only one writer owns this workspace. Review per-run time/repair
+2 GiB and 256 PIDs. Catalog inspection has one additional cross-process admission
+slot: concurrent requests return HTTP 409 Busy and may be retried after the active
+inspection finishes. Interrupted catalog workers are confirmed stopped before a
+replacement is created. Only one writer owns this workspace. Review per-run time/repair
 budgets in `.factory/factory.yaml`; these remain durable run inputs.
 
 PR publication needs GitHub CLI credentials supplied only to the controller.

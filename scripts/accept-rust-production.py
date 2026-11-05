@@ -14,7 +14,9 @@ import os
 import socket
 import sys
 import time
+import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import mkdtemp
 
@@ -106,6 +108,33 @@ def main() -> None:
             ]
         )
 
+    def event_id(run_id, cursor):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/runs/{run_id}/events",
+            headers={"authorization": f"Bearer {token}", "last-event-id": str(cursor)},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            for line in response:
+                if line.startswith(b"id:"):
+                    return int(line.split(b":", 1)[1])
+        raise AssertionError("no saved SSE event")
+
+    def wait_for_builder(run_id):
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            for receipt in fixture.receipts():
+                if (
+                    receipt["request"]["run_id"] == run_id
+                    and receipt["request"]["execution"].get("step") == "build"
+                    and receipt["execution_id"]
+                    and not receipt["stopped"]
+                ):
+                    return
+            status = api("status", run_id=run_id)
+            assert status["status"] not in {"failed", "blocked", "recovery_needed"}, status
+            time.sleep(0.05)
+        raise AssertionError("no in-flight builder turn")
+
     try:
         backend = json.loads((fixture.root / "docker.json").read_text())
         backend["seccomp_profile"] = "/opt/factory/worker-seccomp.json"
@@ -113,15 +142,39 @@ def main() -> None:
         backend_file.write_text(json.dumps(backend))
         compose("run", "--rm", "--no-deps", "controller", "configure-docker", str(backend_file))
         boot()
+
+        def catalog_request(_):
+            try:
+                api("models")
+                return "ok"
+            except urllib.error.HTTPError as error:
+                assert error.code == 409
+                return "busy"
+
+        # Hold the external simulated provider so competing requests definitely
+        # reach admission before the first slot can be released.
+        gate = fixture.workspace / ".factory-test-catalog-gate"
+        gate.write_text("hold")
+        with ThreadPoolExecutor(4) as pool:
+            first = pool.submit(catalog_request, 0)
+            try:
+                deadline = time.monotonic() + 15
+                while not list(fixture.data.rglob("catalog-gate-ready")):
+                    assert not first.done(), "catalog did not wait at the test gate"
+                    assert time.monotonic() < deadline, "catalog gate did not become ready"
+                    time.sleep(0.05)
+                others = [pool.submit(catalog_request, i) for i in range(1, 4)]
+                catalog_results = [future.result(timeout=10) for future in others]
+            finally:
+                gate.unlink()
+            catalog_results.append(first.result(timeout=15))
+        assert catalog_results.count("ok") == 1 and catalog_results.count("busy") == 3, (
+            catalog_results
+        )
         started = api("plan_start", request="Update greeting", request_id="production")
         session = started["session_id"]
         waiting = wait("plan_status", "waiting_for_input", session_id=session)
         compose("stop")
-        snapshot("backup")
-        # Restore into absent directories with the original absolute mount paths.
-        fixture.data.rename(fixture.root / "pre-restore-data")
-        fixture.workspace.rename(fixture.root / "pre-restore-workspace")
-        snapshot("restore")
         compose("up", "-d", "--no-build", "--force-recreate", "--wait")
         assert api("plan_status", session_id=session)["pending"] == waiting["pending"]
         api(
@@ -131,23 +184,24 @@ def main() -> None:
             answers={"recipient": "world"},
         )
         planned = wait("plan_status", "planned", session_id=session)
+        compose("stop")
+        snapshot("backup")
+        # Restore the completed exact plan, still pending approval, into absent
+        # directories at its original mount paths. Never regenerate its revision.
+        fixture.data.rename(fixture.root / "pre-restore-data")
+        fixture.workspace.rename(fixture.root / "pre-restore-workspace")
+        snapshot("restore")
+        compose("up", "-d", "--no-build", "--force-recreate", "--wait")
+        restored = api("plan_status", session_id=session)
+        assert restored["status"] == "planned"
+        assert restored["revision"] == planned["revision"]
+        assert restored["plan_hash"] == planned["plan_hash"]
         approved = api("plan_approve", session_id=session, plan_hash=planned["plan_hash"])
         run_id = approved["implementation"]["run_id"]
+        assert event_id(run_id, 0) == 1  # Disconnect without cancelling progress.
         # Pin the crash to an actual provider turn, rather than racing the create
         # intent window (which legitimately requires operator reconciliation).
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            building = [
-                receipt
-                for receipt in fixture.receipts()
-                if receipt["request"]["execution"].get("step") == "build"
-                and receipt["execution_id"]
-                and not receipt["stopped"]
-            ]
-            if building:
-                break
-            time.sleep(0.05)
-        assert building, "no in-flight builder turn to exercise restart"
+        wait_for_builder(run_id)
         compose("kill", "-s", "SIGKILL", "controller")
         compose("up", "-d", "--no-build", "--force-recreate", "--wait")
         result = wait("status", "ready_for_review", run_id=run_id)
@@ -167,9 +221,26 @@ def main() -> None:
         assert "ready_for_review" in api("plan_report", session_id=session)["report"]
         operations = result["workflow"]["operations"]
         assert all(op["dispatch_count"] == 1 for op in operations.values())
+        assert event_id(run_id, 1) == 2  # Reconnect replays the saved next event.
+        # The prior manual run deliberately leaves its verified edit for review.
+        # Accept it in this disposable repository before starting independent work.
+        module.execute(["git", "add", "greeting.txt"], cwd=fixture.workspace)
+        module.execute(
+            ["git", "commit", "-qm", "Accept verified fixture output"], cwd=fixture.workspace
+        )
+        cancel_run = api(
+            "start", request="Update greeting [cancel]", request_id="production-cancel"
+        )
+        cancel_id = cancel_run["run_id"]
+        wait_for_builder(cancel_id)
+        assert api("cancel", run_id=cancel_id)["status"] == "stopping"
+        assert wait("status", "cancelled", run_id=cancel_id)["status"] == "cancelled"
         inspections = []
         for receipt in fixture.receipts():
-            if not receipt["container_id"]:
+            if (
+                not receipt["container_id"]
+                or receipt["request"]["execution"].get("step") == "catalog"
+            ):
                 continue
             worker = json.loads(
                 module.execute(["docker", "inspect", receipt["container_id"]]).stdout
@@ -182,6 +253,8 @@ def main() -> None:
             for mount in worker["Mounts"]:
                 assert mount["Destination"] != "/var/run/docker.sock"
                 assert mount["Source"] != str(fixture.data)
+                if mount["Destination"] == receipt["request"]["evidence_directory"]:
+                    assert not mount["RW"]
             inspections.append(
                 {"id": receipt["container_id"], "read_only_root": True, "stopped": True}
             )
@@ -201,6 +274,10 @@ def main() -> None:
                 "operations": len(operations),
                 "workers": inspections,
                 "restore_pending_approval": True,
+                "restored_plan_hash": restored["plan_hash"],
+                "catalog_admission": catalog_results,
+                "sse_replay": True,
+                "cancelled_run": cancel_id,
                 "hard_recreation": True,
                 "root": str(root),
                 "source_base": module.execute(
@@ -211,6 +288,11 @@ def main() -> None:
                     for path in [
                         ROOT / "compose.yaml",
                         ROOT / "containers/rust-runtime.Dockerfile",
+                        ROOT / "containers/controller-entrypoint.sh",
+                        ROOT / "containers/worker.Dockerfile",
+                        ROOT / "scripts/factory-snapshot.py",
+                        ROOT / "scripts/accept-rust-production.py",
+                        ROOT / "tests/fixtures/fake_app_server.py",
                         *sorted((ROOT / "rust/factory-runtime/src").rglob("*.rs")),
                     ]
                 },
