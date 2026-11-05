@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import select
 import subprocess
 import sys
 import time
@@ -191,9 +192,20 @@ for line in sys.stdin:
                 assert answer["id"] == "native-question" and answer["result"]["answers"][
                     "recipient"
                 ]["answers"] == ["world"]
-            # Long enough to kill/recreate the controller while the exact coding
-            # turn is in flight. The broker must survive and keep this one turn.
-            time.sleep(3)
+            # A real App Server aborts an active turn when its controlling stdin
+            # closes. Preserve that behavior instead of sleeping through EOF.
+            readable, _, _ = select.select([sys.stdin], [], [], 3)
+            if readable and not os.read(sys.stdin.fileno(), 1):
+                send(
+                    {
+                        "method": "turn/completed",
+                        "params": {
+                            "threadId": thread,
+                            "turn": {"id": turn, "status": "interrupted", "items": []},
+                        },
+                    }
+                )
+                sys.exit(0)
             if "[tamper]" in original:
                 for protected in [
                     cwd / ".git/config",

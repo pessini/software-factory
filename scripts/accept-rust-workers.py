@@ -272,6 +272,10 @@ class Fixture:
 
     def cleanup_containers(self) -> None:
         for receipt in self.receipts():
+            if receipt.get("broker_container_id"):
+                execute(
+                    ["docker", "stop", "--time", "5", receipt["broker_container_id"]], check=False
+                )
             if receipt["container_id"]:
                 # IDs came from this fixture's private receipts. Never remove a
                 # foreign name, running worker, volume, image, or user directory.

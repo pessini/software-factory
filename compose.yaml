@@ -33,6 +33,7 @@ services:
       FACTORY_CALLER_ID: ${FACTORY_CALLER_ID:-local-operator}
       FACTORY_MAX_CONCURRENT_RUNS: "1"
       FACTORY_REQUIRE_DOCKER: "1"
+      FACTORY_REQUIRE_DAEMON_BROKER: "1"
     ports:
       - "127.0.0.1:${FACTORY_PORT:-4317}:4317"
     volumes:
