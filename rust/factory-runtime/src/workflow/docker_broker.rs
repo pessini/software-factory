@@ -5,7 +5,10 @@ use super::*;
 const ROLE: &str = "software-factory.role";
 
 impl DockerWorker {
-    async fn inspect_daemon_broker(&self, receipt: &WorkerReceipt) -> Result<Option<Value>> {
+    pub(super) async fn inspect_daemon_broker(
+        &self,
+        receipt: &WorkerReceipt,
+    ) -> Result<Option<Value>> {
         let broker = self
             .docker
             .broker
@@ -23,6 +26,37 @@ impl DockerWorker {
             return Err(Error::Worker("saved daemon broker role differs".into()));
         }
         Ok(inspected)
+    }
+
+    pub(super) async fn stop_daemon_broker(&self, receipt: &WorkerReceipt) -> Result<()> {
+        if self.docker.broker.is_none() || receipt.broker_container_id.is_none() {
+            return Ok(());
+        }
+        if let Some(current) = self.inspect_daemon_broker(receipt).await? {
+            if current["State"]["Running"] == true {
+                let _ = self
+                    .output(&[
+                        "container".into(),
+                        "kill".into(),
+                        "--signal=KILL".into(),
+                        current["Id"]
+                            .as_str()
+                            .ok_or_else(|| Error::Worker("daemon broker ID missing".into()))?
+                            .into(),
+                    ])
+                    .await;
+            }
+            if self
+                .inspect_daemon_broker(receipt)
+                .await?
+                .is_some_and(|state| {
+                    state["State"]["Running"] != false || state["State"]["Pid"] != 0
+                })
+            {
+                return Err(Error::Worker("daemon broker cleanup is unconfirmed".into()));
+            }
+        }
+        Ok(())
     }
 
     pub(super) async fn launch_daemon_broker(&self, mut receipt: WorkerReceipt) -> Result<()> {

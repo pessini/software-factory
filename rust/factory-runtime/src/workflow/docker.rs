@@ -952,7 +952,25 @@ impl Worker for DockerWorker {
     }
     async fn reconcile(&self, operation: &str, input: &str) -> Result<Reconciliation> {
         let request = self.decode(operation, input)?;
-        if self.broker_lock(operation)?.is_none() {
+        let broker_running = if self.docker.broker.is_some() {
+            if let Some(receipt) = self.receipt(operation)? {
+                if receipt.request != request || receipt.request_hash != digest(input.as_bytes()) {
+                    return Err(Error::Conflict(
+                        "worker receipt input/settings changed".into(),
+                    ));
+                }
+                receipt.broker_container_id.is_some()
+                    && self
+                        .inspect_daemon_broker(&receipt)
+                        .await?
+                        .is_some_and(|state| state["State"]["Running"] == true)
+            } else {
+                false
+            }
+        } else {
+            self.broker_lock(operation)?.is_none()
+        };
+        if broker_running {
             return match self
                 .poll_broker(operation, input, CancellationToken::new())
                 .await
@@ -1074,6 +1092,7 @@ impl Worker for DockerWorker {
                 return Err(Error::Conflict("cleanup request input changed".into()));
             }
             self.stop(&mut receipt).await?;
+            self.stop_daemon_broker(&receipt).await?;
         }
         Ok(())
     }
@@ -1432,7 +1451,7 @@ impl DockerWorker {
         cancel: CancellationToken,
     ) -> Result<String> {
         let request = self.decode(operation, input)?;
-        let startup = tokio::time::Instant::now() + Duration::from_secs(10);
+        let mut next_liveness = tokio::time::Instant::now() + Duration::from_secs(10);
         loop {
             if cancel.is_cancelled() || self.stop_requested(&request).await? {
                 atomic(&self.path(operation).with_extension("stop"), b"stop")?;
@@ -1465,10 +1484,28 @@ impl DockerWorker {
             {
                 return Err(Error::Waiting("provider questions saved".into()));
             }
-            if self.broker_lock(operation)?.is_some() && tokio::time::Instant::now() > startup {
-                return Err(Error::Worker(
-                    "worker broker exited; reconcile its exact Docker receipt".into(),
-                ));
+            if tokio::time::Instant::now() > next_liveness {
+                let alive = if self.docker.broker.is_some() {
+                    self.inspect_daemon_broker(&receipt)
+                        .await?
+                        .is_some_and(|state| state["State"]["Running"] == true)
+                } else {
+                    self.broker_lock(operation)?.is_none()
+                };
+                // Completion can be committed while the liveness read is in
+                // flight. Never turn that newer confirmed result into recovery.
+                let latest = self
+                    .receipt(operation)?
+                    .ok_or_else(|| Error::Worker("worker launch receipt missing".into()))?;
+                next_liveness = tokio::time::Instant::now() + Duration::from_secs(5);
+                if latest.stopped {
+                    continue;
+                }
+                if !alive {
+                    return Err(Error::Worker(
+                        "worker broker exited; reconcile its exact Docker receipt".into(),
+                    ));
+                }
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
