@@ -18,7 +18,35 @@ impl DockerWorker {
         identity.container_name = format!("{}-broker", self.container_name(&receipt.operation_id));
         identity.container_id = receipt.broker_container_id.clone();
         identity.image_id = Some(broker.image.clone());
-        let inspected = self.inspect(&identity).await?;
+        let inspected = match self.inspect(&identity).await {
+            Ok(Some(value)) => Some(value),
+            result => {
+                if let Some(id) = &identity.container_id {
+                    // --rm can remove the broker between name listing and
+                    // inspection. A successful ID listing must prove absence;
+                    // name disappearance alone could instead be a rename.
+                    let ids = self
+                        .output(&[
+                            "container".into(),
+                            "ls".into(),
+                            "-aq".into(),
+                            "--no-trunc".into(),
+                            "--filter".into(),
+                            format!("id={id}"),
+                        ])
+                        .await?;
+                    if !ids.trim().is_empty() {
+                        return Err(match result {
+                            Err(error) => error,
+                            _ => Error::Worker("saved daemon broker name changed".into()),
+                        });
+                    }
+                    None
+                } else {
+                    result?
+                }
+            }
+        };
         if inspected
             .as_ref()
             .is_some_and(|value| value["Config"]["Labels"][ROLE] != "broker")
