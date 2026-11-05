@@ -71,6 +71,10 @@ workers](docs/rust-workflow.md) for step 2 (#17). It uses a separate database.
 See the [parity checklist](docs/issue-17-parity.md). Python remains supported;
 the [shared interfaces and planning port](docs/rust-interfaces.md) are available for #18.
 Production cutover remains #19; see the [interface acceptance record](docs/issue-18-acceptance.md).
+The [single-host Docker deployment](docs/production-deployment.md) provides the
+Rust production packaging candidate, offline backup/restore and upgrade/rollback
+procedures. The [release evidence](docs/issue-19-acceptance.md) keeps cutover gated;
+Python and its old-run recovery environment remain supported.
 
 ## Development
 

@@ -972,7 +972,37 @@ impl Worker for DockerWorker {
             ));
         }
         if receipt.output.is_none() {
-            receipt.output = self.recover_output(&mut receipt).await?;
+            loop {
+                receipt.output = self.recover_output(&mut receipt).await?;
+                if receipt.output.is_some() {
+                    break;
+                }
+                // A containerized controller loses its broker on recreation,
+                // while the exact daemon-owned worker can still be finishing.
+                // Observe that same worker until its saved deadline; never
+                // interpret a single unfinished log read as a lost execution.
+                let running = self
+                    .inspect(&receipt)
+                    .await?
+                    .is_some_and(|state| state["State"]["Running"] == true);
+                if !running
+                    || receipt
+                        .pending_input
+                        .as_ref()
+                        .is_some_and(|input| !input.delivered)
+                {
+                    break;
+                }
+                if self.stop_requested(&receipt.request).await? {
+                    return Err(Error::Cancelled);
+                }
+                let deadline = receipt.request.deadline_at
+                    + chrono::Duration::milliseconds(receipt.waited_millis as i64);
+                if chrono::Utc::now() >= deadline {
+                    return Err(Error::Deadline);
+                }
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
             self.save(&receipt)?;
         }
         if let Some(output) = receipt.output.clone() {

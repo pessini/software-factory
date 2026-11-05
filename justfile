@@ -62,6 +62,10 @@ cancel run_id:
 check:
     bash scripts/check-rust.sh
 
-# Optional Docker path for the same Rust slice; native `start` needs no Docker.
+# Build the production controller; configure Compose before starting it.
 container-build:
-    docker build -f containers/rust-runtime.Dockerfile -t factory-rust-slice:dev .
+    docker build --build-arg FACTORY_UID="$(id -u)" --build-arg FACTORY_GID="$(id -g)" -f containers/rust-runtime.Dockerfile -t software-factory-controller:issue-19 .
+
+# Validate actual Compose mounts, restore and protected workers (simulated provider).
+container-accept:
+    python3 scripts/accept-rust-production.py

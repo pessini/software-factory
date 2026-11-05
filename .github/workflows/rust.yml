@@ -1,4 +1,4 @@
-name: Rust durable slice
+name: Rust runtime and deployment
 on:
   pull_request:
   push:
@@ -26,11 +26,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: docker build -f containers/rust-runtime.Dockerfile -t factory-rust-slice:dev .
       - run: python3 scripts/accept-rust-container.py --image factory-rust-slice:dev --output .checks/rust-container.json
+      - name: Build production topology for the runner UID
+        run: |
+          docker build --build-arg FACTORY_UID="$(id -u)" --build-arg FACTORY_GID="$(id -g)" -f containers/rust-runtime.Dockerfile -t software-factory-controller:issue-19 .
+          docker build -f containers/test-worker.Dockerfile -t factory-test-worker:dev .
+      - run: python3 scripts/accept-rust-production.py
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rust-container-evidence
-          path: .checks/rust-container.json
+          path: |
+            .checks/rust-container.json
+            .checks/issue-19-production.json
           include-hidden-files: true
   workers:
     runs-on: ubuntu-24.04
