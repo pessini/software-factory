@@ -24,5 +24,11 @@ regex = "1"
 serde_yaml = "0.9"
 libc = "0.2"
 
+axum = "0.8"
+percent-encoding = "2"
+futures = "0.3"
+tokio-stream = "0.1"
+
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 tempfile = "3"

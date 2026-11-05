@@ -133,10 +133,18 @@ class SoftwareFactoryAgent(ACPPresentation):
         if not request:
             raise ValueError("request must not be empty")
         control = self.control(Path(str(session["cwd"])), session_id)
+        await self._send(session_id, update_user_message_text(request), publish=False)
+        if control.remote:
+            return await self._remote_prompt(
+                session_id,
+                Path(str(session["cwd"])),
+                request,
+                control,
+                str(kwargs.get("request_id") or uuid4().hex),
+            )
         first, _, argument = request.partition(" ")
         command = first.lower().lstrip("/")
         run_id = session["run_id"]
-        await self._send(session_id, update_user_message_text(request), publish=False)
         if command in PLANNING_COMMANDS:
             text = await self._planning(Path(str(session["cwd"])), command, argument)
             await self._send(session_id, update_agent_message_text(text))
@@ -182,13 +190,82 @@ class SoftwareFactoryAgent(ACPPresentation):
         await self._result(session_id, cast(FactoryState, result))
         return PromptResponse(stop_reason="end_turn")
 
-    async def _planning(self, workspace: Path, command: str, argument: str) -> str:
+    async def _remote_prompt(
+        self,
+        session_id: str,
+        workspace: Path,
+        request: str,
+        control: FactoryControl,
+        request_id: str,
+    ) -> PromptResponse:
+        first, _, argument = request.partition(" ")
+        command = first.lower().lstrip("/")
+        if command in PLANNING_COMMANDS:
+            text = await self._planning(
+                workspace, command, argument, client_session_id=session_id, request_id=request_id
+            )
+        else:
+            session = await self.store.session(session_id)
+            assert session is not None
+            run_id = session["run_id"]
+            if command == "attach":
+                result = await control.status(argument)
+            elif command == "new" or (
+                run_id is None
+                and command
+                not in {"status", "inspect", "continue", "resume", "retry", "cancel", "answer"}
+            ):
+                result = await control.start(
+                    argument if command == "new" else request, request_id=request_id
+                )
+            elif run_id is None:
+                await self._send(
+                    session_id,
+                    update_agent_message_text("Use /attach FACTORY_RUN_ID or /new REQUEST."),
+                )
+                return PromptResponse(stop_reason="end_turn")
+            elif command == "answer":
+                interaction_id, _, answer_text = argument.partition(" ")
+                current = await control.status(run_id)
+                question = next(
+                    (q for q in current["interactions"] if q["interaction_id"] == interaction_id),
+                    None,
+                )
+                if question is None:
+                    raise ValueError("unknown saved interaction")
+                answers = (
+                    json.loads(answer_text)
+                    if answer_text.lstrip().startswith("{")
+                    else {question["questions"][0]["id"]: answer_text}
+                )
+                result = await control.answer(run_id, interaction_id, answers)
+            elif command in {"continue", "resume", "retry"}:
+                result = await control.resume(run_id)
+            elif command == "cancel":
+                result = await control.cancel(run_id)
+            else:
+                result = await control.status(run_id)
+            await self.store.save_session(session_id, workspace, result["run_id"])
+            text = json.dumps(result, indent=2)
+        await self._send(session_id, update_agent_message_text(text))
+        return PromptResponse(stop_reason="end_turn")
+
+    async def _planning(
+        self,
+        workspace: Path,
+        command: str,
+        argument: str,
+        *,
+        client_session_id: str | None = None,
+        request_id: str | None = None,
+    ) -> str:
         from software_factory.planning_control import PlanningControl, planning_summary
         from software_factory.web import web_link
 
         planning = PlanningControl(
             workspace,
             storage_root=self.factory_context.storage_root,
+            session_id=client_session_id,
             execution=self.execution,
             launch=self.launch,
         )
@@ -205,7 +282,7 @@ class SoftwareFactoryAgent(ACPPresentation):
             if command == "plan":
                 if not argument.strip():
                     return "Use /plan REQUEST to start a Grill planning interview."
-                result = await planning.start(argument, request_id=uuid4().hex)
+                result = await planning.start(argument, request_id=request_id or uuid4().hex)
             else:
                 target, _, rest = argument.strip().partition(" ")
                 if not target:

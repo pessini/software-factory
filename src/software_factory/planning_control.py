@@ -10,6 +10,7 @@ from typing import Any, cast
 from software_factory.artifacts import ArtifactIntegrityError, ArtifactStore
 from software_factory.control import FactoryControl
 from software_factory.planning import PLANNING_WORKFLOW, handoff_criteria, handoff_request
+from software_factory.remote import RemoteTransport
 from software_factory.state import FINAL_STATUSES
 
 
@@ -25,8 +26,9 @@ class PlanningControl:
     """
 
     def __init__(self, workspace: Path, *, storage_root: Path | None = None, **options: Any):
+        self.remote = RemoteTransport.from_environment(workspace)
         self.workspace = workspace.expanduser().resolve(strict=True)
-        self.options = options
+        self.options = {key: value for key, value in options.items() if key != "session_id"}
         self.base = FactoryControl(self.workspace, storage_root=storage_root, **options)
         self.storage_root = self.base.context.storage_root
         self.store = self.base.store
@@ -37,6 +39,13 @@ class PlanningControl:
         )
 
     async def start(self, request: str, *, request_id: str) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call(
+                "plan_start",
+                request=request,
+                request_id=request_id,
+                client_session_id=self.base.context.session_id,
+            )
         if not request.strip() or not request_id.strip() or len(request_id) > 200:
             raise ValueError("a request and a request ID of 1 to 200 characters are required")
         session_id = "pln_" + _digest(str(self.workspace), request_id)[:12]
@@ -58,6 +67,8 @@ class PlanningControl:
         return await self.status(session_id)
 
     async def sessions(self) -> list[dict[str, Any]]:
+        if self.remote:
+            return await self.remote.listing("plan_list")
         await self.store.initialize()
         result = []
         for item in await self.store.planning_sessions():
@@ -100,6 +111,10 @@ class PlanningControl:
             return None
 
     async def status(self, session_id: str, *, after_event: int = 0) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call(
+                "plan_status", session_id=session_id, after_event=after_event
+            )
         revisions = await self._revisions(session_id)
         current = revisions[-1]
         run = await self.base.status(current["run_id"], after_event=after_event)
@@ -177,6 +192,10 @@ class PlanningControl:
     async def answer(
         self, session_id: str, interaction_id: str, answers: dict[str, str]
     ) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call(
+                "plan_answer", session_id=session_id, interaction_id=interaction_id, answers=answers
+            )
         current = (await self._revisions(session_id))[-1]
         if not interaction_id.startswith(current["run_id"] + ":"):
             raise ValueError("this question belongs to an earlier plan revision")
@@ -184,17 +203,23 @@ class PlanningControl:
         return await self.status(session_id)
 
     async def resume(self, session_id: str) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call("plan_resume", session_id=session_id)
         current = (await self._revisions(session_id))[-1]
         await self.base.resume(current["run_id"])
         return await self.status(session_id)
 
     async def cancel(self, session_id: str) -> dict[str, Any]:
+        if self.remote:
+            return await self.remote.call("plan_cancel", session_id=session_id)
         current = (await self._revisions(session_id))[-1]
         await self.base.cancel(current["run_id"])
         return await self.status(session_id)
 
     async def revise(self, session_id: str, feedback: str) -> dict[str, Any]:
         """Start a new revision from the latest one; the earlier snapshot stays unchanged."""
+        if self.remote:
+            return await self.remote.call("plan_revise", session_id=session_id, feedback=feedback)
         if not feedback.strip():
             raise ValueError("revision feedback is required")
         revisions = await self._revisions(session_id)
@@ -226,6 +251,10 @@ class PlanningControl:
 
     async def approve(self, session_id: str, plan_hash: str) -> dict[str, Any]:
         """Start exactly one implementation run for the exact approved plan revision."""
+        if self.remote:
+            return await self.remote.call(
+                "plan_approve", session_id=session_id, plan_hash=plan_hash
+            )
         current = (await self._revisions(session_id))[-1]
         existing = await self.store.planning_handoff(current["run_id"])
         if existing and existing["plan_hash"] == plan_hash:

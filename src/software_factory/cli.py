@@ -244,7 +244,11 @@ def mcp_command(
     options = _cli_options.get() or {}
     create_mcp(
         _control(workspace),
-        PlanningControl(_workspace(workspace), storage_root=options.get("storage_root")),
+        PlanningControl(
+            _workspace(workspace),
+            storage_root=options.get("storage_root"),
+            session_id=options.get("session_id"),
+        ),
     ).run(transport="stdio")
 
 
@@ -252,7 +256,21 @@ def _planning(workspace: Path) -> Any:
     from software_factory.planning_control import PlanningControl
 
     options = _cli_options.get() or {}
-    return PlanningControl(_workspace(workspace), storage_root=options.get("storage_root"))
+    return PlanningControl(
+        _workspace(workspace),
+        storage_root=options.get("storage_root"),
+        session_id=options.get("session_id"),
+    )
+
+
+@app.command("export-planning")
+def export_planning_command(
+    workspace: Annotated[Path, typer.Option("--workspace", "-w")] = DEFAULT_WORKSPACE,
+) -> None:
+    """Print a read-only archive of quiescent Python planning sessions for Rust import."""
+    from software_factory.planning_export import export_planning
+
+    console.print_json(json.dumps(asyncio.run(export_planning(_planning(workspace)))))
 
 
 @app.command("plan")

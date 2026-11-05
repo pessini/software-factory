@@ -49,6 +49,7 @@ fn decode(document: &str) -> Result<Run> {
         || ![
             crate::contracts::GRAPH_VERSION,
             crate::workflow::GRAPH_VERSION,
+            crate::planning::GRAPH_VERSION,
         ]
         .iter()
         .any(|v| value["graph_version"] == *v)

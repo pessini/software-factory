@@ -35,7 +35,7 @@ pub struct Services {
 pub struct Runtime {
     pub(crate) config: Config,
     pub(crate) services: Arc<Services>,
-    workspace_id: String,
+    pub(crate) workspace_id: String,
     delivery_remote: Arc<dyn crate::workflow::delivery::Remote>,
 }
 
@@ -128,7 +128,7 @@ impl Runtime {
 
     pub async fn start(&self, mut input: StartRequest) -> Result<Run> {
         input.validate()?;
-        let run_id = format!("run-{}", digest(input.request_id.as_bytes()));
+        let run_id = input.run_id();
         match self.status(&run_id).await {
             Ok(saved) => {
                 let mut expected = saved.input.clone();
@@ -187,7 +187,9 @@ impl Runtime {
         });
         let mut run = Run {
             schema_version: SCHEMA_VERSION,
-            graph_version: if implementation {
+            graph_version: if input.planning.is_some() {
+                crate::planning::GRAPH_VERSION
+            } else if implementation {
                 crate::workflow::GRAPH_VERSION
             } else {
                 GRAPH_VERSION
@@ -322,6 +324,7 @@ impl Runtime {
                 Ok(())
             })
             .await?;
+        let run = self.ensure_scheduled(&run).await?;
         if !run.status.is_terminal() {
             self.services
                 .queue
@@ -499,7 +502,7 @@ impl Runtime {
         ))
     }
 
-    async fn ensure_scheduled(&self, run: &Run) -> Result<Run> {
+    pub(crate) async fn ensure_scheduled(&self, run: &Run) -> Result<Run> {
         if run.status.is_terminal() {
             return Ok(run.clone());
         }
@@ -594,8 +597,27 @@ impl Runtime {
         }
     }
 
+    async fn execution_lock(&self, run: &Run) -> Result<File> {
+        if run.input.planning.is_none() {
+            return self.workspace_lock().await;
+        }
+        let directory = self.config.data_dir.join("planning-locks");
+        std::fs::create_dir_all(&directory)?;
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(directory.join(&run.run_id))?;
+        lock.try_lock().map_err(|_| Error::Busy)?;
+        Ok(lock)
+    }
+
     fn reserve_workspace(&self, run: &Run) -> Result<()> {
         let path = self.config.workspace.join(".factory-rust.claim");
+        if run.input.planning.is_some() {
+            return Ok(());
+        }
         let owner = run
             .workflow
             .as_ref()
@@ -619,6 +641,9 @@ impl Runtime {
     }
 
     async fn release_workspace(&self, run: &Run) -> Result<()> {
+        if run.input.planning.is_some() {
+            return Ok(());
+        }
         if let Some(workflow) = &run.workflow {
             self.reserve_workspace(run)?;
             if workflow.parent_run_id.is_some() {
@@ -689,7 +714,7 @@ impl Runtime {
                 &claim,
             )?)? == json!({"version":1,"run_id":run.run_id,"data_dir":self.config.data_dir});
         if !artifact.exists() || owns_claim {
-            let _ownership = match self.workspace_lock().await {
+            let _ownership = match self.execution_lock(&run).await {
                 Ok(lock) => lock,
                 Err(Error::Busy) => return Ok(run),
                 Err(error) => return Err(error),
@@ -709,7 +734,7 @@ impl Runtime {
         Ok(run)
     }
     async fn resume_active(&self, id: &str, run: Run) -> Result<Run> {
-        let _ownership = match self.workspace_lock().await {
+        let _ownership = match self.execution_lock(&run).await {
             Ok(lock) => lock,
             Err(Error::Busy) => return self.status(id).await,
             Err(e) => return Err(e),
@@ -959,7 +984,7 @@ impl Runtime {
                     };
                     r.event(
                         "finish",
-                        if status == Status::ReadyForReview {
+                        if matches!(status, Status::ReadyForReview | Status::Planned) {
                             "completed"
                         } else if status == Status::Cancelled {
                             "cancelled"

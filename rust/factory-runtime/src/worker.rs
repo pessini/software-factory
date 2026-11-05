@@ -121,6 +121,7 @@ pub enum CrashPoint {
     AfterDispatch,
     AfterResult,
     AfterQueueFinish,
+    AfterHandoffIntent,
 }
 
 /// Injection point for process-death acceptance tests; production has no faults.

@@ -69,7 +69,8 @@ The experimental [Rust/ADK durable runtime](docs/rust-runtime.md) retains the
 step 1 fake slice (#16) and adds the [implementation workflow and protected Docker
 workers](docs/rust-workflow.md) for step 2 (#17). It uses a separate database.
 See the [parity checklist](docs/issue-17-parity.md). Python remains supported;
-interface integration and production cutover remain #18/#19.
+the [shared interfaces and planning port](docs/rust-interfaces.md) are available for #18.
+Production cutover remains #19; see the [interface acceptance record](docs/issue-18-acceptance.md).
 
 ## Development
 

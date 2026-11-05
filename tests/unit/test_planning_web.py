@@ -127,3 +127,18 @@ def test_web_rejects_foreign_hosts_origins_and_form_posts():
     )
     assert created.json() == {"session_id": "pln_1"}
     assert planning.started == [("Plan", "r1")]
+
+
+def test_remote_planning_links_round_trip_reserved_token_characters(tmp_path, monkeypatch, capsys):
+    from urllib.parse import parse_qs, urlsplit
+
+    from software_factory.web import serve_web, web_link
+
+    token = "operator/token+with=reserved&characters"
+    monkeypatch.setenv("FACTORY_CONTROL_URL", "http://127.0.0.1:4317")
+    monkeypatch.setenv("FACTORY_HTTP_TOKEN", token)
+    session_link = web_link(tmp_path, "saved-session")
+    assert parse_qs(urlsplit(session_link).query) == {"token": [token]}
+    serve_web(tmp_path)
+    startup_link = capsys.readouterr().out.removeprefix("Rust planning UI: ").strip()
+    assert parse_qs(urlsplit(startup_link).query) == {"token": [token]}

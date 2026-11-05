@@ -18,9 +18,15 @@ pub struct StartRequest {
     pub max_dispatches: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub implementation: Option<crate::workflow::ImplementationInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planning: Option<crate::planning::PlanningInput>,
 }
 
 impl StartRequest {
+    pub fn run_id(&self) -> String {
+        format!("run-{}", crate::runtime::digest(self.request_id.as_bytes()))
+    }
+
     pub fn new(request_id: &str, session_id: &str, request: &str) -> Self {
         Self {
             request_id: request_id.into(),
@@ -29,10 +35,16 @@ impl StartRequest {
             timeout_seconds: 3600,
             max_dispatches: 3,
             implementation: None,
+            planning: None,
         }
     }
 
     pub fn validate(&self) -> Result<()> {
+        if self.planning.is_some() && self.implementation.is_none() {
+            return Err(Error::Config(
+                "planning requires saved execution configuration".into(),
+            ));
+        }
         if let Some(implementation) = &self.implementation {
             implementation.validate()?;
         }
@@ -68,6 +80,7 @@ pub enum Status {
     RecoveryNeeded,
     Stopping,
     ReadyForReview,
+    Planned,
     Failed,
     Blocked,
     Cancelled,
@@ -77,7 +90,7 @@ impl Status {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            Self::ReadyForReview | Self::Failed | Self::Blocked | Self::Cancelled
+            Self::Planned | Self::ReadyForReview | Self::Failed | Self::Blocked | Self::Cancelled
         )
     }
 }
@@ -188,7 +201,9 @@ impl Run {
                 .is_some_and(|w| w.interaction.as_ref().is_some_and(|q| q.answers.is_none()))
     }
     pub fn check_version(&self) -> Result<()> {
-        let graph = if self.input.implementation.is_some() {
+        let graph = if self.input.planning.is_some() {
+            crate::planning::GRAPH_VERSION
+        } else if self.input.implementation.is_some() {
             crate::workflow::GRAPH_VERSION
         } else {
             GRAPH_VERSION

@@ -88,6 +88,7 @@ impl Worker for Provider {
         let request: ExecutionRequest = serde_json::from_str(input)?;
         self.calls.lock().unwrap().push(request.clone());
         let result = match &request.execution {
+            ExecutionKind::Specialist { prompt, .. } if prompt.contains("read-only Grill with Docs") => json!({"version":1,"status":"ready","summary":"Greeting plan","plan":{"goal":"Change greeting","scope":["greeting.txt"],"requirements":["Hello, world!"],"completion_checks":[{"id":"greeting","description":"The greeting is Hello, world!"}]}}).to_string(),
             ExecutionKind::Specialist { step, prompt, .. } if step == "plan" && ((self.behavior=="questions" || (self.behavior=="fix_questions" && context(prompt)["original_request"].as_str().is_some_and(|r|r.starts_with("Apply the selected PR review fixes")))) && context(prompt)["saved_answers"].as_object().is_none_or(|m|m.is_empty())) => json!({"version":2,"status":"needs_input","summary":"Need recipient","acceptance_criteria":[],"implementation_steps":[],"test_strategy":"Check exact greeting","questions":[{"id":"recipient","question":"Who should be greeted?","options":["world"]}]}).to_string(),
             ExecutionKind::Specialist { step, .. } if step == "plan" => json!({"version":2,"status":"ready","summary":"Update the greeting","acceptance_criteria":[{"id":"greeting","description":"The greeting is Hello, world!"}],"implementation_steps":["Update greeting.txt"],"test_strategy":"Check the exact greeting"}).to_string(),
             ExecutionKind::Specialist { step,prompt,.. } if ["build","repair","revision"].contains(&step.as_str()) => {
@@ -1723,4 +1724,65 @@ async fn manual_delivery_and_unauthorized_review_fixes_allow_later_authorization
                 .contains("destination cannot change")
         );
     }
+}
+
+#[tokio::test]
+async fn approved_planning_journey_runs_the_existing_quality_and_review_workflow() {
+    let root = repository();
+    let data = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join(".factory")).unwrap();
+    std::fs::write(
+        root.path().join(".factory/factory.yaml"),
+        serde_yaml::to_string(&configuration()).unwrap(),
+    )
+    .unwrap();
+    git(root.path(), &["add", "."]);
+    git(root.path(), &["commit", "-qm", "Policy"]);
+    let runtime = Runtime::open_with_worker(
+        Config::new(data.path(), root.path()).unwrap(),
+        Arc::new(Provider::default()),
+        Arc::new(NoFaults),
+    )
+    .await
+    .unwrap();
+    let control = factory_runtime::control::Control::open(runtime.clone())
+        .await
+        .unwrap();
+    let started=control.call("plan_start",json!({"request":"Change the greeting to Hello, world!","request_id":"approved-journey"})).await.unwrap();
+    runtime
+        .resume(started["run_id"].as_str().unwrap())
+        .await
+        .unwrap();
+    let planned = control
+        .call("plan_status", json!({"session_id":started["session_id"]}))
+        .await
+        .unwrap();
+    let approved = control
+        .call(
+            "plan_approve",
+            json!({"session_id":started["session_id"],"plan_hash":planned["plan_hash"]}),
+        )
+        .await
+        .unwrap();
+    let run = runtime
+        .resume(approved["implementation"]["run_id"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(run.status, Status::ReadyForReview, "{:?}", run.error);
+    let workflow = run.workflow.unwrap();
+    assert!(workflow.test_passed && workflow.review_approved);
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("greeting.txt")).unwrap(),
+        "Hello, world!\n"
+    );
+    let report = control
+        .call("plan_report", json!({"session_id":started["session_id"]}))
+        .await
+        .unwrap();
+    assert!(
+        report["report"]
+            .as_str()
+            .unwrap()
+            .contains("ready_for_review")
+    );
 }
