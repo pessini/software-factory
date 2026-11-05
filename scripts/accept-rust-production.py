@@ -41,7 +41,9 @@ def main() -> None:
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    root = Path(mkdtemp(prefix="issue-19-", dir=ROOT / ".checks"))
+    checks = ROOT / ".checks"
+    checks.mkdir(exist_ok=True)
+    root = Path(mkdtemp(prefix="issue-19-", dir=checks))
     fixture = module.Fixture(
         root,
         "journey",
