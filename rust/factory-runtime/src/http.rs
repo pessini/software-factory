@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashSet},
     convert::Infallible,
+    future::IntoFuture,
     time::Duration,
 };
 use tokio_stream::wrappers::ReceiverStream;
@@ -42,6 +43,11 @@ pub fn router_for_origin(control: Control, token: String, host: String, origin: 
         origin,
     };
     Router::new()
+        .route(
+            "/health/live",
+            get(|| async { Json(json!({"status":"ok"})) }),
+        )
+        .route("/health/ready", get(readiness))
         .route("/", get(page))
         .route("/planning/{id}", get(page))
         .route("/static/{name}", get(asset))
@@ -101,7 +107,9 @@ async fn guard(
     let is_page = request.uri().path() == "/" || request.uri().path().starts_with("/planning/");
     let token_query = is_page
         && query_token(request.uri()).is_some_and(|token| constant_eq(&token, &state.token));
-    if !token_query && !authorized(headers, &state.token) {
+    let probe = request.method() == axum::http::Method::GET
+        && matches!(request.uri().path(), "/health/live" | "/health/ready");
+    if !probe && !token_query && !authorized(headers, &state.token) {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error":"open the link printed by the service"})),
@@ -137,6 +145,17 @@ async fn guard(
         header::HeaderValue::from_static("nosniff"),
     );
     response
+}
+async fn readiness(State(state): State<Server>) -> Response {
+    // Reading committed state verifies SQLite access without exposing paths or runs.
+    match state.control.runtime.list().await {
+        Ok(_) => Json(json!({"status":"ok"})).into_response(),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"status":"unavailable"})),
+        )
+            .into_response(),
+    }
 }
 async fn page(State(state): State<Server>, uri: axum::http::Uri) -> Response {
     if query_token(&uri).is_some_and(|token| constant_eq(&token, &state.token)) {
@@ -336,21 +355,38 @@ async fn events(
 }
 /// A bounded background supervisor owns execution independently of HTTP/SSE connections.
 pub async fn supervise(control: Control) -> Result<()> {
+    supervise_until(control, tokio_util::sync::CancellationToken::new(), 1).await
+}
+async fn supervise_until(
+    control: Control,
+    shutdown: tokio_util::sync::CancellationToken,
+    concurrency: usize,
+) -> Result<()> {
     let mut jobs = tokio::task::JoinSet::new();
     let mut active = HashSet::new();
     let mut delivery_poll = BTreeMap::new();
     loop {
+        if shutdown.is_cancelled() {
+            // Finish in-flight state transitions where possible; preserve unfinished
+            // runs/receipts for reconciliation, rather than marking them cancelled.
+            let _ = tokio::time::timeout(Duration::from_secs(20), async {
+                while jobs.join_next().await.is_some() {}
+            })
+            .await;
+            jobs.abort_all();
+            return Ok(());
+        }
         while let Some(result) = jobs.try_join_next() {
             let (id, outcome) = result.map_err(|e| Error::Worker(e.to_string()))?;
             active.remove(&id);
             match outcome {
                 Ok(_) | Err(Error::Busy) => (),
-                Err(error) => eprintln!("Factory run {id}: {error}"),
+                Err(_) => eprintln!("{}", json!({"event":"run_attention_required","run_id":id})),
             }
         }
         control.recover().await?;
         for run in control.runtime.list().await? {
-            if active.len() >= 16 {
+            if active.len() >= concurrency {
                 break;
             }
             if active.contains(&run.run_id)
@@ -385,7 +421,10 @@ pub async fn supervise(control: Control) -> Result<()> {
                 (run.run_id, result)
             });
         }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::select! {
+            _ = shutdown.cancelled() => (),
+            _ = tokio::time::sleep(Duration::from_millis(200)) => (),
+        }
     }
 }
 
@@ -443,18 +482,73 @@ pub async fn serve(control: Control, address: &str, token: &str) -> Result<()> {
         return Err(Error::Config("non-loopback service requires operator-configured FACTORY_HTTP_TOKEN, FACTORY_HTTP_HOST and FACTORY_CALLER_ID".into()));
     }
     let configured = std::env::var("FACTORY_HTTP_ORIGIN").ok();
-    let origin = public_origin(address, &host, configured.as_deref())?;
+    // Explicit operator assertion: Compose publishes this container listener only
+    // on host loopback. A public advertised host still always requires HTTPS.
+    let origin_address = if std::env::var("FACTORY_HTTP_DOCKER_LOOPBACK").as_deref() == Ok("1")
+        && !public_host(&host)
+    {
+        std::net::SocketAddr::from(([127, 0, 0, 1], address.port()))
+    } else {
+        address
+    };
+    let origin = public_origin(origin_address, &host, configured.as_deref())?;
+    let concurrency = std::env::var("FACTORY_MAX_CONCURRENT_RUNS")
+        .unwrap_or_else(|_| "1".into())
+        .parse::<usize>()
+        .ok()
+        .filter(|n| (1..=16).contains(n))
+        .ok_or_else(|| {
+            Error::Config("FACTORY_MAX_CONCURRENT_RUNS must be between 1 and 16".into())
+        })?;
+    // Recover durable command intents before accepting requests. Every resumed
+    // operation then reconciles its exact worker identity before any redispatch.
+    control.recover().await?;
+    control.runtime.list().await?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!(
         "{}",
-        json!({"ready":true,"control_version":1,"url":planning_url(&origin, token)})
+        if std::env::var("FACTORY_HTTP_TOKEN").is_ok() {
+            json!({"ready":true,"control_version":1,"url":origin})
+        } else {
+            json!({"ready":true,"control_version":1,"url":planning_url(&origin, token)})
+        }
     );
     let app = router(control.clone(), token.into(), host);
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let http_shutdown = shutdown.clone();
+    let signal_shutdown = shutdown.clone();
+    let server = axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            http_shutdown.cancelled().await;
+        })
+        .into_future();
+    let supervisor = supervise_until(control, shutdown.clone(), concurrency);
+    let signal = async move {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => result?,
+            _ = terminate.recv() => (),
+        }
+        signal_shutdown.cancel();
+        Ok::<_, std::io::Error>(())
+    };
+    tokio::pin!(server, supervisor, signal);
     tokio::select! {
-        result=axum::serve(listener,app)=>{result?;Ok(())},
-        result=supervise(control)=>result,
-        result=tokio::signal::ctrl_c()=>{result?;Ok(())},
+        result = &mut server => { shutdown.cancel(); result?; },
+        result = &mut supervisor => { shutdown.cancel(); result?; },
+        result = &mut signal => {
+            result?;
+            // SSE clients may stay connected indefinitely. Bound HTTP drain as
+            // well as worker transition drain, below Compose's stop deadline.
+            if let Ok(result) = tokio::time::timeout(Duration::from_secs(25), async {
+                let (http, supervisor) = tokio::join!(&mut server, &mut supervisor);
+                http?;
+                supervisor
+            }).await { result?; }
+        },
     }
+    Ok(())
 }
 
 #[cfg(test)]

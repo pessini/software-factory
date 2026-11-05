@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "kind": "real_compose_docker_simulated_provider",
+  "passed": true,
+  "planning_session": "pln_d62da34e2d9a",
+  "run_id": "run-b445ae8904de3d33003fc42367b035c2c73763a0fd56089752e0005ada9be175",
+  "image_id": "sha256:7213c322cd6694dd6792ac0b0d1fcbcfa1118281d66e71eecd262fe964d5af39",
+  "status": "ready_for_review",
+  "operations": 5,
+  "workers": [
+    {
+      "id": "14d44184f9252a002ec9a4e4a353c880ecb4f59667aae25d8afabc8e47102abe",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "5e3ec2e7f34dc162daf74dd040bc06667f762372736c4928de3de1c1dede8684",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "d686ec14a7c86a1adfa213ab0ec7bebf95a16c169f0dc8f99c4decada5977c04",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "44b99b02db80f8034c2fef0b72aa809347d8a2dcd11a9f0e9e02f28620ba755d",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "03fe6daa6c16c487b4ac0733097055901bd190f37b302090adf28374fcf3c99a",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "8980417b9b829028e789eeccb40cda925d61ad2c14c1f66743c4c1875bf4db2a",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "ce592221c515ebe28391d5cdbe560d3850e0566ec4352951915b710b1a7de67f",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "1d0437135bf665d8eb94923634ee731ce63ceebbc24f4d4de2045aa6b8e86cdb",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "554119270c96db14e82748973ad73b096211cf4ac09861a3443564e84e7515e1",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "67887d5accd57730dfb6f96724db3585c78d848b6a4fd688b4781892cc28591e",
+      "read_only_root": true,
+      "stopped": true
+    }
+  ],
+  "restore_pending_approval": true,
+  "restored_plan_hash": "c1a1daabf427e4e63ff02d16255fae1d3ea046c6e9f56893f4f8af2f48790ada",
+  "catalog_admission": [
+    "busy",
+    "busy",
+    "busy",
+    "ok"
+  ],
+  "sse_replay": true,
+  "cancelled_run": "run-0b0d2cdbdc7138df5629e96d33a53a1438f35abfbc3960ae72cfa995d16e60fa",
+  "hard_recreation": true,
+  "root": "/home/lpessini/dev/software-factory/.checks/issue-19-2795z303",
+  "source_base": "6c2116167b35484282416e4792f31f85ac8b07df",
+  "source_hashes": {
+    "compose.yaml": "6c525af9cbf400571aef908e602134c3a609dc843c35c82aee997542683c6110",
+    "containers/rust-runtime.Dockerfile": "a89cfccbe4ffb40a2a71e828bf2bbffbaa1c304e1ce8c9757b27d0eebda231ae",
+    "containers/controller-entrypoint.sh": "067142266688ef85b2d68b04a0d626b113cb8247909439063756369f999dc42c",
+    "containers/worker.Dockerfile": "efda1849c8437af79cfc065f10ec272a73c5691309303aeb2152af601e36b6ce",
+    "scripts/factory-snapshot.py": "22f4b66c33ee3643b51292d6a8a324a3d6aaf3ad3e7ee66003de6272ba284763",
+    "scripts/accept-rust-production.py": "107a85ba57bf0f3724e21b6550017bed776499d737a88035b8e05a4bd5b650f4",
+    "tests/fixtures/fake_app_server.py": "b8db65277ed1200fbd08893c600fd5448ecba72639f26b87489e5116497cd3f6",
+    "rust/factory-runtime/src/config.rs": "660f87897f80e5283196aed2217afbad8c65e7265223a81eeb3c49c3c0b017cd",
+    "rust/factory-runtime/src/contracts.rs": "fe97db97e12912a82d121069271627b4155d13989a189f43e8d5f2fbcfc7b17e",
+    "rust/factory-runtime/src/control/migration.rs": "8ccc432ab4e3d3d1c080119181f131452b52099046d22b71e8831d79d154861f",
+    "rust/factory-runtime/src/control.rs": "e36ed017f1f060a69a18887d53e632f613e701a22845f2c2bd6bed3f37ab0edb",
+    "rust/factory-runtime/src/error.rs": "06480a9c02b873cc94aaa3d6dc7ac83a6c7ebcb04c6d2dd2fdaba1b93542f192",
+    "rust/factory-runtime/src/graph.rs": "dedd3c491c836425c163d6336206af670089555d822f2ce9edaa89f8d55905b5",
+    "rust/factory-runtime/src/http.rs": "4d0777b84ebccc577f3e429931fe8d53370d5671ec25d3b4245e1f2c8a1d58ea",
+    "rust/factory-runtime/src/lib.rs": "71661e114092c0ca1d803b1b8af673d2fed9bf8c3c316a826cda5f1c3d6c3b98",
+    "rust/factory-runtime/src/main.rs": "3002799258975b649c24b7f299a67353f253a8f82bbe45eb9b45f35502a1a9aa",
+    "rust/factory-runtime/src/planning.rs": "ab6d9345bb4ccc96e470df741de1e694984e5fb31c5472117647b20dbf579841",
+    "rust/factory-runtime/src/runtime.rs": "06d61df1e7369868bdbbbc1a33d9228b399462453f55fd466a321f7c10dff62f",
+    "rust/factory-runtime/src/store.rs": "8ef0e6a6c6513071897bf67f074711f987cbeb25db83abec65172de71ee9ebd9",
+    "rust/factory-runtime/src/worker.rs": "12d44e302865046aa2adc6b6837b1934ddceebf98ee3593dd52cd06dd5dc00f5",
+    "rust/factory-runtime/src/workflow/artifacts.rs": "3e2fd04acafea3f9b4e48e2821ece7d3ec7afad52b087bc5c35c76e8e0d2d1a5",
+    "rust/factory-runtime/src/workflow/config.rs": "b8bfed7f1c02d23d76ab54c2bd0e620fc70f274e902f4e52874d344949070b14",
+    "rust/factory-runtime/src/workflow/delivery.rs": "e06f25b25d2ad9a1170e80903521533166247a5ad6e9c7ffec22f8f37aa1d156",
+    "rust/factory-runtime/src/workflow/docker.rs": "b534c5177f53b60cb54faf50c0c44319c4a73599c7c4b781b89f98a6a2b4c77b",
+    "rust/factory-runtime/src/workflow/execution.rs": "2fdebb537435a7196580815a41826b78dcb01ffe72ed3bf0ba7ec5c7eb5974ff",
+    "rust/factory-runtime/src/workflow/github.rs": "54ce3b04e691db473fdfcf49acd4e1130358bea8723c64e57e9481c2643b5d21",
+    "rust/factory-runtime/src/workflow/handoffs.rs": "909236ce79e1ac6593d564503b13542108c38968c379afb01955d67b3c80a1a9",
+    "rust/factory-runtime/src/workflow/mod.rs": "3373328a93b02a67595dff16dc2f3cf2474fc43e4ae3f8a8f5ea9f77298e79b4",
+    "rust/factory-runtime/src/workflow/phases.rs": "ded84457beb1f01742e671c3c933003bf9df67c2763ef61a0fd8e6034b002773",
+    "rust/factory-runtime/src/workflow/process.rs": "ab565edc5a42f1ce96eb427e3b4652fd0a7569db593521d703c077326e0fa92a",
+    "rust/factory-runtime/src/workflow/project.rs": "db72d449fcc6030ca91ce891149c89a22de4d46e6dade87212d492447065398b",
+    "rust/factory-runtime/src/workflow/prompts.rs": "2b5c259a235179d0632f91bd66385c7cc77763b567f6a0d9b8b6b7581fed0a3f",
+    "rust/factory-runtime/src/workflow/repository.rs": "964a4d11acf54945e06c3da8f9d08148a6e986efec54888bebe9899ef7004604",
+    "rust/factory-runtime/src/workflow/review_fixes.rs": "581e4817b453afbfbabc8ec10c523a26a72a261b5e25d9eabf10e948c3d54bc8",
+    "rust/factory-runtime/src/workflow/review_policy.rs": "b2821df34bc6c17e9ea7aa117d5246d444b67866af1cdb369ce0b8b3cf8ec71b",
+    "rust/factory-runtime/src/workflow/verified_git.rs": "e31c1fd048953e601935fda71af2a15502f9015b5309963a22d65a9152af1b0b"
+  },
+  "docker_version": "29.1.3",
+  "live_provider": "not exercised",
+  "host_reboot": "not exercised",
+  "worker_image_ids": [
+    "sha256:2876eb55b03289caa330a05e5a23b797886ca796fdd6f4c48a4e026a99358a6f"
+  ],
+  "checks": {
+    "rust": {
+      "passed": 57,
+      "ignored": 4,
+      "format_typecheck_clippy": "passed"
+    },
+    "python": {
+      "passed": 378,
+      "skipped": 22,
+      "lint_format_mypy": "passed"
+    },
+    "docker_quality_regressions": {
+      "passed": 2
+    },
+    "volume_crash_acceptance": {
+      "passed": true,
+      "cases": [
+        "kill_recreate_waiting_duplicates_terminal_guard",
+        "concurrent_workspace_resumes",
+        "before_dispatch",
+        "after_dispatch",
+        "after_result",
+        "after_queue_finish"
+      ]
+    }
+  },
+  "tested_versions": {
+    "rust": "1.99.1",
+    "adk_rev": "bd1bd5f450a6489d08e14220809033401282ed67",
+    "codex_protocol": "0.154.0 (simulated provider)",
+    "docker_server": "29.1.3",
+    "python_checks": "3.14.10"
+  }
+}

@@ -1,0 +1,61 @@
+name: software-factory
+services:
+  controller:
+    image: ${FACTORY_CONTROLLER_IMAGE:-software-factory-controller:issue-19}
+    build:
+      context: .
+      dockerfile: containers/rust-runtime.Dockerfile
+      args:
+        FACTORY_UID: ${FACTORY_UID:?set the non-root checkout owner UID}
+        FACTORY_GID: ${FACTORY_GID:?set the checkout owner GID}
+    user: "${FACTORY_UID}:${FACTORY_GID}"
+    group_add:
+      - "${FACTORY_DOCKER_GID:?set the host Docker socket GID}"
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 35s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    environment:
+      FACTORY_DATA_DIR: ${FACTORY_DATA_DIR:?set absolute private data directory}
+      FACTORY_WORKSPACE: ${FACTORY_WORKSPACE:?set absolute checkout path}
+      FACTORY_HTTP_BIND: 0.0.0.0:4317
+      FACTORY_HTTP_HOST: 127.0.0.1:${FACTORY_PORT:-4317}
+      FACTORY_HTTP_ORIGIN: http://127.0.0.1:${FACTORY_PORT:-4317}
+      FACTORY_HTTP_DOCKER_LOOPBACK: "1"
+      FACTORY_HTTP_TOKEN_FILE: /run/secrets/http-token
+      FACTORY_CALLER_ID: ${FACTORY_CALLER_ID:-local-operator}
+      FACTORY_MAX_CONCURRENT_RUNS: "1"
+      FACTORY_REQUIRE_DOCKER: "1"
+    ports:
+      - "127.0.0.1:${FACTORY_PORT:-4317}:4317"
+    volumes:
+      # Same absolute paths on host/controller: worker bind sources resolve in the daemon.
+      - type: bind
+        source: ${FACTORY_DATA_DIR}
+        target: ${FACTORY_DATA_DIR}
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${FACTORY_WORKSPACE}
+        target: ${FACTORY_WORKSPACE}
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${FACTORY_TOKEN_FILE:?set absolute token file}
+        target: /run/secrets/http-token
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+    healthcheck:
+      test: [CMD-SHELL, 'curl --fail --silent --max-time 3 -H "Host: $$FACTORY_HTTP_HOST" http://127.0.0.1:4317/health/ready >/dev/null']
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3

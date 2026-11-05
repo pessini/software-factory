@@ -36,7 +36,9 @@ def execute(
 
 
 class Fixture:
-    def __init__(self, root: Path, name: str, image: str, live: bool = False) -> None:
+    def __init__(
+        self, root: Path, name: str, image: str, live: bool = False, configure: bool = True
+    ) -> None:
         self.root = root / name
         self.workspace = self.root / "workspace"
         self.data = self.root / "data"
@@ -71,7 +73,8 @@ class Fixture:
             )
         path = self.root / "docker.json"
         path.write_text(json.dumps(backend))
-        self.call("configure-docker", str(path))
+        if configure:
+            self.call("configure-docker", str(path))
         agent = {
             "provider": "codex",
             "model": "gpt-5.6-luna" if live else "factory-test-model",

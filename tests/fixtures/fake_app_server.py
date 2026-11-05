@@ -49,6 +49,13 @@ for line in sys.stdin:
     if method == "initialize":
         send({"id": request_id, "result": {"userAgent": "factory-simulated/0.154.0 (Linux)"}})
     elif method == "model/list":
+        gate = Path.cwd() / ".factory-test-catalog-gate"
+        if gate.exists():
+            (Path(os.environ["CODEX_HOME"]) / "catalog-gate-ready").write_text("ready")
+            deadline = time.monotonic() + 30
+            while gate.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert not gate.exists(), "catalog test gate expired"
         send(
             {
                 "id": request_id,

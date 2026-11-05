@@ -1,4 +1,5 @@
-# Development-only fake-worker slice. Production packaging is tracked in #19.
+# Locked controller; the Docker CLI is controller-only, never mounted into workers.
+FROM docker:29.1.3-cli@sha256:4fa0ee1f3a7e4354c4ea34558b6d4ee32859baf4973d4c8ccc8e7fe3dd730c04 AS docker
 FROM rust:1.99.1@sha256:09027f873d45b8ecd1dc86f1fa13b7a62b875c961f017a0e331267b350430137 AS build
 WORKDIR /build
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
@@ -7,10 +8,16 @@ COPY src/software_factory/web_static src/software_factory/web_static
 RUN cargo build --locked --release -p factory-runtime
 
 FROM debian:stable-slim@sha256:13e0a2e78aa0554ad5ff66e4e260c6dbcdff807eb1f39d43b9fb0288aae88b04
-RUN groupadd --gid 10001 factory && useradd --uid 10001 --gid factory --no-create-home factory \
+ARG FACTORY_UID=10001
+ARG FACTORY_GID=10001
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl gh \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid ${FACTORY_GID} factory && useradd --uid ${FACTORY_UID} --gid factory --no-create-home factory \
     && mkdir /data /workspace && chown factory:factory /data /workspace
+COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=build /build/target/release/factory-runtime /usr/local/bin/factory-runtime
-USER 10001:10001
-VOLUME ["/data", "/workspace"]
-ENTRYPOINT ["factory-runtime", "/data", "/workspace"]
+COPY containers/worker-seccomp.json /opt/factory/worker-seccomp.json
+COPY containers/controller-entrypoint.sh /usr/local/bin/controller-entrypoint
+USER ${FACTORY_UID}:${FACTORY_GID}
+ENTRYPOINT ["controller-entrypoint"]
 CMD ["serve"]
