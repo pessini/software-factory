@@ -194,18 +194,27 @@ for line in sys.stdin:
                 ]["answers"] == ["world"]
             # A real App Server aborts an active turn when its controlling stdin
             # closes. Preserve that behavior instead of sleeping through EOF.
-            readable, _, _ = select.select([sys.stdin], [], [], 3)
-            if readable and not os.read(sys.stdin.fileno(), 1):
-                send(
-                    {
-                        "method": "turn/completed",
-                        "params": {
-                            "threadId": thread,
-                            "turn": {"id": turn, "status": "interrupted", "items": []},
-                        },
-                    }
-                )
-                sys.exit(0)
+            controlled = (cwd / ".factory/test-controlled-provider").exists()
+            home = Path(os.environ["CODEX_HOME"])
+            if controlled:
+                (home / "build-ready").write_text(operation)
+            deadline = time.monotonic() + (180 if controlled else 3)
+            while time.monotonic() < deadline:
+                if controlled and (home / "build-release").exists():
+                    break
+                readable, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if readable and not os.read(sys.stdin.fileno(), 1):
+                    send(
+                        {
+                            "method": "turn/completed",
+                            "params": {
+                                "threadId": thread,
+                                "turn": {"id": turn, "status": "interrupted", "items": []},
+                            },
+                        }
+                    )
+                    sys.exit(0)
+            assert not controlled or (home / "build-release").exists(), "build test gate expired"
             if "[tamper]" in original:
                 for protected in [
                     cwd / ".git/config",

@@ -28,6 +28,11 @@ def main() -> None:
     parser.add_argument("--image", default="software-factory-controller:issue-19")
     parser.add_argument("--output", type=Path)
     parser.add_argument(
+        "--slow-host",
+        action="store_true",
+        help="Use bounded 180s operation/1200s run fixture budgets for software-emulated hosts",
+    )
+    parser.add_argument(
         "--live",
         action="store_true",
         help="Use the existing provider login for real, billable model calls in the disposable fixture",
@@ -51,12 +56,18 @@ def main() -> None:
         live=args.live,
         configure=False,
     )
-    fixture.config["limits"]["total_run_timeout_seconds"] = 1200 if args.live else 300
-    if args.live:
+    extended = args.live or args.slow_host
+    fixture.config["limits"]["total_run_timeout_seconds"] = 1200 if extended else 300
+    if extended:
         fixture.config["limits"]["step_timeout_seconds"] = 180
+        fixture.config["quality"]["commands"][0]["timeout_seconds"] = 120
     policy = fixture.workspace / ".factory/factory.yaml"
     policy.parent.mkdir()
     policy.write_text(json.dumps(fixture.config))
+    if not args.live:
+        (policy.parent / "test-controlled-provider").write_text(
+            "Hold simulated Builder until the exact controller-kill witness is recorded.\n"
+        )
     module.execute(["git", "add", "."], cwd=fixture.workspace)
     module.execute(["git", "commit", "-qm", "Policy"], cwd=fixture.workspace)
     token = "test-only-production-token-" + root.name
@@ -108,7 +119,7 @@ def main() -> None:
         assert api("plan_list") == []
 
     def wait(operation, expected, **payload):
-        deadline = time.monotonic() + (1200 if args.live else 300)
+        deadline = time.monotonic() + (1200 if extended else 300)
         while time.monotonic() < deadline:
             value = api(operation, **payload)
             if value["status"] == expected:
@@ -144,7 +155,7 @@ def main() -> None:
         raise AssertionError("no saved SSE event")
 
     def wait_for_builder(run_id):
-        deadline = time.monotonic() + (420 if args.live else 120)
+        deadline = time.monotonic() + (420 if extended else 120)
         while time.monotonic() < deadline:
             for receipt in fixture.receipts():
                 if (
@@ -293,6 +304,21 @@ def main() -> None:
         assert json.loads(module.execute(["docker", "inspect", broker_id]).stdout)[0]["State"][
             "Running"
         ]
+        if not args.live:
+            # The external provider gate holds the turn across slow Docker CLI
+            # calls too, so this proves survival rather than racing a 3s sleep.
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                markers = [
+                    path
+                    for path in fixture.data.rglob("build-ready")
+                    if path.read_text() == building["operation_id"]
+                ]
+                if markers:
+                    markers[0].with_name("build-release").write_text("release")
+                    break
+                time.sleep(0.05)
+            assert markers, "simulated Builder gate not found"
         compose("up", "-d", "--no-build", "--force-recreate", "--wait")
         result = wait("status", "ready_for_review", run_id=run_id)
         result = json.loads(
@@ -362,6 +388,7 @@ def main() -> None:
                 "image_id": controller["Image"],
                 "status": result["status"],
                 "operations": len(operations),
+                "fixture_limits": fixture.config["limits"],
                 "workers": inspections,
                 "restore_pending_approval": True,
                 "restored_plan_hash": restored["plan_hash"],
