@@ -28,6 +28,19 @@ def main() -> None:
     parser.add_argument("--image", default="software-factory-controller:issue-19")
     parser.add_argument("--output", type=Path)
     parser.add_argument(
+        "--model", help="Explicit model for an opt-in live fixture; no runtime fallback is enabled"
+    )
+    parser.add_argument(
+        "--step-timeout-seconds",
+        type=int,
+        help="Override the saved fixture step budget (1–7200 seconds)",
+    )
+    parser.add_argument(
+        "--run-timeout-seconds",
+        type=int,
+        help="Override the saved fixture work budget (60–86400 seconds)",
+    )
+    parser.add_argument(
         "--slow-host",
         action="store_true",
         help="Use bounded 180s operation/1200s run fixture budgets for software-emulated hosts",
@@ -38,6 +51,12 @@ def main() -> None:
         help="Use the existing provider login for real, billable model calls in the disposable fixture",
     )
     args = parser.parse_args()
+    if args.model and not args.live:
+        parser.error("--model requires --live")
+    if args.step_timeout_seconds is not None and not 1 <= args.step_timeout_seconds <= 7200:
+        parser.error("step timeout must be between 1 and 7200 seconds")
+    if args.run_timeout_seconds is not None and not 60 <= args.run_timeout_seconds <= 86400:
+        parser.error("run timeout must be between 60 and 86400 seconds")
     args.output = args.output or ROOT / ".checks" / (
         "issue-19-production-live.json" if args.live else "issue-19-production.json"
     )
@@ -57,10 +76,19 @@ def main() -> None:
         configure=False,
     )
     extended = args.live or args.slow_host
+    if args.model:
+        for agent in fixture.config["agents"].values():
+            agent["model"] = args.model
     fixture.config["limits"]["total_run_timeout_seconds"] = 1200 if extended else 300
     if extended:
         fixture.config["limits"]["step_timeout_seconds"] = 180
         fixture.config["quality"]["commands"][0]["timeout_seconds"] = 120
+    if args.step_timeout_seconds is not None:
+        fixture.config["limits"]["step_timeout_seconds"] = args.step_timeout_seconds
+    if args.run_timeout_seconds is not None:
+        fixture.config["limits"]["total_run_timeout_seconds"] = args.run_timeout_seconds
+    run_timeout = fixture.config["limits"]["total_run_timeout_seconds"]
+    builder_wait = fixture.config["limits"]["step_timeout_seconds"] + (240 if extended else 90)
     policy = fixture.workspace / ".factory/factory.yaml"
     policy.parent.mkdir()
     policy.write_text(json.dumps(fixture.config))
@@ -119,7 +147,7 @@ def main() -> None:
         assert api("plan_list") == []
 
     def wait(operation, expected, **payload):
-        deadline = time.monotonic() + (1200 if extended else 300)
+        deadline = time.monotonic() + run_timeout
         while time.monotonic() < deadline:
             value = api(operation, **payload)
             if value["status"] == expected:
@@ -155,7 +183,7 @@ def main() -> None:
         raise AssertionError("no saved SSE event")
 
     def wait_for_builder(run_id):
-        deadline = time.monotonic() + (420 if extended else 120)
+        deadline = time.monotonic() + builder_wait
         while time.monotonic() < deadline:
             for receipt in fixture.receipts():
                 if (
@@ -228,7 +256,7 @@ def main() -> None:
         started = api("plan_start", request=request, request_id="production")
         session = started["session_id"]
         if args.live:
-            deadline = time.monotonic() + 900
+            deadline = time.monotonic() + run_timeout
             answered = set()
             while time.monotonic() < deadline:
                 planned = api("plan_status", session_id=session)

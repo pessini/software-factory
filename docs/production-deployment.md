@@ -35,6 +35,14 @@ docker build -f containers/worker.Dockerfile -t software-factory-worker:0.154.0 
 docker compose --env-file .env.production build
 ```
 
+For installation on a clean host without rebuilding, export the already built
+controller and worker images with `docker save`, transfer the archive and a
+checksum through your trusted artifact channel, verify it, then `docker load` it
+on the destination. Transfer this repository with its Git history as well (clone
+or Git bundle); acceptance fixtures need a real checkout. Retain and verify the
+image IDs before configuration. The clean-host acceptance used this artifact
+installation path with an initially empty Docker cache.
+
 Write an initial backend configuration into the private data directory. The
 provider login must exist on the **daemon host** and be readable by the worker
 UID. It is mounted read-only only into the provider home, denied to model tools.
@@ -253,7 +261,20 @@ For authorized live-provider acceptance, build the pinned provider worker and ru
 `python3 scripts/accept-rust-production.py --live`. This uses the existing login
 and real model calls in a disposable checkout, including in-flight controller
 recreation and cancellation. Output defaults to `.checks/issue-19-production-live.json`.
-Use a non-root test operator with local Docker access.
+Use a non-root test operator with local Docker access. `--model` explicitly selects
+a live fixture model; it never enables runtime fallback. Bounded
+`--step-timeout-seconds` and `--run-timeout-seconds` overrides are saved in that
+fixture's policy and recorded in its evidence. The verified Sol run used:
+
+```bash
+python3 scripts/accept-rust-production.py --live --model gpt-5.6-sol \
+  --step-timeout-seconds 600 --run-timeout-seconds 3600 \
+  --image software-factory-controller:issue-19-broker
+```
+
+Use `--slow-host` for bounded 180s step/1200s run budgets when testing under software
+CPU emulation. These are acceptance fixture settings, not changes to deployed
+workspace policies.
 
 Before cutover, fetch current `origin/main`, record its SHA and compare
 `a9358d80fde74bf4ebfa5f7e967f2c98d8a515f0..origin/main`. Reconcile every new behavioral

@@ -1,0 +1,11 @@
+{
+  "kind": "prior_production_candidate_whole_snapshot_service_rollback",
+  "passed": true,
+  "prior_source": "17b296fc0da56cc922a706e417392944632f9c96",
+  "cases": {
+    "whole_pre_broker_snapshot_restored": true,
+    "prior_service_healthy": true,
+    "saved_result_and_report_available": true
+  },
+  "prior_image_id": "sha256:7213c322cd6694dd6792ac0b0d1fcbcfa1118281d66e71eecd262fe964d5af39"
+}
