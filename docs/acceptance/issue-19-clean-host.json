@@ -1,0 +1,170 @@
+{
+  "kind": "clean_ubuntu_install_and_actual_guest_reboots",
+  "passed": true,
+  "images_before_install": "",
+  "docker_version": "29.1.3",
+  "compose_version": "Docker Compose version 2.40.3+ds1-0ubuntu1~24.04.1",
+  "kernel": "6.8.0-147-generic",
+  "boot_ids": [
+    "76cf333f-479d-4391-a269-c18a09698fd8",
+    "a7059d02-a368-43df-8c37-80b89fd9ac2e",
+    "5ba061fb-ba7b-4e3a-8f27-8e8f2fe1ba89",
+    "34d4f301-b19b-4b72-95aa-8a3a120e7a8c"
+  ],
+  "fresh_host_acceptance": {
+    "version": 1,
+    "kind": "real_compose_docker_simulated_provider",
+    "passed": true,
+    "planning_session": "pln_7b94c9318958",
+    "run_id": "run-7a2277fae16a9ebebf4e4fab26a670588c866bb087018998041c1cf184fe7acd",
+    "image_id": "sha256:680bdec93e13a68d84f1b111a765ff0edb2f585790af0ef677860b86ebbeba09",
+    "status": "ready_for_review",
+    "operations": 5,
+    "fixture_limits": {
+      "step_timeout_seconds": 180,
+      "total_run_timeout_seconds": 1200
+    },
+    "workers": [
+      {
+        "id": "1fb5bb050d3c797cbc093a10b9a5c1e41a572543cf494f0e2f580e0f64cc15ca",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "c735150293d1cbf79531ec80323be5bb2ac524075a48d53cb38940704208798f",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "ac2672899fb703943c0c80f601fa232669d4fa1e8006b2e335a04f5f68729b3b",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "5d5542aa0a572326dc4d9fd3ed14d9211519ad4cdd6d4115682f3e171182382a",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "db70d44d46b4a08c4a95a962ef94051b71445c5f477dd59d1dc6499e1a514c63",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "ef7cd746928989343436d8426c4c168530d53f63492f37771417ae82a08ca39e",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "15c07268f06bf5f01a13de9f2ab79580f406cd4d34bea94a6703951aa55b56fd",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "24e6c8c99fe6fbbc37bc70f3811eda68624866b20681e96052e972417a6227b0",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "c5ad397073f19b8941fe4bdc5a6b11e940b8dda9fd2d5757156de619ae82128d",
+        "read_only_root": true,
+        "stopped": true
+      },
+      {
+        "id": "0ee4f17c386788128bdaeff65a7d7bbbd69964b66f676ee588b0c52d6bc9dc1b",
+        "read_only_root": true,
+        "stopped": true
+      }
+    ],
+    "restore_pending_approval": true,
+    "restored_plan_hash": "4f92ec461fc037032caecd82ab3716dda39825720f10807df4da8c191f82d034",
+    "catalog_admission": [
+      "busy",
+      "busy",
+      "busy",
+      "ok"
+    ],
+    "sse_replay": true,
+    "cancelled_run": "run-0b0d2cdbdc7138df5629e96d33a53a1438f35abfbc3960ae72cfa995d16e60fa",
+    "hard_recreation": true,
+    "independent_broker_survived_controller": true,
+    "source_base": "830e5f6153597ab5431a35e2d7ed2348c78d31f2",
+    "source_hashes": {
+      "compose.yaml": "cb275d1813c9bbaa4523f99e175c2389659b2bb17997007f0ac7e4448804508a",
+      "containers/rust-runtime.Dockerfile": "7153f3036f8c68da8fb1a998343177023c09c01c48fd0dcabec75f81e9757247",
+      "containers/controller-entrypoint.sh": "c2d22ff4ad66a8054185e31c7a6ffc25a28217d3b34ac53f31b1e802d6a62411",
+      "containers/worker.Dockerfile": "efda1849c8437af79cfc065f10ec272a73c5691309303aeb2152af601e36b6ce",
+      "scripts/factory-snapshot.py": "22f4b66c33ee3643b51292d6a8a324a3d6aaf3ad3e7ee66003de6272ba284763",
+      "scripts/accept-rust-production.py": "d11c78040c0f1622de8210cb341327c580e4003c770e01785c4cbe425380b1e3",
+      "tests/fixtures/fake_app_server.py": "bd1472ebe8eab5eff72e7e3c3a12a5e61e86c1275bcc45d298eb2e074630b274",
+      "rust/factory-runtime/src/config.rs": "660f87897f80e5283196aed2217afbad8c65e7265223a81eeb3c49c3c0b017cd",
+      "rust/factory-runtime/src/contracts.rs": "fe97db97e12912a82d121069271627b4155d13989a189f43e8d5f2fbcfc7b17e",
+      "rust/factory-runtime/src/control/migration.rs": "8ccc432ab4e3d3d1c080119181f131452b52099046d22b71e8831d79d154861f",
+      "rust/factory-runtime/src/control.rs": "e36ed017f1f060a69a18887d53e632f613e701a22845f2c2bd6bed3f37ab0edb",
+      "rust/factory-runtime/src/error.rs": "06480a9c02b873cc94aaa3d6dc7ac83a6c7ebcb04c6d2dd2fdaba1b93542f192",
+      "rust/factory-runtime/src/graph.rs": "dedd3c491c836425c163d6336206af670089555d822f2ce9edaa89f8d55905b5",
+      "rust/factory-runtime/src/http.rs": "4d0777b84ebccc577f3e429931fe8d53370d5671ec25d3b4245e1f2c8a1d58ea",
+      "rust/factory-runtime/src/lib.rs": "71661e114092c0ca1d803b1b8af673d2fed9bf8c3c316a826cda5f1c3d6c3b98",
+      "rust/factory-runtime/src/main.rs": "90f31706ffdfc8b3bd23701c2b03a334306d0e00b1d90ec1fbc5a1cf3b98362c",
+      "rust/factory-runtime/src/planning.rs": "ab6d9345bb4ccc96e470df741de1e694984e5fb31c5472117647b20dbf579841",
+      "rust/factory-runtime/src/runtime.rs": "06d61df1e7369868bdbbbc1a33d9228b399462453f55fd466a321f7c10dff62f",
+      "rust/factory-runtime/src/store.rs": "8ef0e6a6c6513071897bf67f074711f987cbeb25db83abec65172de71ee9ebd9",
+      "rust/factory-runtime/src/worker.rs": "12d44e302865046aa2adc6b6837b1934ddceebf98ee3593dd52cd06dd5dc00f5",
+      "rust/factory-runtime/src/workflow/artifacts.rs": "3e2fd04acafea3f9b4e48e2821ece7d3ec7afad52b087bc5c35c76e8e0d2d1a5",
+      "rust/factory-runtime/src/workflow/config.rs": "b8bfed7f1c02d23d76ab54c2bd0e620fc70f274e902f4e52874d344949070b14",
+      "rust/factory-runtime/src/workflow/delivery.rs": "e06f25b25d2ad9a1170e80903521533166247a5ad6e9c7ffec22f8f37aa1d156",
+      "rust/factory-runtime/src/workflow/docker.rs": "7cebfc069b5b9adeb479b4f165070f3dc45d847d3f17dcdff38ffbf33038d7fb",
+      "rust/factory-runtime/src/workflow/docker_broker.rs": "b91860df6decb5807f6ea85aac1524f6893eb67b4e7cd665994efea72cd7b566",
+      "rust/factory-runtime/src/workflow/execution.rs": "2fdebb537435a7196580815a41826b78dcb01ffe72ed3bf0ba7ec5c7eb5974ff",
+      "rust/factory-runtime/src/workflow/github.rs": "54ce3b04e691db473fdfcf49acd4e1130358bea8723c64e57e9481c2643b5d21",
+      "rust/factory-runtime/src/workflow/handoffs.rs": "909236ce79e1ac6593d564503b13542108c38968c379afb01955d67b3c80a1a9",
+      "rust/factory-runtime/src/workflow/mod.rs": "3373328a93b02a67595dff16dc2f3cf2474fc43e4ae3f8a8f5ea9f77298e79b4",
+      "rust/factory-runtime/src/workflow/phases.rs": "ded84457beb1f01742e671c3c933003bf9df67c2763ef61a0fd8e6034b002773",
+      "rust/factory-runtime/src/workflow/process.rs": "ab565edc5a42f1ce96eb427e3b4652fd0a7569db593521d703c077326e0fa92a",
+      "rust/factory-runtime/src/workflow/project.rs": "db72d449fcc6030ca91ce891149c89a22de4d46e6dade87212d492447065398b",
+      "rust/factory-runtime/src/workflow/prompts.rs": "2b5c259a235179d0632f91bd66385c7cc77763b567f6a0d9b8b6b7581fed0a3f",
+      "rust/factory-runtime/src/workflow/repository.rs": "964a4d11acf54945e06c3da8f9d08148a6e986efec54888bebe9899ef7004604",
+      "rust/factory-runtime/src/workflow/review_fixes.rs": "581e4817b453afbfbabc8ec10c523a26a72a261b5e25d9eabf10e948c3d54bc8",
+      "rust/factory-runtime/src/workflow/review_policy.rs": "b2821df34bc6c17e9ea7aa117d5246d444b67866af1cdb369ce0b8b3cf8ec71b",
+      "rust/factory-runtime/src/workflow/verified_git.rs": "e31c1fd048953e601935fda71af2a15502f9015b5309963a22d65a9152af1b0b"
+    },
+    "docker_version": "29.1.3",
+    "live_provider": "not exercised",
+    "worker_image_ids": [
+      "sha256:63ed0cb5491c228b88b1a17fd7ba6528155203c11c77d61b7001521026242903"
+    ],
+    "host_reboot": "not exercised"
+  },
+  "reboot_acceptance": {
+    "kind": "fresh_ubuntu_actual_guest_reboots",
+    "passed": true,
+    "cases": {
+      "fresh_compose_pending_question": true,
+      "host_reboot_preserves_pending_question_deadline_ownership": true,
+      "consistent_exact_plan_snapshot": true,
+      "host_reboot_preserves_exact_plan_pending_approval": true,
+      "restore_exact_approval_full_workflow_no_duplicate_dispatch": true,
+      "saved_native_question_has_workspace_claim": true,
+      "host_reboot_preserves_native_question_ownership_no_redispatch": true,
+      "post_reboot_cancellation_confirms_cleanup": true
+    },
+    "boot_ids": [
+      "76cf333f-479d-4391-a269-c18a09698fd8",
+      "a7059d02-a368-43df-8c37-80b89fd9ac2e",
+      "5ba061fb-ba7b-4e3a-8f27-8e8f2fe1ba89",
+      "34d4f301-b19b-4b72-95aa-8a3a120e7a8c"
+    ],
+    "setup_note": "Read-only planning has no implementation workspace claim; ownership is tested separately with a saved native implementation question.",
+    "cleanup_worker_inspections": 3,
+    "claim_release_note": "Terminal status preceded completion of artifact materialization/claim unlink; settled release and zero live worker/broker PIDs were verified separately."
+  },
+  "final_audit_note": "Post-cancellation cleanup confirmed after terminal state settled; all eight reboot checks passed.",
+  "ubuntu_cloud_image_sha256": "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94",
+  "installation": "Fresh Ubuntu VM with initially empty Docker cache; installed exported immutable controller/worker images and source plus git bundle from build host. No source image build claimed inside VM.",
+  "retry_notes": [
+    "Initial driver log-directory assumption corrected before app startup.",
+    "Software-emulated host needed explicit slow-host fixture budgets.",
+    "Completion/auto-removal races discovered during acceptance were fixed before the final passing run.",
+    "Cancellation releases its claim after terminal-state publication; final audit waited for cleanup and confirmed no running workers/brokers."
+  ]
+}

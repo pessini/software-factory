@@ -1,0 +1,10 @@
+{
+  "kind": "existing_cli_acp_mcp_against_production_compose",
+  "passed": true,
+  "cases": {
+    "existing_cli_reads_same_session": true,
+    "mcp_reconnects_same_saved_session_twice": true,
+    "acp_attaches_original_run": true
+  },
+  "run_id": "run-dcc709c5dbaf7fc65f9e061d7b4115fcda3a0204ae7f85f073589f7aee3f8d5f"
+}

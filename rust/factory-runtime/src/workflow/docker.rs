@@ -26,6 +26,16 @@ const QUALITY_OUTPUT_LIMIT: usize = 65_536;
 const OPERATION: &str = "software-factory.operation";
 const OWNER: &str = "software-factory.controller";
 const WORKSPACE: &str = "software-factory.workspace";
+#[path = "docker_broker.rs"]
+mod daemon_broker;
+
+/// Trusted daemon-owned broker, separate from the replaceable HTTP controller.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BrokerConfig {
+    pub image: String,
+    pub socket_gid: u32,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DockerConfig {
@@ -45,6 +55,8 @@ pub struct DockerConfig {
     #[serde(default = "never")]
     pub approval_policy: String,
     pub seccomp_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broker: Option<BrokerConfig>,
 }
 fn seccomp_profile() -> PathBuf {
     PathBuf::from(concat!(
@@ -72,6 +84,7 @@ impl DockerConfig {
             seccomp_profile: seccomp_profile(),
             approval_policy: never(),
             seccomp_sha256: None,
+            broker: None,
         }
     }
 }
@@ -84,6 +97,8 @@ pub struct WorkerReceipt {
     pub request: ExecutionRequest,
     pub container_name: String,
     pub container_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broker_container_id: Option<String>,
     pub image_id: Option<String>,
     pub reported: Option<super::AgentConfig>,
     pub creation_requested: bool,
@@ -126,6 +141,13 @@ impl DockerWorker {
         }
         if docker.image.trim().is_empty() {
             return Err(Error::Config("worker image is required".into()));
+        }
+        if docker
+            .broker
+            .as_ref()
+            .is_some_and(|broker| broker.image.trim().is_empty())
+        {
+            return Err(Error::Config("daemon broker image is required".into()));
         }
         if !["never", "on-request", "untrusted"].contains(&docker.approval_policy.as_str()) {
             return Err(Error::Config(
@@ -930,7 +952,25 @@ impl Worker for DockerWorker {
     }
     async fn reconcile(&self, operation: &str, input: &str) -> Result<Reconciliation> {
         let request = self.decode(operation, input)?;
-        if self.broker_lock(operation)?.is_none() {
+        let broker_running = if self.docker.broker.is_some() {
+            if let Some(receipt) = self.receipt(operation)? {
+                if receipt.request != request || receipt.request_hash != digest(input.as_bytes()) {
+                    return Err(Error::Conflict(
+                        "worker receipt input/settings changed".into(),
+                    ));
+                }
+                receipt.broker_container_id.is_some()
+                    && self
+                        .inspect_daemon_broker(&receipt)
+                        .await?
+                        .is_some_and(|state| state["State"]["Running"] == true)
+            } else {
+                false
+            }
+        } else {
+            self.broker_lock(operation)?.is_none()
+        };
+        if broker_running {
             return match self
                 .poll_broker(operation, input, CancellationToken::new())
                 .await
@@ -948,6 +988,7 @@ impl Worker for DockerWorker {
                 request,
                 container_name: self.container_name(operation),
                 container_id: None,
+                broker_container_id: None,
                 image_id: None,
                 reported: None,
                 creation_requested: false,
@@ -1051,6 +1092,7 @@ impl Worker for DockerWorker {
                 return Err(Error::Conflict("cleanup request input changed".into()));
             }
             self.stop(&mut receipt).await?;
+            self.stop_daemon_broker(&receipt).await?;
         }
         Ok(())
     }
@@ -1194,6 +1236,7 @@ impl DockerWorker {
             container_name: self.container_name(&request.operation_id),
             request,
             container_id: None,
+            broker_container_id: None,
             image_id: None,
             reported: None,
             creation_requested: false,
@@ -1337,6 +1380,7 @@ impl DockerWorker {
                 request,
                 container_name: self.container_name(operation),
                 container_id: None,
+                broker_container_id: None,
                 image_id: None,
                 reported: None,
                 creation_requested: false,
@@ -1367,6 +1411,9 @@ impl DockerWorker {
             atomic(&backend, &serde_json::to_vec_pretty(&self.docker)?)?;
         }
         drop(lease);
+        if self.docker.broker.is_some() {
+            return self.launch_daemon_broker(receipt).await;
+        }
         let current = std::env::current_exe()?;
         let executable = if current.file_name().is_some_and(|s| s == "factory-runtime") {
             current
@@ -1404,7 +1451,7 @@ impl DockerWorker {
         cancel: CancellationToken,
     ) -> Result<String> {
         let request = self.decode(operation, input)?;
-        let startup = tokio::time::Instant::now() + Duration::from_secs(10);
+        let mut next_liveness = tokio::time::Instant::now() + Duration::from_secs(10);
         loop {
             if cancel.is_cancelled() || self.stop_requested(&request).await? {
                 atomic(&self.path(operation).with_extension("stop"), b"stop")?;
@@ -1437,10 +1484,28 @@ impl DockerWorker {
             {
                 return Err(Error::Waiting("provider questions saved".into()));
             }
-            if self.broker_lock(operation)?.is_some() && tokio::time::Instant::now() > startup {
-                return Err(Error::Worker(
-                    "worker broker exited; reconcile its exact Docker receipt".into(),
-                ));
+            if tokio::time::Instant::now() > next_liveness {
+                let alive = if self.docker.broker.is_some() {
+                    self.inspect_daemon_broker(&receipt)
+                        .await?
+                        .is_some_and(|state| state["State"]["Running"] == true)
+                } else {
+                    self.broker_lock(operation)?.is_none()
+                };
+                // Completion can be committed while the liveness read is in
+                // flight. Never turn that newer confirmed result into recovery.
+                let latest = self
+                    .receipt(operation)?
+                    .ok_or_else(|| Error::Worker("worker launch receipt missing".into()))?;
+                next_liveness = tokio::time::Instant::now() + Duration::from_secs(5);
+                if latest.stopped {
+                    continue;
+                }
+                if !alive {
+                    return Err(Error::Worker(
+                        "worker broker exited; reconcile its exact Docker receipt".into(),
+                    ));
+                }
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -1465,6 +1530,9 @@ impl DockerWorker {
         if cancel.is_cancelled() || self.stop_requested(&request).await? {
             return Err(Error::Cancelled);
         }
+        let broker_container_id = self
+            .receipt(operation)?
+            .and_then(|saved| saved.broker_container_id);
         let mut receipt = WorkerReceipt {
             version: 1,
             operation_id: operation.into(),
@@ -1472,6 +1540,7 @@ impl DockerWorker {
             request,
             container_name: self.container_name(operation),
             container_id: None,
+            broker_container_id,
             image_id: None,
             reported: None,
             creation_requested: false,
@@ -1677,30 +1746,40 @@ impl DockerWorker {
         &self.docker
     }
     pub async fn pin_image(mut docker: DockerConfig) -> Result<DockerConfig> {
-        let result = tokio::time::timeout(
-            Duration::from_secs(30),
-            Command::new(&docker.executable)
-                .args(["image", "inspect", "--format", "{{.Id}}", &docker.image])
-                .kill_on_drop(true)
-                .output(),
-        )
-        .await
-        .map_err(|_| Error::Worker("worker image inspection timed out".into()))??;
-        if !result.status.success() {
-            return Err(Error::Config(
-                "pinned worker image must already be installed in the selected daemon".into(),
-            ));
+        let references = std::iter::once(&mut docker.image)
+            .chain(docker.broker.iter_mut().map(|broker| &mut broker.image));
+        for reference in references {
+            let result = tokio::time::timeout(
+                Duration::from_secs(30),
+                Command::new(&docker.executable)
+                    .args([
+                        "image",
+                        "inspect",
+                        "--format",
+                        "{{.Id}}",
+                        reference.as_str(),
+                    ])
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await
+            .map_err(|_| Error::Worker("worker image inspection timed out".into()))??;
+            if !result.status.success() {
+                return Err(Error::Config(
+                    "pinned worker image must already be installed in the selected daemon".into(),
+                ));
+            }
+            let image = String::from_utf8_lossy(&result.stdout).trim().to_owned();
+            if image.len() != 71
+                || !image.starts_with("sha256:")
+                || !image[7..].bytes().all(|b| b.is_ascii_hexdigit())
+            {
+                return Err(Error::Config(
+                    "Docker did not report an immutable worker image identity".into(),
+                ));
+            }
+            *reference = image;
         }
-        let image = String::from_utf8_lossy(&result.stdout).trim().to_owned();
-        if image.len() != 71
-            || !image.starts_with("sha256:")
-            || !image[7..].bytes().all(|b| b.is_ascii_hexdigit())
-        {
-            return Err(Error::Config(
-                "Docker did not report an immutable worker image identity".into(),
-            ));
-        }
-        docker.image = image;
         Ok(docker)
     }
 }

@@ -1,0 +1,16 @@
+{
+  "kind": "manual_browser_with_public_http_confirmation",
+  "passed": true,
+  "planning_session": "pln_f2cafd219b30",
+  "implementation": {
+    "run_id": "run-4e393853a493ed9ce048a736888f2ff1690756b55af95ec132c99d3910c5dda5",
+    "status": "ready_for_review",
+    "current_step": "done",
+    "error": null,
+    "event_position": 19
+  },
+  "controller_image_id": "sha256:680bdec93e13a68d84f1b111a765ff0edb2f585790af0ef677860b86ebbeba09",
+  "manual_observation": "User confirmed choosing world, submitting, approving the exact plan, and seeing the ready_for_review report.",
+  "public_report_contains_ready_for_review": true,
+  "provider": "explicit simulation; manual UI gate independent of live-provider record"
+}

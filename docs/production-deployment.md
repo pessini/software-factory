@@ -35,6 +35,14 @@ docker build -f containers/worker.Dockerfile -t software-factory-worker:0.154.0 
 docker compose --env-file .env.production build
 ```
 
+For installation on a clean host without rebuilding, export the already built
+controller and worker images with `docker save`, transfer the archive and a
+checksum through your trusted artifact channel, verify it, then `docker load` it
+on the destination. Transfer this repository with its Git history as well (clone
+or Git bundle); acceptance fixtures need a real checkout. Retain and verify the
+image IDs before configuration. The clean-host acceptance used this artifact
+installation path with an initially empty Docker cache.
+
 Write an initial backend configuration into the private data directory. The
 provider login must exist on the **daemon host** and be readable by the worker
 UID. It is mounted read-only only into the provider home, denied to model tools.
@@ -42,21 +50,24 @@ Do not store the HTTP token, backend configuration or provider login in the targ
 
 ```bash
 jq -n --arg workspace "$FACTORY_WORKSPACE" --arg data "$FACTORY_DATA_DIR" \
+  --arg broker_image "$FACTORY_CONTROLLER_IMAGE" --argjson socket_gid "$FACTORY_DOCKER_GID" \
   --arg auth /home/operator/.codex/auth.json \
   --argjson uid "$FACTORY_UID" --argjson gid "$FACTORY_GID" \
   '{executable:"docker",image:"software-factory-worker:0.154.0",
     daemon_workspace:$workspace,daemon_data_dir:$data,
     workspace_volume:null,data_volume:null,daemon_auth_file:$auth,
     uid:$uid,gid:$gid,seccomp_profile:"/opt/factory/worker-seccomp.json",
-    approval_policy:"never"}' > "$FACTORY_DATA_DIR/docker-input.json"
+    approval_policy:"never",broker:{image:$broker_image,socket_gid:$socket_gid}}' > "$FACTORY_DATA_DIR/docker-input.json"
 docker compose --env-file .env.production run --rm --no-deps controller \
   configure-docker "$FACTORY_DATA_DIR/docker-input.json"
 docker compose --env-file .env.production up -d --no-build --wait
 docker compose --env-file .env.production ps
 ```
 
-`configure-docker` saves the immutable worker image ID and seccomp hash. Service
-startup fails if the saved Docker backend is absent; production never silently
+`configure-docker` saves the immutable worker and broker image IDs and seccomp hash.
+The broker uses the same trusted image as the controller, with the same profile
+path and a Docker socket group matching the daemon host. Service
+startup fails if the Docker backend or daemon-broker configuration is absent; production never silently
 falls back to the fake worker. Preserve the selected worker image on the daemon.
 The build pins Rust 1.99.1, the ADK Git revision, Cargo.lock, Docker CLI 29.1.3,
 Codex 0.154.0, uv 0.12.12 and worker Python 3.14.7. Base images are digest-pinned.
@@ -95,9 +106,10 @@ continuation IDs and Docker/workspace identity files. Persist the entire checkou
 including `.git`, ignored dependencies, ownership claims and protected metadata.
 Do not discard or edit locks, claims or receipts to force progress.
 
-Only the controller gets the Docker socket, via its supplemental socket GID.
+Only the controller and its trusted daemon brokers get the Docker socket, via
+the configured supplemental socket GID.
 This is host-level authority even with a non-root controller UID. Treat the
-controller image, reviewed quality programs, configuration and operator as trusted;
+controller/broker images, reviewed quality programs, configuration and operator as trusted;
 do not use an untrusted shared Docker host. The controller runs with dropped
 capabilities, no-new-privileges, a read-only root and bounded tmpfs.
 
@@ -107,7 +119,14 @@ read-only. The established [worker policy](rust-workflow.md) supplies separate P
 namespaces, non-root IDs, dropped capabilities, seccomp, read-only roots, 2 CPUs,
 2 GiB memory and 256 PIDs per worker; quality commands have no network. The
 controller defaults to one supervised run (maximum supported setting 16), 2 CPUs,
-2 GiB and 256 PIDs. Catalog inspection has one additional cross-process admission
+2 GiB and 256 PIDs. Each active operation has a separate trusted broker container
+(1 CPU, 512 MiB, 128 PIDs, no network, read-only root and private temporary storage).
+It mounts controller data/workspace at the same paths and owns provider stdio;
+the replaceable HTTP service does not. Broker Docker IDs are saved in private
+receipts and checked against exact name/owner/workspace/role/image labels. Brokers
+auto-remove after operation cleanup. Coding workers receive none of the broker's
+private state or Docker authority.
+Catalog inspection has one additional cross-process admission
 slot: concurrent requests return HTTP 409 Busy and may be retried after the active
 inspection finishes. Interrupted catalog workers are confirmed stopped before a
 replacement is created. Only one writer owns this workspace. Review per-run time/repair
@@ -142,8 +161,12 @@ not cancel execution; SSE supports saved event cursors. Cancellation first saves
 SIGTERM and Ctrl+C stop new supervision, drain HTTP and current state transitions
 for at most 25 seconds (worker transition drain: 20 seconds), then exit. Compose
 allows 35 seconds. Shutdown preserves unfinished runs rather than cancelling
-them. Independent worker containers can survive controller death. On restart the
-saved reconciliation path inspects them; never start a second controller to help.
+them. Independent broker and worker containers survive controller-container death.
+The broker keeps the pinned App Server connection alive and continues saved
+deadlines and cancellation monitoring. The replacement controller reconnects to
+the same broker receipt/provider turn; never start a second controller to help.
+A full host shutdown also kills the broker/provider, so uncertain in-flight work
+still needs exact receipt/provider reconciliation; automatic resubmission is forbidden.
 
 ## Consistent backup and restore
 
@@ -199,7 +222,13 @@ This release supports Factory schema/envelope 1, control schema 1 and saved
 `factory-fake-v1`, `factory-sdlc-v1`, `factory-grill-v1` graphs; newer versions
 fail closed. There is no automatic downgrade or LangGraph checkpoint conversion.
 Keep old images/provider homes and do not silently replace the saved backend
-image/profile. Changing that backend requires a separately reviewed migration or
+worker image, broker image or profile. The daemon broker is an explicit optional
+backend field: older native backends remain readable by the new binary, while
+production Compose requires it. Older binaries reject the new field. Drain old
+runs before provisioning a new production data directory; retain the original
+data/images for recovery. Rollback to a pre-broker binary requires the whole
+pre-upgrade snapshot, including its original backend configuration.
+Changing that backend requires a separately reviewed migration or
 a new data directory while retaining the old recovery deployment.
 
 For a compatible controller-only upgrade, change `FACTORY_CONTROLLER_IMAGE` to
@@ -222,12 +251,30 @@ Keep both release paths available until old-run recovery and rollback are verifi
 Run `bash scripts/check-rust.sh` and `bash scripts/check.sh`, then build the
 controller for the test operator UID/GID, build `containers/test-worker.Dockerfile`
 as `factory-test-worker:dev`, and run `python3 scripts/accept-rust-production.py`.
-The latter runs real Compose and Docker with an explicitly simulated provider,
+The latter runs real Compose and Docker with an explicitly simulated provider
+that aborts active turns on stdin disconnection, matching the live App Server,
 restores a pending planning session, completes exact approval through report,
 recreates the controller during work, checks dispatch counts and inspects actual
 image permissions/mounts. It never targets an existing deployment. CI retains its
 JSON evidence alongside the earlier durable-container and protected-worker tests.
-Use a non-root test operator with local Docker access.
+For authorized live-provider acceptance, build the pinned provider worker and run
+`python3 scripts/accept-rust-production.py --live`. This uses the existing login
+and real model calls in a disposable checkout, including in-flight controller
+recreation and cancellation. Output defaults to `.checks/issue-19-production-live.json`.
+Use a non-root test operator with local Docker access. `--model` explicitly selects
+a live fixture model; it never enables runtime fallback. Bounded
+`--step-timeout-seconds` and `--run-timeout-seconds` overrides are saved in that
+fixture's policy and recorded in its evidence. The verified Sol run used:
+
+```bash
+python3 scripts/accept-rust-production.py --live --model gpt-5.6-sol \
+  --step-timeout-seconds 600 --run-timeout-seconds 3600 \
+  --image software-factory-controller:issue-19-broker
+```
+
+Use `--slow-host` for bounded 180s step/1200s run budgets when testing under software
+CPU emulation. These are acceptance fixture settings, not changes to deployed
+workspace policies.
 
 Before cutover, fetch current `origin/main`, record its SHA and compare
 `a9358d80fde74bf4ebfa5f7e967f2c98d8a515f0..origin/main`. Reconcile every new behavioral

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual Compose controller + protected Docker workers; simulated provider.
+"""Actual Compose controller + protected Docker workers; opt-in live provider.
 
 Uses isolated test-owned paths/project. Does not change a deployed service.
 """
@@ -26,19 +26,76 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", default="software-factory-controller:issue-19")
-    parser.add_argument("--output", type=Path, default=ROOT / ".checks/issue-19-production.json")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--model", help="Explicit model for an opt-in live fixture; no runtime fallback is enabled"
+    )
+    parser.add_argument(
+        "--step-timeout-seconds",
+        type=int,
+        help="Override the saved fixture step budget (1–7200 seconds)",
+    )
+    parser.add_argument(
+        "--run-timeout-seconds",
+        type=int,
+        help="Override the saved fixture work budget (60–86400 seconds)",
+    )
+    parser.add_argument(
+        "--slow-host",
+        action="store_true",
+        help="Use bounded 180s operation/1200s run fixture budgets for software-emulated hosts",
+    )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Use the existing provider login for real, billable model calls in the disposable fixture",
+    )
     args = parser.parse_args()
+    if args.model and not args.live:
+        parser.error("--model requires --live")
+    if args.step_timeout_seconds is not None and not 1 <= args.step_timeout_seconds <= 7200:
+        parser.error("step timeout must be between 1 and 7200 seconds")
+    if args.run_timeout_seconds is not None and not 60 <= args.run_timeout_seconds <= 86400:
+        parser.error("run timeout must be between 60 and 86400 seconds")
+    args.output = args.output or ROOT / ".checks" / (
+        "issue-19-production-live.json" if args.live else "issue-19-production.json"
+    )
     spec = importlib.util.spec_from_file_location(
         "workers", ROOT / "scripts/accept-rust-workers.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    root = Path(mkdtemp(prefix="issue-19-", dir=ROOT / ".checks"))
-    fixture = module.Fixture(root, "journey", "factory-test-worker:dev", configure=False)
-    fixture.config["limits"]["total_run_timeout_seconds"] = 300
+    checks = ROOT / ".checks"
+    checks.mkdir(exist_ok=True)
+    root = Path(mkdtemp(prefix="issue-19-", dir=checks))
+    fixture = module.Fixture(
+        root,
+        "journey",
+        "software-factory-worker:0.154.0" if args.live else "factory-test-worker:dev",
+        live=args.live,
+        configure=False,
+    )
+    extended = args.live or args.slow_host
+    if args.model:
+        for agent in fixture.config["agents"].values():
+            agent["model"] = args.model
+    fixture.config["limits"]["total_run_timeout_seconds"] = 1200 if extended else 300
+    if extended:
+        fixture.config["limits"]["step_timeout_seconds"] = 180
+        fixture.config["quality"]["commands"][0]["timeout_seconds"] = 120
+    if args.step_timeout_seconds is not None:
+        fixture.config["limits"]["step_timeout_seconds"] = args.step_timeout_seconds
+    if args.run_timeout_seconds is not None:
+        fixture.config["limits"]["total_run_timeout_seconds"] = args.run_timeout_seconds
+    run_timeout = fixture.config["limits"]["total_run_timeout_seconds"]
+    builder_wait = fixture.config["limits"]["step_timeout_seconds"] + (240 if extended else 90)
     policy = fixture.workspace / ".factory/factory.yaml"
     policy.parent.mkdir()
     policy.write_text(json.dumps(fixture.config))
+    if not args.live:
+        (policy.parent / "test-controlled-provider").write_text(
+            "Hold simulated Builder until the exact controller-kill witness is recorded.\n"
+        )
     module.execute(["git", "add", "."], cwd=fixture.workspace)
     module.execute(["git", "commit", "-qm", "Policy"], cwd=fixture.workspace)
     token = "test-only-production-token-" + root.name
@@ -61,7 +118,13 @@ def main() -> None:
         "FACTORY_CONTROLLER_IMAGE": args.image,
     }
     project = root.name.replace("_", "-")
-    evidence = {"version": 1, "kind": "real_compose_docker_simulated_provider", "passed": False}
+    evidence = {
+        "version": 1,
+        "kind": "real_compose_docker_live_provider"
+        if args.live
+        else "real_compose_docker_simulated_provider",
+        "passed": False,
+    }
 
     def compose(*argv, check=True):
         return module.execute(
@@ -84,7 +147,7 @@ def main() -> None:
         assert api("plan_list") == []
 
     def wait(operation, expected, **payload):
-        deadline = time.monotonic() + 300
+        deadline = time.monotonic() + run_timeout
         while time.monotonic() < deadline:
             value = api(operation, **payload)
             if value["status"] == expected:
@@ -120,7 +183,7 @@ def main() -> None:
         raise AssertionError("no saved SSE event")
 
     def wait_for_builder(run_id):
-        deadline = time.monotonic() + 120
+        deadline = time.monotonic() + builder_wait
         while time.monotonic() < deadline:
             for receipt in fixture.receipts():
                 if (
@@ -129,7 +192,7 @@ def main() -> None:
                     and receipt["execution_id"]
                     and not receipt["stopped"]
                 ):
-                    return
+                    return receipt
             status = api("status", run_id=run_id)
             assert status["status"] not in {"failed", "blocked", "recovery_needed"}, status
             time.sleep(0.05)
@@ -138,6 +201,10 @@ def main() -> None:
     try:
         backend = json.loads((fixture.root / "docker.json").read_text())
         backend["seccomp_profile"] = "/opt/factory/worker-seccomp.json"
+        backend["broker"] = {
+            "image": args.image,
+            "socket_gid": int(environment["FACTORY_DOCKER_GID"]),
+        }
         backend_file = fixture.data / "docker-input.json"
         backend_file.write_text(json.dumps(backend))
         compose("run", "--rm", "--no-deps", "controller", "configure-docker", str(backend_file))
@@ -151,39 +218,92 @@ def main() -> None:
                 assert error.code == 409
                 return "busy"
 
-        # Hold the external simulated provider so competing requests definitely
-        # reach admission before the first slot can be released.
-        gate = fixture.workspace / ".factory-test-catalog-gate"
-        gate.write_text("hold")
-        with ThreadPoolExecutor(4) as pool:
-            first = pool.submit(catalog_request, 0)
-            try:
-                deadline = time.monotonic() + 15
-                while not list(fixture.data.rglob("catalog-gate-ready")):
-                    assert not first.done(), "catalog did not wait at the test gate"
-                    assert time.monotonic() < deadline, "catalog gate did not become ready"
-                    time.sleep(0.05)
-                others = [pool.submit(catalog_request, i) for i in range(1, 4)]
-                catalog_results = [future.result(timeout=10) for future in others]
-            finally:
-                gate.unlink()
-            catalog_results.append(first.result(timeout=15))
-        assert catalog_results.count("ok") == 1 and catalog_results.count("busy") == 3, (
-            catalog_results
+        if args.live:
+            assert api("models"), "live catalog unavailable"
+            catalog_results = ["live_catalog_available"]
+        else:
+            # Hold the external simulated provider so competing requests definitely
+            # reach admission before the first slot can be released.
+            gate = fixture.workspace / ".factory-test-catalog-gate"
+            gate.write_text("hold")
+            with ThreadPoolExecutor(4) as pool:
+                first = pool.submit(catalog_request, 0)
+                try:
+                    deadline = time.monotonic() + 15
+                    while not list(fixture.data.rglob("catalog-gate-ready")):
+                        assert not first.done(), "catalog did not wait at the test gate"
+                        assert time.monotonic() < deadline, "catalog gate did not become ready"
+                        time.sleep(0.05)
+                    others = [pool.submit(catalog_request, i) for i in range(1, 4)]
+                    catalog_results = [future.result(timeout=10) for future in others]
+                finally:
+                    gate.unlink()
+                catalog_results.append(first.result(timeout=15))
+            assert catalog_results.count("ok") == 1 and catalog_results.count("busy") == 3, (
+                catalog_results
+            )
+        request = (
+            (
+                "In this disposable acceptance checkout, change only greeting.txt from Hello plus newline "
+                "to exactly Hello, world! plus newline. All decisions are settled: recipient world, comma "
+                "and exclamation mark. Preserve policy and Git/controller files. No new features, dependencies, "
+                "tests, glossary entries, ADRs, commits, pushes or PRs are requested. Use the existing greeting "
+                "quality command. Prepare the smallest exact-revision plan for approval."
+            )
+            if args.live
+            else "Update greeting"
         )
-        started = api("plan_start", request="Update greeting", request_id="production")
+        started = api("plan_start", request=request, request_id="production")
         session = started["session_id"]
-        waiting = wait("plan_status", "waiting_for_input", session_id=session)
-        compose("stop")
-        compose("up", "-d", "--no-build", "--force-recreate", "--wait")
-        assert api("plan_status", session_id=session)["pending"] == waiting["pending"]
-        api(
-            "plan_answer",
-            session_id=session,
-            interaction_id=waiting["pending"]["interaction_id"],
-            answers={"recipient": "world"},
-        )
-        planned = wait("plan_status", "planned", session_id=session)
+        if args.live:
+            deadline = time.monotonic() + run_timeout
+            answered = set()
+            while time.monotonic() < deadline:
+                planned = api("plan_status", session_id=session)
+                if planned["status"] == "planned":
+                    break
+                assert planned["status"] not in {"failed", "blocked", "recovery_needed"}, (
+                    planned.get("error")
+                )
+                pending = planned.get("pending")
+                if pending and pending["interaction_id"] not in answered:
+                    assert len(answered) < 4, (
+                        "unexpected repeated clarification of the settled fixture"
+                    )
+                    answers = {
+                        q["id"]: q.get("recommendation") or (q.get("options") or [request])[0]
+                        for q in pending["questions"]
+                    }
+                    answers = {
+                        key: value.get("label", request) if isinstance(value, dict) else value
+                        for key, value in answers.items()
+                    }
+                    api(
+                        "plan_answer",
+                        session_id=session,
+                        interaction_id=pending["interaction_id"],
+                        answers=answers,
+                    )
+                    answered.add(pending["interaction_id"])
+                time.sleep(1)
+            assert planned["status"] == "planned", "live planning did not finish"
+            snapshot_text = json.dumps(planned["snapshot"]).lower()
+            assert "greeting.txt" in snapshot_text and "world" in snapshot_text
+            (root / "reviewed-plan.json").write_text(
+                json.dumps(planned["snapshot"], indent=2) + "\n"
+            )
+        else:
+            waiting = wait("plan_status", "waiting_for_input", session_id=session)
+            compose("stop")
+            compose("up", "-d", "--no-build", "--force-recreate", "--wait")
+            assert api("plan_status", session_id=session)["pending"] == waiting["pending"]
+            api(
+                "plan_answer",
+                session_id=session,
+                interaction_id=waiting["pending"]["interaction_id"],
+                answers={"recipient": "world"},
+            )
+            planned = wait("plan_status", "planned", session_id=session)
         compose("stop")
         snapshot("backup")
         # Restore the completed exact plan, still pending approval, into absent
@@ -201,8 +321,32 @@ def main() -> None:
         assert event_id(run_id, 0) == 1  # Disconnect without cancelling progress.
         # Pin the crash to an actual provider turn, rather than racing the create
         # intent window (which legitimately requires operator reconciliation).
-        wait_for_builder(run_id)
+        building = wait_for_builder(run_id)
+        broker_id = building["broker_container_id"]
+        broker = json.loads(module.execute(["docker", "inspect", broker_id]).stdout)[0]
+        assert broker["State"]["Running"]
+        assert broker["Config"]["Labels"]["software-factory.role"] == "broker"
+        assert broker["HostConfig"]["ReadonlyRootfs"]
+        assert broker["HostConfig"]["NetworkMode"] == "none"
         compose("kill", "-s", "SIGKILL", "controller")
+        assert json.loads(module.execute(["docker", "inspect", broker_id]).stdout)[0]["State"][
+            "Running"
+        ]
+        if not args.live:
+            # The external provider gate holds the turn across slow Docker CLI
+            # calls too, so this proves survival rather than racing a 3s sleep.
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                markers = [
+                    path
+                    for path in fixture.data.rglob("build-ready")
+                    if path.read_text() == building["operation_id"]
+                ]
+                if markers:
+                    markers[0].with_name("build-release").write_text("release")
+                    break
+                time.sleep(0.05)
+            assert markers, "simulated Builder gate not found"
         compose("up", "-d", "--no-build", "--force-recreate", "--wait")
         result = wait("status", "ready_for_review", run_id=run_id)
         result = json.loads(
@@ -272,6 +416,7 @@ def main() -> None:
                 "image_id": controller["Image"],
                 "status": result["status"],
                 "operations": len(operations),
+                "fixture_limits": fixture.config["limits"],
                 "workers": inspections,
                 "restore_pending_approval": True,
                 "restored_plan_hash": restored["plan_hash"],
@@ -279,6 +424,7 @@ def main() -> None:
                 "sse_replay": True,
                 "cancelled_run": cancel_id,
                 "hard_recreation": True,
+                "independent_broker_survived_controller": True,
                 "root": str(root),
                 "source_base": module.execute(
                     ["git", "rev-parse", "HEAD"], cwd=ROOT
@@ -299,7 +445,20 @@ def main() -> None:
                 "docker_version": module.execute(
                     ["docker", "version", "--format", "{{.Server.Version}}"]
                 ).stdout.strip(),
-                "live_provider": "not exercised",
+                "live_provider": {
+                    "model": fixture.config["agents"]["builder"]["model"],
+                    "effort": "low",
+                    "codex_version": "0.154.0",
+                }
+                if args.live
+                else "not exercised",
+                "worker_image_ids": sorted(
+                    {
+                        receipt["image_id"]
+                        for receipt in fixture.receipts()
+                        if receipt.get("image_id")
+                    }
+                ),
                 "host_reboot": "not exercised",
             }
         )

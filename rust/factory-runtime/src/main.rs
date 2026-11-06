@@ -62,17 +62,31 @@ async fn command(args: Vec<String>) -> Result<()> {
         println!("{}", serde_json::json!({"configured":"docker"}));
         return Ok(());
     }
-    let worker: Arc<dyn factory_runtime::Worker> =
-        if config.data_dir().join("docker-backend.json").exists() {
-            Arc::new(factory_runtime::workflow::docker::DockerWorker::open(
-                config.clone(),
-                serde_json::from_slice(&std::fs::read(
-                    config.data_dir().join("docker-backend.json"),
-                )?)?,
-            )?)
-        } else {
-            Arc::new(FakeWorker::open(&config.data_dir().join("worker-records")).await?)
-        };
+    let worker: Arc<dyn factory_runtime::Worker> = if config
+        .data_dir()
+        .join("docker-backend.json")
+        .exists()
+    {
+        let docker: factory_runtime::workflow::docker::DockerConfig = serde_json::from_slice(
+            &std::fs::read(config.data_dir().join("docker-backend.json"))?,
+        )?;
+        if std::env::var("FACTORY_REQUIRE_DAEMON_BROKER").as_deref() == Ok("1")
+            && docker.broker.is_none()
+        {
+            return Err(Error::Config("production requires a pinned daemon broker backend; drain existing runs before upgrading backend configuration".into()));
+        }
+        Arc::new(factory_runtime::workflow::docker::DockerWorker::open(
+            config.clone(),
+            docker,
+        )?)
+    } else {
+        if std::env::var("FACTORY_REQUIRE_DAEMON_BROKER").as_deref() == Ok("1") {
+            return Err(Error::Config(
+                "production requires a configured daemon broker backend".into(),
+            ));
+        }
+        Arc::new(FakeWorker::open(&config.data_dir().join("worker-records")).await?)
+    };
     let runtime = Runtime::open_with_worker(config, worker, Arc::new(ProcessFaults)).await?;
     let value = match (args[2].as_str(), &args[3..]) {
         ("start", [request]) => serde_json::to_value(
