@@ -37,8 +37,9 @@ software-factory mcp -w /absolute/checkout
 
 CLI, BB ACP and MCP use their existing commands/tool names. All planning and
 start/status/answer/resume/cancel/models/settings operations route to Rust when
-`FACTORY_CONTROL_URL` is set. Without it, the Python controller remains available
-for original saved runs. ACP keeps chat presentation/history locally; Factory
+`FACTORY_CONTROL_URL` is set. Without it, the native executable connects to loopback Rust on port 4317. Missing
+service/token configuration is an actionable error. Original Python runs require
+the separate `software-factory-legacy` recovery environment. ACP keeps chat presentation/history locally; Factory
 run IDs and terminal outcomes remain separate from chat turns. `/attach RUN_ID`
 validates ownership through the service. Creating/reloading a chat never resumes
 a terminal Factory run. Disconnecting any adapter does not cancel execution.
@@ -65,7 +66,7 @@ This is not a multi-tenant identity/role system.
 | BB ACP | Existing `/plan`, `/plans`, `/plan-status`, `/plan-answer`, `/plan-revise`, `/plan-approve`, `/new`, `/attach`, `/status`, `/continue`, `/answer`, `/cancel` retain saved identity. Remote replies contain the saved service state; local chat events are not workflow checkpoints. |
 | MCP | Existing `factory_start/status/answer/resume/cancel/models/settings` and `factory_plan_start/list/status/answer/revise/approve/cancel` names/arguments remain unchanged. Tool calls do not own run lifetime. |
 | Settings | `settings` with `session_id` reads/changes selections; `run_id` reads the immutable saved configuration and rejects changes. Start can carry `selection`. Shared configuration/policy paths remain operator-owned. |
-| State | Runtime state schema 1 gains optional planning input/state and terminal `planned`; graph versions remain separate (`factory-fake-v1`, `factory-sdlc-v1`, `factory-grill-v1`). Unknown versions fail. Planning session/control storage is separately versioned with SQLite `user_version=1`. |
+| State | Runtime state schema 1 gains optional planning input/state and terminal `planned`; graph versions remain separate (`factory-fake-v1`, `factory-sdlc-v1`, `factory-grill-v1`). Unknown versions fail. Planning session/control storage is separately versioned with SQLite `user_version=2` (version 1 upgrades transactionally to add review feedback). |
 | Output changes | Rust run views expose saved questions, events, delivery, model settings and `handoff.json` as the report. Python-specific jobs/child-process internals are not Rust execution authority. Config/JSON errors are HTTP 400, ownership/stale/conflict errors 409, missing records 404, missing auth 401. Older Python web ValueErrors used 409 for all validation. Native run IDs are SHA-derived rather than Python `fct_...`. |
 
 Control payloads use the existing field names: `request`/`request_id` to start,
@@ -77,8 +78,9 @@ are hashed and accept up to 200 characters for planning.
 
 Delivery remains under the existing native operator `deliver/fix-reviews` controls
 and saved publication policy. A plan approval authorizes implementation only.
-The Python engine-specific delivery CLI remains a Python recovery interface;
-it refuses Rust IDs instead of silently operating on another ledger.
+Native `deliver`, `review-threads`, `fix-reviews`, `review-quality` and
+`review-feedback` use the authenticated service boundary. See the
+[CLI compatibility inventory](native-product.md).
 
 ## Durable planning and exact approval
 
@@ -129,7 +131,7 @@ by Rust. Keep the original storage for recovery and historical evidence.
 
 ```sh
 # With FACTORY_CONTROL_URL unset, using the original private Python storage:
-software-factory --storage /absolute/python-data export-planning \
+software-factory-legacy --storage /absolute/python-data export-planning \
   -w /absolute/checkout > /absolute/planning-export.json
 # Stop the Rust service during this explicit operator import:
 factory-runtime /absolute/rust-data /absolute/checkout import-planning \

@@ -1415,7 +1415,10 @@ impl DockerWorker {
             return self.launch_daemon_broker(receipt).await;
         }
         let current = std::env::current_exe()?;
-        let executable = if current.file_name().is_some_and(|s| s == "factory-runtime") {
+        let executable = if current
+            .file_name()
+            .is_some_and(|s| s == "factory-runtime" || s == "software-factory")
+        {
             current
         } else {
             current

@@ -51,11 +51,14 @@ impl Control {
         let version: i64 = sqlx::query_scalar("PRAGMA user_version")
             .fetch_one(&mut *tx)
             .await?;
-        if version > 1 {
-            return Err(Error::Incompatible("control database newer than 1".into()));
+        if version > 2 {
+            return Err(Error::Incompatible("control database newer than 2".into()));
         }
         if version == 0 {
             sqlx::raw_sql("CREATE TABLE planning_sessions (session_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, document TEXT NOT NULL); CREATE TABLE settings (session_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, document TEXT NOT NULL); PRAGMA user_version=1;").execute(&mut *tx).await?;
+        }
+        if version < 2 {
+            sqlx::raw_sql("CREATE TABLE review_feedback (sequence INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, run_id TEXT NOT NULL, document TEXT NOT NULL); PRAGMA user_version=2;").execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok(Self { runtime, pool })
@@ -196,6 +199,12 @@ impl Control {
             .get("after_event")
             .and_then(Value::as_u64)
             .unwrap_or(0);
+        if matches!(
+            operation,
+            "deliver" | "fix_reviews" | "review_threads" | "review_quality" | "review_feedback"
+        ) {
+            return self.client_operation(operation, &value).await;
+        }
         match operation {
             "start" => {
                 let request = text(&value, "request")?;
@@ -330,6 +339,12 @@ impl Control {
                     ));
                 }
                 if let Some(selection) = value.get("selection").filter(|v| !v.is_null()) {
+                    if self.runtime.list().await?.iter().any(|run| {
+                        run.input.session_id == id
+                            && (!run.status.is_terminal() || run.delivery_pending())
+                    }) {
+                        return Err(Error::Conflict("active session settings cannot be changed; saved run settings are immutable".into()));
+                    }
                     let selected: Selection = serde_json::from_value(selection.clone())?;
                     let mut config = self.config(id).await?;
                     config.resolved_settings = None;
@@ -755,3 +770,5 @@ pub fn run_view(run: Run, after: u64) -> Value {
 }
 
 mod migration;
+
+mod client_ops;

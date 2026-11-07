@@ -1,4 +1,4 @@
-//! Experimental durable Factory slice. Python remains the production controller.
+//! Durable Rust/ADK Software Factory service and native product interfaces.
 mod config;
 pub mod contracts;
 mod error;
@@ -19,3 +19,8 @@ pub use runtime::{Runtime, Services};
 pub mod control;
 pub mod http;
 pub mod planning;
+
+pub mod chat;
+pub mod client;
+pub mod operator;
+pub mod protocol;

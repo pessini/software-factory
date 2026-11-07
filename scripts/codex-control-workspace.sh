@@ -4,34 +4,35 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --target /abs/target --control /abs/control-dir [--storage /abs/factory-home]" >&2
+  echo "usage: $0 --target /abs/target --control /abs/control-dir [--executable /abs/software-factory]" >&2
   exit 2
 }
 
-target="" control="" storage=""
+target="" control="" executable=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --target) target="${2:-}"; shift 2 ;;
     --control) control="${2:-}"; shift 2 ;;
-    --storage) storage="${2:-}"; shift 2 ;;
+    --executable) executable="${2:-}"; shift 2 ;;
     *) usage ;;
   esac
 done
 [ -n "$target" ] && [ -n "$control" ] || usage
-case "$target$control$storage" in *'"'*|*\\*) echo "paths must not contain quotes or backslashes" >&2; exit 2 ;; esac
-for path in "$target" "$control" ${storage:+"$storage"}; do
+case "$target$control$executable" in *'"'*|*\\*) echo "paths must not contain quotes or backslashes" >&2; exit 2 ;; esac
+for path in "$target" "$control" ${executable:+"$executable"}; do
   case "$path" in /*) ;; *) echo "path must be absolute: $path" >&2; exit 2 ;; esac
 done
 [ -f "$target/.factory/factory.yaml" ] || { echo "target has no .factory/factory.yaml: $target" >&2; exit 1; }
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
-executable="$repo/.venv/bin/software-factory"
-[ -x "$executable" ] || { echo "missing $executable; run uv sync first" >&2; exit 1; }
+executable="${executable:-$(command -v software-factory || true)}"
+[ -x "$executable" ] || { echo "install the native software-factory executable first" >&2; exit 1; }
+"$executable" --version | grep -q 'Rust/ADK' || { echo "executable must be the native Rust product" >&2; exit 1; }
 target="$(cd "$target" && pwd -P)"
 case "$control/" in "$target"/*) echo "control folder must be outside the target" >&2; exit 1 ;; esac
 
 args="\"mcp\", \"--workspace\", \"$target\""
-[ -z "$storage" ] || args="\"--storage\", \"$storage\", $args"
+
 
 mkdir -p "$control/.codex" "$control/.agents/skills"
 # Legacy sandbox keys win over permission profiles whenever any loaded layer sets
@@ -45,6 +46,7 @@ command = "$executable"
 args = [$args]
 startup_timeout_sec = 60
 tool_timeout_sec = 120
+env_vars = ["FACTORY_HTTP_TOKEN", "FACTORY_CONTROL_URL", "FACTORY_CLIENT_HOME"]
 # approval_policy "never" also denies MCP tool calls; pre-approve only these tools.
 default_tools_approval_mode = "approve"
 EOF

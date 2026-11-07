@@ -1,0 +1,27 @@
+version: 2
+workflow: simple-sdlc
+review_mode: focused
+worker_connection:
+  runtime: codex
+  model_connection: native
+  codex_version: '0.154.0'
+agents:
+  planner: {provider: codex, reasoning_level: high, permission_mode: auto}
+  builder: {provider: codex, reasoning_level: high, permission_mode: accept-edits}
+  reviewer: {provider: codex, reasoning_level: high, permission_mode: auto}
+quality:
+  # Replace this with reviewed verification-only argv for the target repository.
+  # Python/uv may be target tools; they are never Factory runtime dependencies.
+  commands:
+    - name: tests
+      argv: [cargo, test, --locked]
+      timeout_seconds: 900
+limits:
+  max_test_repairs: 2
+  max_review_revisions: 1
+  total_run_timeout_seconds: 7200
+safety:
+  protected_paths: [.factory/factory.yaml, .bb/, .github/workflows/]
+  auto_commit: false
+  allow_push: false
+delivery: {mode: manual}

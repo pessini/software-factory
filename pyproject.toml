@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.scripts]
-software-factory = "software_factory.cli:main"
+software-factory-legacy = "software_factory.cli:main"
 
 [dependency-groups]
 dev = [

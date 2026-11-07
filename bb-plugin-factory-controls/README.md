@@ -5,10 +5,10 @@ plan, build, repair, review, and revision. It reads models from Factory's protec
 native worker. Each change is saved through the shared Factory controls. The
 selected BB conversation is mapped to a Factory session so conversations in the
 same workspace retain separate settings. The panel supports workspaces on the
-BB server machine. Set the same `FACTORY_HOME` for the BB agent and panel command.
+BB server machine. Set the same `FACTORY_CLIENT_HOME` for the BB agent and panel command.
 
-Install the Python project with `uv tool install --editable .` from the repository
-root. Register Software Factory as described in `docs/macos-runbook.md`.
+Install the native executable with `cargo install --path rust/factory-runtime --locked --bin software-factory` from the repository
+root. Register Software Factory as described in `docs/native-product.md`.
 Then run these commands from this plugin directory:
 
 ```sh
@@ -24,8 +24,9 @@ to read saved values after a reload. Active runs reject settings changes.
 
 Before BB 0.46, the plugin uses the executable from BB's registered
 `software-factory` agent in `config.json`. On BB 0.46 and later, or for a custom
-launcher, set **Software Factory executable** in plugin settings to the Python
-project's `software-factory` executable.
+launcher, set **Software Factory executable** in plugin settings to the native `software-factory` executable. Configure `FACTORY_HTTP_TOKEN` and
+optionally `FACTORY_CONTROL_URL` in the BB server environment. ACP and the panel
+use the same `FACTORY_CLIENT_HOME` (default: `~/.local/state/software-factory/clients`).
 
 Validation:
 
@@ -34,8 +35,7 @@ npx tsc --noEmit
 bb plugin build
 ```
 
-The Python tests cover settings resolution, session persistence, and child
-execution choices. See `docs/bb-settings-compatibility.md` in the repository for
+Rust product tests cover ACP reload, shared panel settings, and service identity. See `docs/bb-settings-compatibility.md` in the repository for
 the historical live BB 0.42.1 check. Current verification and remaining live
 checks are recorded in `docs/issue-9-acceptance.md`.
 The generated BB UI components remain available for panel maintenance.

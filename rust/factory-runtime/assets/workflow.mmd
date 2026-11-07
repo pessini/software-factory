@@ -1,0 +1,12 @@
+flowchart TD
+    START --> bootstrap --> baseline --> plan
+    plan -->|ready| build
+    plan -->|questions| waiting_for_input
+    waiting_for_input -->|saved answer| plan
+    build --> test
+    test -->|failed, budget remains| repair --> test
+    test -->|passed| review
+    review -->|changes requested, budget remains| revise --> test
+    review -->|approved| finalize --> ready_for_review
+    test -->|budget exhausted| failed
+    review -->|budget exhausted| failed
