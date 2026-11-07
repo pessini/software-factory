@@ -303,6 +303,98 @@ async fn acp_reloads_chat_and_attaches_the_same_cli_run_without_resuming() {
 }
 
 #[tokio::test]
+async fn bb_panel_selected_models_remain_in_options_after_reload() {
+    struct SettingsWorker;
+    #[async_trait::async_trait]
+    impl factory_runtime::Worker for SettingsWorker {
+        async fn model_catalog(
+            &self,
+        ) -> factory_runtime::Result<Vec<factory_runtime::workflow::config::ModelOption>> {
+            Ok(serde_json::from_value(json!([{
+                "provider":"codex", "model":"gpt-5.4", "name":"GPT-5.4",
+                "efforts":["low","high"], "default_effort":"high", "is_default":true,
+                "permission_modes":["auto","accept-edits"]
+            }]))?)
+        }
+        async fn reconcile(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> factory_runtime::Result<factory_runtime::Reconciliation> {
+            panic!("settings must not execute workers")
+        }
+        async fn dispatch(
+            &self,
+            _: &str,
+            _: &str,
+            _: tokio_util::sync::CancellationToken,
+        ) -> factory_runtime::Result<String> {
+            panic!("settings must not execute workers")
+        }
+    }
+    let service = Service::with_worker(Some(std::sync::Arc::new(SettingsWorker))).await;
+    let home = tempfile::tempdir().unwrap();
+    let mut adapter = Adapter::open(&service, "acp", home.path()).await;
+    let session = adapter
+        .rpc(1, "session/new", json!({"cwd":service.workspace.path()}))
+        .await;
+    let sid = session["sessionId"].as_str().unwrap();
+    for option in session["configOptions"].as_array().unwrap() {
+        if option["id"] == "preset" {
+            continue;
+        }
+        assert_eq!(option["currentValue"], "inherit");
+        let choices = option["options"].as_array().unwrap();
+        assert_eq!(choices.len(), 3);
+        for choice in choices[1..].iter().chain(&choices[..1]) {
+            // Each request starts a fresh panel process, exercising saved state.
+            for request in [
+                json!({"action":"change","config_id":option["id"],"value":choice["value"],"session_id":sid}),
+                json!({"action":"read","session_id":sid}),
+            ] {
+                use tokio::io::AsyncWriteExt;
+                let mut panel = service
+                    .command()
+                    .arg("settings-panel")
+                    .env("FACTORY_CLIENT_HOME", home.path())
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                panel
+                    .stdin
+                    .take()
+                    .unwrap()
+                    .write_all(request.to_string().as_bytes())
+                    .await
+                    .unwrap();
+                let output = panel.wait_with_output().await.unwrap();
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let saved: Value = serde_json::from_slice(&output.stdout).unwrap();
+                let selected = saved["configOptions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|o| o["id"] == option["id"])
+                    .unwrap();
+                assert_eq!(selected["currentValue"], choice["value"]);
+                assert!(
+                    selected["options"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|c| c["value"] == selected["currentValue"])
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn planning_cli_and_bb_panel_share_saved_settings() {
     let service = Service::new().await;
     let home = tempfile::tempdir().unwrap();

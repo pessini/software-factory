@@ -177,7 +177,7 @@ impl Client {
             } else {
                 selection.steps.get(name).cloned().unwrap_or_default()
             };
-            options.push(json!({"id":name,"name":name.replace('_'," "),"type":"select","description":format!("Resolved: {}",saved["resolved"]["effective"][name]),"currentValue":if choice == Default::default() { "inherit".into() } else { serde_json::to_string(&choice)? },"options":choices}));
+            options.push(json!({"id":name,"name":name.replace('_'," "),"type":"select","description":format!("Resolved: {}",saved["resolved"]["effective"][name]),"currentValue":if choice == Default::default() { "inherit".into() } else { serde_json::to_string(&serde_json::to_value(&choice)?)? },"options":choices}));
         }
         Ok(json!({"sessionId":session,"configOptions":options}))
     }
