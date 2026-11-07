@@ -213,6 +213,7 @@ impl Control {
                     event.sequence = index as u64 + 1;
                 }
                 let mut run = Run {
+                    execution_backend: None,
                     schema_version: crate::contracts::SCHEMA_VERSION,
                     graph_version: crate::planning::GRAPH_VERSION.into(),
                     run_id: run_id.clone(),

@@ -27,7 +27,7 @@ async fn command(mut args: Vec<String>) -> Result<()> {
     let command = args.first().map(String::as_str).unwrap_or("--help");
     if matches!(command, "--help" | "-h" | "help") {
         println!(
-            "Software Factory (Rust/ADK)\nUsage: software-factory COMMAND [ARGS] [-w WORKSPACE] [--session ID]\nCommands: web, serve, run, start, inspect, status, list, answer, resume, retry, cancel, models, settings, plan, plan-status, plan-answer, plan-revise, plan-approve, plan-resume, plan-cancel, plan-report, acp, mcp, settings-panel, doctor, init, repo-check, graph, deliver, review-threads, fix-reviews, review-quality, review-feedback, convert-config\nService: software-factory web --storage /absolute/private/data -w /absolute/workspace\nClient: FACTORY_HTTP_TOKEN is required; FACTORY_CONTROL_URL defaults to http://127.0.0.1:4317\nLegacy: use software-factory-legacy in a separate recovery environment."
+            "Software Factory (Rust/ADK)\nUsage: software-factory COMMAND [ARGS] [-w WORKSPACE] [--session ID]\nCommands: web, serve, run, start, inspect, status, list, answer, resume, retry, cancel, models, settings, plan, plan-status, plan-answer, plan-revise, plan-approve, plan-resume, plan-cancel, plan-report, acp, mcp, settings-panel, doctor, configure-docker, configure-native, doctor-native, init, repo-check, graph, deliver, review-threads, fix-reviews, review-quality, review-feedback, convert-config\nService: software-factory web --storage /absolute/private/data -w /absolute/workspace\nClient: FACTORY_HTTP_TOKEN is required; FACTORY_CONTROL_URL defaults to http://127.0.0.1:4317\nLegacy: use software-factory-legacy in a separate recovery environment."
         );
         return Ok(());
     }
@@ -37,7 +37,12 @@ async fn command(mut args: Vec<String>) -> Result<()> {
     }
     if matches!(
         command,
-        "web" | "serve" | "configure-docker" | "import-planning"
+        "web"
+            | "serve"
+            | "configure-docker"
+            | "configure-native"
+            | "doctor-native"
+            | "import-planning"
     ) {
         let port = take_option(&mut args, &["--port"])?;
         let bind = port
@@ -54,9 +59,12 @@ async fn command(mut args: Vec<String>) -> Result<()> {
             && !std::path::Path::new(&storage)
                 .join("docker-backend.json")
                 .is_file()
+            && !std::path::Path::new(&storage)
+                .join("native-backend.json")
+                .is_file()
             && std::env::var("FACTORY_ALLOW_FAKE_WORKER").as_deref() != Ok("1")
         {
-            return Err(Error::Config("configure a protected backend first: software-factory configure-docker BACKEND.json --storage DATA -w WORKSPACE. FACTORY_ALLOW_FAKE_WORKER=1 is for development tests only".into()));
+            return Err(Error::Config("configure a protected backend first: software-factory configure-docker/configure-native BACKEND.json --storage DATA -w WORKSPACE. FACTORY_ALLOW_FAKE_WORKER=1 is for development tests only".into()));
         }
         let mut operator = vec![storage, workspace.canonicalize()?.display().to_string()];
         operator.extend(args);

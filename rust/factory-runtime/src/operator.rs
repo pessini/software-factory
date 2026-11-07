@@ -42,12 +42,29 @@ pub async fn command_at(args: Vec<String>, bind: Option<String>) -> Result<()> {
     }
     let config = Config::new(&args[0], &args[1])?;
     if let ("worker-broker", [operation]) = (args[2].as_str(), &args[3..]) {
-        let docker = serde_json::from_slice(&std::fs::read(
-            config.data_dir().join("docker-backend.json"),
-        )?)?;
-        return crate::workflow::docker::DockerWorker::open(config, docker)?
+        return crate::workflow::broker::ExecutionWorker::configured(config)?
+            .ok_or_else(|| Error::Config("worker broker requires its saved backend".into()))?
             .broker(operation)
             .await;
+    }
+    if let ("configure-native", [path]) = (args[2].as_str(), &args[3..]) {
+        let native = serde_json::from_slice(&std::fs::read(path)?)?;
+        Runtime::open_native(config, native).await?;
+        println!(
+            "{}",
+            serde_json::json!({"configured":"native","provider":"codex","version":"0.154.0","policy":"linux-bwrap-cgroup-v1"})
+        );
+        return Ok(());
+    }
+    if let ("doctor-native", [path]) = (args[2].as_str(), &args[3..]) {
+        let native: crate::workflow::native::NativeConfig =
+            serde_json::from_slice(&std::fs::read(path)?)?;
+        let native = native.pin(&config).await?;
+        println!(
+            "{}",
+            serde_json::json!({"backend":"native","provider":"codex","version":"0.154.0","policy":"linux-bwrap-cgroup-v1","configuration":native,"host_probe":"passed"})
+        );
+        return Ok(());
     }
     if let ("configure-docker", [path]) = (args[2].as_str(), &args[3..]) {
         let docker = serde_json::from_slice(&std::fs::read(path)?)?;
@@ -55,19 +72,17 @@ pub async fn command_at(args: Vec<String>, bind: Option<String>) -> Result<()> {
         println!("{}", serde_json::json!({"configured":"docker"}));
         return Ok(());
     }
-    let worker: Arc<dyn crate::Worker> = if config.data_dir().join("docker-backend.json").exists() {
-        let docker: crate::workflow::docker::DockerConfig = serde_json::from_slice(
-            &std::fs::read(config.data_dir().join("docker-backend.json"))?,
-        )?;
+    let worker: Arc<dyn crate::Worker> = if let Some(worker) =
+        crate::workflow::broker::ExecutionWorker::configured(config.clone())?
+    {
         if std::env::var("FACTORY_REQUIRE_DAEMON_BROKER").as_deref() == Ok("1")
-            && docker.broker.is_none()
+            && !worker.requires_daemon_broker()
         {
-            return Err(Error::Config("production requires a pinned daemon broker backend; drain existing runs before upgrading backend configuration".into()));
+            return Err(Error::Config(
+                "this deployment requires a pinned daemon broker backend".into(),
+            ));
         }
-        Arc::new(crate::workflow::docker::DockerWorker::open(
-            config.clone(),
-            docker,
-        )?)
+        Arc::new(worker)
     } else {
         if std::env::var("FACTORY_REQUIRE_DAEMON_BROKER").as_deref() == Ok("1") {
             return Err(Error::Config(
@@ -168,5 +183,5 @@ pub async fn command_at(args: Vec<String>, bind: Option<String>) -> Result<()> {
 }
 
 fn usage() -> Error {
-    Error::Config("usage: factory-runtime <absolute-data-dir> <absolute-workspace> configure-docker <backend-json-file> | implement <StartRequest-json> <config-yaml> | start <StartRequest-json> | status/resume/cancel <run-id> | answer <run-id> <interaction-id> true/false | answer-questions <run-id> <interaction-id> <answers-json> | deliver <run-id> [policy-json-file] | fix-reviews <run-id> <thread-id>... | cancel-delivery <run-id> | list | control <operation> <json> | serve".into())
+    Error::Config("usage: factory-runtime <absolute-data-dir> <absolute-workspace> configure-docker/configure-native/doctor-native <backend-json-file> | implement <StartRequest-json> <config-yaml> | start <StartRequest-json> | status/resume/cancel <run-id> | answer <run-id> <interaction-id> true/false | answer-questions <run-id> <interaction-id> <answers-json> | deliver <run-id> [policy-json-file] | fix-reviews <run-id> <thread-id>... | cancel-delivery <run-id> | list | control <operation> <json> | serve".into())
 }

@@ -4,13 +4,13 @@ use super::*;
 
 const ROLE: &str = "software-factory.role";
 
-impl DockerWorker {
+impl ExecutionWorker {
     pub(super) async fn inspect_daemon_broker(
         &self,
         receipt: &WorkerReceipt,
     ) -> Result<Option<Value>> {
         let broker = self
-            .docker
+            .docker()
             .broker
             .as_ref()
             .ok_or_else(|| Error::Config("daemon broker is not configured".into()))?;
@@ -57,7 +57,7 @@ impl DockerWorker {
     }
 
     pub(super) async fn stop_daemon_broker(&self, receipt: &WorkerReceipt) -> Result<()> {
-        if self.docker.broker.is_none() || receipt.broker_container_id.is_none() {
+        if self.docker().broker.is_none() || receipt.broker_container_id.is_none() {
             return Ok(());
         }
         if let Some(current) = self.inspect_daemon_broker(receipt).await? {
@@ -89,7 +89,7 @@ impl DockerWorker {
 
     pub(super) async fn launch_daemon_broker(&self, mut receipt: WorkerReceipt) -> Result<()> {
         let broker = self
-            .docker
+            .docker()
             .broker
             .as_ref()
             .ok_or_else(|| Error::Config("daemon broker is not configured".into()))?;
@@ -131,7 +131,7 @@ impl DockerWorker {
                 "--memory=512m".into(),
                 "--cpus=1".into(),
                 "--user".into(),
-                format!("{}:{}", self.docker.uid, self.docker.gid),
+                format!("{}:{}", self.docker().uid, self.docker().gid),
                 "--group-add".into(),
                 broker.socket_gid.to_string(),
                 "--tmpfs".into(),
@@ -142,18 +142,18 @@ impl DockerWorker {
                 "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock".into(),
                 "--mount".into(),
                 self.mount(
-                    &self.docker.daemon_data_dir,
+                    &self.docker().daemon_data_dir,
                     &self.config.data_dir().to_string_lossy(),
                     false,
-                    self.docker.data_volume.as_deref(),
+                    self.docker().data_volume.as_deref(),
                     None,
                 )?,
                 "--mount".into(),
                 self.mount(
-                    &self.docker.daemon_workspace,
+                    &self.docker().daemon_workspace,
                     &self.config.workspace().to_string_lossy(),
                     false,
-                    self.docker.workspace_volume.as_deref(),
+                    self.docker().workspace_volume.as_deref(),
                     None,
                 )?,
                 "--entrypoint".into(),

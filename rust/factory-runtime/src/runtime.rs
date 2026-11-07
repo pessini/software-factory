@@ -41,15 +41,9 @@ pub struct Runtime {
 
 impl Runtime {
     pub async fn open(config: Config) -> Result<Self> {
-        if config.data_dir.join("docker-backend.json").exists() {
-            let docker = serde_json::from_slice(&crate::workflow::artifacts::regular(
-                &config.data_dir.join("docker-backend.json"),
-            )?)?;
-            let worker = Arc::new(crate::workflow::docker::DockerWorker::open(
-                config.clone(),
-                docker,
-            )?);
-            return Self::open_with_worker(config, worker, Arc::new(NoFaults)).await;
+        if let Some(worker) = crate::workflow::broker::ExecutionWorker::configured(config.clone())?
+        {
+            return Self::open_with_worker(config, Arc::new(worker), Arc::new(NoFaults)).await;
         }
         let worker = Arc::new(FakeWorker::open(&config.data_dir.join("worker-records")).await?);
         Self::open_with_worker(config, worker, Arc::new(NoFaults)).await
@@ -59,6 +53,11 @@ impl Runtime {
         config: Config,
         docker: crate::workflow::docker::DockerConfig,
     ) -> Result<Self> {
+        if config.data_dir.join("native-backend.json").exists() {
+            return Err(Error::Conflict(
+                "native backend is already pinned; use separate storage for Docker".into(),
+            ));
+        }
         let docker = crate::workflow::docker::DockerWorker::pin_image(docker).await?;
         let path = config.data_dir.join("docker-backend.json");
         let worker = Arc::new(crate::workflow::docker::DockerWorker::open(
@@ -78,6 +77,22 @@ impl Runtime {
             crate::workflow::artifacts::atomic(&path, &serde_json::to_vec_pretty(&docker)?)?;
         }
         Self::open_with_worker(config, worker, Arc::new(NoFaults)).await
+    }
+
+    pub async fn open_native(
+        config: Config,
+        native: crate::workflow::native::NativeConfig,
+    ) -> Result<Self> {
+        if config.data_dir.join("docker-backend.json").exists() {
+            return Err(Error::Conflict(
+                "Docker backend is already pinned; use separate storage for native execution"
+                    .into(),
+            ));
+        }
+        let native = native.pin(&config).await?;
+        let worker = crate::workflow::broker::ExecutionWorker::open_native(config.clone(), native)?;
+        worker.persist_backend()?;
+        Self::open_with_worker(config, Arc::new(worker), Arc::new(NoFaults)).await
     }
 
     pub async fn open_with_worker(
@@ -126,11 +141,25 @@ impl Runtime {
         self
     }
 
+    pub(crate) fn validate_backend(&self, run: &Run) -> Result<()> {
+        let current = self.services.worker.execution_identity();
+        // Legacy Docker receipts remain usable on their original pinned backend.
+        let legacy_docker = run.execution_backend.is_none()
+            && current.as_ref().is_some_and(|v| v["backend"] == "docker");
+        if run.execution_backend != current && !legacy_docker {
+            return Err(Error::Conflict(
+                "saved run backend/provider/policy differs from the selected worker".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn start(&self, mut input: StartRequest) -> Result<Run> {
         input.validate()?;
         let run_id = input.run_id();
         match self.status(&run_id).await {
             Ok(saved) => {
+                self.validate_backend(&saved)?;
                 let mut expected = saved.input.clone();
                 if input
                     .implementation
@@ -186,6 +215,7 @@ impl Runtime {
             })
         });
         let mut run = Run {
+            execution_backend: self.services.worker.execution_identity(),
             schema_version: SCHEMA_VERSION,
             graph_version: if input.planning.is_some() {
                 crate::planning::GRAPH_VERSION
@@ -503,6 +533,7 @@ impl Runtime {
     }
 
     pub(crate) async fn ensure_scheduled(&self, run: &Run) -> Result<Run> {
+        self.validate_backend(run)?;
         if run.status.is_terminal() {
             return Ok(run.clone());
         }
@@ -673,6 +704,7 @@ impl Runtime {
     /// One independently recoverable pass. Waiting returns immediately and owns no client connection.
     pub async fn resume(&self, id: &str) -> Result<Run> {
         let run = self.status(id).await?;
+        self.validate_backend(&run)?;
         if run.status.is_terminal() {
             Box::pin(self.resume_terminal(id, run)).await
         } else {

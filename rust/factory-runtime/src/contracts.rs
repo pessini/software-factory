@@ -137,6 +137,8 @@ pub struct Operation {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Run {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_backend: Option<Value>,
     pub schema_version: u32,
     pub graph_version: String,
     pub run_id: String,

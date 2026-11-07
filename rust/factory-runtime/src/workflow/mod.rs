@@ -1,12 +1,14 @@
 //! Versioned implementation workflow. Provider receipts and domain phase commits
 //! remain authoritative when an ADK checkpoint lags behind an external effect.
 pub(crate) mod artifacts;
+pub mod broker;
 pub mod config;
 pub mod delivery;
 pub mod docker;
 pub(crate) mod execution;
 pub mod github;
 pub mod handoffs;
+pub mod native;
 mod phases;
 mod process;
 mod project;
