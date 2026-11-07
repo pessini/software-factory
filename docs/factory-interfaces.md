@@ -1,72 +1,32 @@
 # Factory interfaces
 
-Factory now owns run storage and protected worker processes. The CLI, BB ACP agent,
-and local MCP server use the same control operations. Native execution does not
-use BB model discovery, task creation, environment lookup, or storage APIs.
+The installed Rust `software-factory` CLI, BB ACP and Codex MCP connect to one
+Rust service. See the [native product guide](native-product.md) for startup,
+authentication, storage, upgrade and the complete command inventory.
 
-## Local storage and identity
+Register BB's ACP agent with an absolute native executable and arguments
+`["acp", "--workspace", "/absolute/target"]`. Configure the same service token,
+origin and client presentation directory for the BB server and settings panel.
 
-Set `FACTORY_HOME` or use `software-factory --storage /absolute/private/path ...`.
-The default is `platformdirs.user_state_path("software-factory")`: on macOS,
-`~/Library/Application Support/software-factory`; on Linux,
-`~/.local/state/software-factory` unless `XDG_STATE_HOME` is set.
-The directory must be owned by the current user, have mode `0700`, and be outside
-the target workspace. Worker commands cannot mount this directory as writable.
-
-Each new run saves a context version, Factory session, canonical workspace ID,
-local user ID, and checkpoint ID. Checkpoint IDs are `factory:<run-id>`.
-Application conversation IDs are not checkpoint or ownership keys.
-`--session` selects a Factory session. A control connection can attach to a run
-only in its configured workspace and local user's private storage. Global
-workspace locks also exclude competing runs that use different storage roots.
-
-## CLI and BB
+For Codex MCP:
 
 ```sh
-software-factory --storage /private/factory start 'Bounded request' \
-  --request-id my-request-1 --workspace /path/to/target
-software-factory --storage /private/factory inspect RUN_ID --workspace /path/to/target
-software-factory --storage /private/factory resume RUN_ID --workspace /path/to/target
-software-factory --storage /private/factory answer RUN_ID INTERACTION_ID \
-  '{"question-id":"answer"}' --workspace /path/to/target
-software-factory --storage /private/factory cancel RUN_ID --workspace /path/to/target
+codex mcp add software-factory -- /absolute/bin/software-factory \
+  mcp --workspace /absolute/target
 ```
 
-Start and resume return saved state while a separate controller process does the
-work. Keep the same request ID when retrying an identical start. Status reads have
-no dispatch side effect. A stopped client does not stop its controller or workers.
-Cancellation is saved before cleanup and stays `stopping` or `recovery_needed`
-until matching worker processes and containers have stopped.
+Set `FACTORY_HTTP_TOKEN` and, if needed, `FACTORY_CONTROL_URL` in the server's
+environment. `factory_start/status/answer/resume/cancel/models/settings` and all
+existing `factory_plan_*` names are preserved. Workspace selection is fixed in
+registration; tool arguments cannot select paths or execution configuration.
 
-BB still registers `software-factory acp`. Set the same `FACTORY_HOME` for BB and
-the MCP server. The panel uses Factory storage. In BB use `/status`, `/continue`,
-`/answer ID ANSWER`, `/cancel`, `/new REQUEST`, or `/attach RUN_ID`. ACP cancellation
-ends the current view; `/cancel` explicitly stops the Factory run. Specialist BB
-tasks are no longer required. Use `/status` to refresh progress after reconnecting.
-The panel passes the selected BB conversation as an optional interface reference.
-Factory maps this reference to its own session so two conversations in the same
-workspace retain separate settings. The reference does not authorize run access.
-
-## Codex MCP registration
-
-Register the installed absolute executable, not the ACP command:
-
-```sh
-codex mcp add software-factory -- /absolute/repo/.venv/bin/software-factory \
-  --storage /private/factory mcp --workspace /path/to/target
-```
-
-The stdio server exposes `factory_start`, `factory_status`, `factory_answer`,
-`factory_resume`, `factory_cancel`, `factory_models`, and `factory_settings`, plus the
-`factory_plan_*` planning tools described in [planning](planning.md).
-The workspace is fixed in registration, not accepted as a model-controlled tool
-argument. These tools return structured data. Save `event_position` and send it
-as `after_event` to retrieve missed events without repeating actions.
-The normal MCP call does not remain open for the full workflow. Model discovery
-and start validation can take several seconds while a protected container starts.
-
-Codex supports command-based MCP servers and timeout configuration in its
-[official MCP documentation](https://learn.chatgpt.com/docs/extend/mcp).
+Save `event_position` and send `after_event` on status calls. Disconnecting,
+reloading a chat or reading status does not resume or cancel a run. ACP uses
+`/attach RUN_ID`, `/status`, `/continue`, `/answer ID ANSWER`, `/cancel`, and
+`/plan`, `/plans`, `/plan-status`, `/plan-answer`, `/plan-revise`, `/plan-approve`.
+ACP protocol cancellation ends presentation; only explicit `/cancel` stops work.
+Old Python chat presentation databases remain in isolated legacy recovery;
+attach saved Rust run IDs from a new native chat.
 
 ## Enforced control-only setup
 
@@ -131,17 +91,8 @@ worker remains pinned to 0.154.0.
 
 ## Current support boundary
 
-The worker uses Apple Container 1.0.0 and Codex App Server 0.154.0. MCP is locked
-to Python SDK 2.3.0. Only the native model connection is enabled in this change.
-Codex Router is not yet supported. No external route, private container bridge,
-or live routed-model acceptance has been established. Do not configure a wider
-router listener or mount host credential directories to work around this gap.
-Real CLI and BB workflows passed with `gpt-5.6-luna / low` on 19 September 2026.
-The BB check covered settings, start, status, a saved question, task reconnect,
-answer, resume, and confirmed cancellation. On 19 October 2026 the native MCP
-workflow and both desktop directions passed: a run started in BB was answered from
-the Codex desktop app, and a run started in Codex was answered from BB. That check
-used ChatGPT app 26.1013.40934, Codex CLI 0.163.0, and BB 0.46.1. Issue #9 remains
-open for Router work.
-See [the verification record](issue-9-acceptance.md) for tested versions, simulated
-results, local permission probes, and the remaining acceptance procedure.
+The Rust service uses the protected Docker worker boundary with pinned Codex App
+Server 0.154.0. Native ACP and MCP do not require a Python SDK. Router remains
+separate work. See [Rust workflow](rust-workflow.md) and
+[entry-point validation](issue-25-acceptance.md). Earlier Apple Container/Python
+interface acceptance remains historical in [issue 9](issue-9-acceptance.md).

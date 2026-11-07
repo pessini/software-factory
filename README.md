@@ -1,136 +1,58 @@
-# LangGraph Software Factory
+# Software Factory
 
-A macOS-first controller for a deterministic, resumable software-development
-workflow. LangGraph and Python own saved state, protected workers, and quality
-checks. The CLI, [BB](https://github.com/get-bb/bb) ACP interface, and local Codex MCP
-interface use the same Factory control operations and run IDs.
+A Rust/ADK controller for durable planning, implementation, protected workers,
+review evidence, and authorized PR delivery. The installed `software-factory`
+command, browser UI, BB ACP adapter, and Codex MCP adapter share the same Rust
+service and saved identities. Controller and client hosts need no Python, uv, or
+LangGraph. Target repositories and optional worker toolchains choose their own tools.
 
-See [interface setup](docs/factory-interfaces.md) and
-[existing-run compatibility](docs/interface-migration.md). The independent native
-path passed real CLI and BB workflow tests, including saved questions, reconnect,
-and cancellation. See the short [before-and-after explanation](docs/factory-explained.html).
-Codex desktop control and BB/Codex cross-interface continuation passed in both
-directions using a read-only control workspace. Optional Router support remains
-deferred for issue #9.
+Build and install from a checkout with the pinned Rust toolchain:
 
-Earlier live acceptance used the [protected local BB worker](docs/protected-worker.md)
-with BB 0.42.1, Apple Container 1.0.0, and the Codex provider CLI 0.154.0.
-New runs use Factory-owned workers with the same container protection. See the
-[issue 9 verification record](docs/issue-9-acceptance.md) for current evidence.
-Other providers and remote execution are not currently supported.
+```sh
+cargo install --path rust/factory-runtime --locked --bin software-factory
+software-factory --version
+software-factory init -w /absolute/target
+# Review .factory/factory.yaml and configure the protected Docker backend:
+software-factory configure-docker /absolute/backend.json \
+  --storage /absolute/private/factory-data -w /absolute/target
+export FACTORY_HTTP_TOKEN='your-private-token-at-least-24-characters'
+software-factory web --storage /absolute/private/factory-data -w /absolute/target
+```
 
-See [run ownership and recovery](docs/run-recovery.md) for cancellation and restart
-rules, [live acceptance evidence](docs/live-worker-acceptance.json) for the
-verified run, and the [issue completion check](docs/issue-1-completion-check.md)
-for implementation and verification status.
-The [focused/risk measurement study](docs/review-measurements.md) records eight
-passing real-provider cases, earlier failed attempts, and the decision to retain
-the starting 10/100/20 limits with risk selection still opt-in.
+In another terminal, configure the same token and start work:
 
-The [evidence workflow](docs/review-evidence.md) records baseline
-checks, structured criterion results and findings, and the exact tested file
-version. Successful runs finish at `ready_for_review`. Old `accepted` results
-remain available as unverified historical records.
-[Phase 1 acceptance passed](docs/acceptance-results.md) with a real provider in issue #6.
-The [focused review workflow](docs/focused-review.md) adds Request, Code, and
-Security reviews followed by a read-only judge. New configurations select it;
-existing configurations and saved runs keep their single-reviewer mode.
-The opt-in [risk selection policy](docs/risk-review.md) chooses the required
-reviewers from change size and sensitive paths. It adds Documentation Review
-when relevant and records review quality and user feedback for threshold tuning.
-The opt-in [PR delivery policy](docs/pr-delivery.md) publishes verified changes,
-tracks CI, and completes selected review fixes under saved authorization.
+```sh
+export FACTORY_HTTP_TOKEN='your-private-token-at-least-24-characters'
+software-factory plan 'Describe the change' -w /absolute/target --request-id my-plan
+software-factory plan-status PLANNING_SESSION_ID -w /absolute/target
+software-factory plan-approve PLANNING_SESSION_ID EXACT_PLAN_HASH -w /absolute/target
+software-factory mcp -w /absolute/target
+software-factory acp -w /absolute/target
+```
 
-**Plan before building.** `software-factory web` serves a local planning UI. A
-read-only Grill interviewer settles the decisions with you in adaptive rounds.
-Approving the exact plan revision starts one implementation run with that plan as
-settled input. BB (`/plan`), Codex (`factory_plan_*` tools), and the CLI control the
-same saved sessions. See [planning](docs/planning.md) and the
-[issue 10 verification](docs/issue-10-acceptance.md).
+An unset `FACTORY_CONTROL_URL` selects `http://127.0.0.1:4317`. The service must be
+started independently; clients never fall back to another engine or own run
+lifetime. Explicit non-loopback connections require HTTPS. See the
+[native product guide](docs/native-product.md) for installation collisions,
+upgrade/rollback, client setup, and the complete CLI compatibility inventory.
 
-The MVP provides:
+The [Rust workflow](docs/rust-workflow.md),
+[shared control contract](docs/rust-interfaces.md), and
+[production topology](docs/production-deployment.md) describe execution and storage.
+Exact approval, workspace ownership, durable recovery, cancellation cleanup, and
+protected worker boundaries apply across every interface. Approval of a plan
+grants no publication or deployment authority.
 
-- an ACP agent registered as **Software Factory** in BB;
-- a resumable LangGraph with baseline checks, Planner, Builder, deterministic tests, repair,
-  Reviewer, revision, finalization, and terminal failure nodes;
-- Factory-owned protected worker processes for every specialist;
-- a SQLite LangGraph checkpointer plus a durable spawn-intent ledger and
-  exact execution reconciliation that prevent duplicate requests after
-  process crashes;
-- strict Pydantic handoffs, file and Git change detection, versioned evidence,
-  trusted `argv` quality commands, bounded loops, and process-tree cancellation;
-- inspect, resume, cancel, repository-check, config-generation, and graph CLI
-  operations with versioned run events and atomic artifacts.
-
-See [`docs/macos-runbook.md`](docs/macos-runbook.md) for the macOS setup and the
-[`examples/demo-target`](examples/demo-target) fixture for a first run.
-
-The experimental [Rust/ADK durable runtime](docs/rust-runtime.md) retains the
-step 1 fake slice (#16) and adds the [implementation workflow and protected Docker
-workers](docs/rust-workflow.md) for step 2 (#17). It uses a separate database.
-See the [parity checklist](docs/issue-17-parity.md). Python remains supported;
-the [shared interfaces and planning port](docs/rust-interfaces.md) are available for #18.
-Production cutover remains #19; see the [interface acceptance record](docs/issue-18-acceptance.md).
-The [single-host Docker deployment](docs/production-deployment.md) provides the
-Rust production packaging candidate, offline backup/restore and upgrade/rollback
-procedures. The [release evidence](docs/issue-19-acceptance.md) keeps cutover gated;
-Python and its old-run recovery environment remain supported.
+The native entry points do not decode LangGraph state. Keep old runs in their
+[separate Python recovery environment](docs/interface-migration.md).
+Deployment UX (#26) and actual production cutover (#27) are separate follow-ups.
 
 ## Development
 
-```bash
-bash scripts/check.sh
-uv run software-factory graph --format mermaid
+```sh
+bash scripts/check-rust.sh
 ```
 
-The same checks run in CI on macOS and Linux with Python 3.14 and a frozen
-`uv.lock`. Logs and test results are saved under `.checks/`. Normal checks make
-no model requests. The separate [acceptance runbook](docs/acceptance.md) covers
-opt-in real-provider runs and the remaining release checks for issue #6.
-
-No command proposed by an agent is executed. Only reviewed `argv` arrays from
-`.factory/factory.yaml` are eligible for deterministic execution. Factory agents
-cannot use BB's `full` permission mode, and quality commands cannot directly invoke
-a shell interpreter or Git. Quality commands remain an operator-controlled trust
-boundary and must be verification-only.
-
-## CLI
-
-```text
-software-factory acp
-software-factory mcp --workspace /path/to/target
-software-factory models
-software-factory doctor
-software-factory graph --format mermaid
-software-factory init
-software-factory repo-check
-software-factory run "request"
-software-factory start "request" --request-id <stable-request-id>
-software-factory inspect <run-id>
-software-factory resume <run-id>
-software-factory cancel <run-id>
-software-factory review-quality <run-id>
-software-factory review-feedback <run-id> <attempt> <reviewer> <finding-id> <verdict> <reason>
-software-factory deliver <run-id> [--policy delivery.json]
-software-factory review-threads <run-id>
-software-factory fix-reviews <run-id> --thread <thread-id>
-software-factory web [--port 4317]
-software-factory plan "request" [--request-id <id>]
-software-factory plan-status [<planning-session-id>]
-software-factory plan-answer <planning-session-id> <interaction-id> '{"question-id":"answer"}'
-software-factory plan-revise <planning-session-id> "feedback"
-software-factory plan-approve <planning-session-id> <plan-sha256>
-```
-
-Agents cannot commit, push, or run an LLM-proposed command through the controller.
-The controller commits and pushes only under the saved PR delivery policy.
-Merge and deployment remain outside the workflow. Unexpected file, index, or
-reference changes stop delivery and preserve the workspace for inspection.
-Operator-reviewed quality programs are outside that guarantee and must not publish
-or mutate repository metadata indirectly.
-
-Model and effort choices for every active step, including the focused reviewers
-and judge, are
-available through the [BB Factory panel](bb-plugin-factory-controls/README.md).
-See [model settings](docs/model-settings.md) for saved settings and presets,
-and [current BB verification](docs/issue-9-acceptance.md) for the tested interface.
+Rust protocol/behavior checks do not install the Python application. The separate
+legacy CI job runs `bash scripts/check.sh` until recovery retirement is evidenced.
+See [issue 25 validation](docs/issue-25-acceptance.md) for scope and test evidence.

@@ -1,4 +1,11 @@
-# Existing records and recovery
+# Isolated Python recovery and existing records
+
+New work uses the [Rust product](native-product.md). Install this Python project
+only in a separate recovery environment; its entry point is now
+`software-factory-legacy`. Keep the original storage and context. Never share a
+workspace concurrently with a Rust controller. Native clients reject legacy IDs
+and storage; an unset service URL never selects Python.
+
 
 Existing BB storage is preserved. New Factory runs use context version 2 in
 Factory-owned storage. Old records retain their original version, task ownership,
@@ -7,7 +14,7 @@ checkpoint IDs, receipts, and artifacts. They are not silently moved or reowned.
 Inspect an old run without opening BB or writing to its database:
 
 ```sh
-software-factory legacy-inspect RUN_ID /path/to/original/bb-storage PARENT_TASK_ID \
+software-factory-legacy legacy-inspect RUN_ID /path/to/original/bb-storage PARENT_TASK_ID \
   --workspace /path/to/original/target
 ```
 

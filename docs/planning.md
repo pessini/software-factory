@@ -8,20 +8,21 @@ implementation run with that plan as settled input.
 ## Start the planning UI
 
 ```sh
-software-factory web --workspace /path/to/target          # prints a local link with a token
+software-factory web --storage /absolute/private/data --workspace /path/to/target
+# Configure FACTORY_HTTP_TOKEN in each client; see native-product.md.
 software-factory plan "Add slugify for product URLs" -w /path/to/target
 ```
 
 Open the printed `http://127.0.0.1:4317/?token=...` link. The token is exchanged
 for a strict same-site cookie. The service binds only to `127.0.0.1`. It rejects
 other `Host` headers, cross-origin writes, and non-JSON posts. It serves one user
-and one workspace. Stop it with `Ctrl+C`. Saved sessions do not depend on it.
+and one workspace. Stop it with `Ctrl+C`. Saved sessions survive restart; work progresses while the independent service runs.
 
 ## How it works
 
-Planning is a second LangGraph workflow (`src/software_factory/planning.py`). It
-runs on the same run records, saved interactions, durable worker operations,
-detached jobs, and cancellation as the implementation graph.
+Planning is a durable Rust/ADK workflow (`rust/factory-runtime/src/planning.rs`).
+It uses the same service-owned records, saved interactions, worker operations
+and cancellation as implementation. See [native startup](native-product.md).
 
 ```mermaid
 flowchart TD
@@ -54,7 +55,7 @@ flowchart TD
 ## Approval and handoff
 
 Approval names the exact plan hash. `approve` refuses any other hash. It calls the
-shared start operation with the request ID `handoff:<planning run>:<hash prefix>`.
+shared Rust start operation with a stable saved request identity.
 It records the implementation run against that revision. A repeated or lost-response
 approval returns the same run.
 
@@ -83,7 +84,7 @@ about new blockers, without restarting discovery.
 | Answer a round | Submit answers | `/plan-answer ID {"q":"a"}` | `factory_plan_answer` | `plan-answer` |
 | Revise | Create new revision | `/plan-revise ID FEEDBACK` | `factory_plan_revise` | `plan-revise` |
 | Approve | Checkbox + Start implementation | `/plan-approve ID HASH` | `factory_plan_approve` | `plan-approve` |
-| Stop | Stop | — | `factory_plan_cancel` | — |
+| Stop | Stop | `/plan-cancel ID` | `factory_plan_cancel` | `plan-cancel ID` |
 
 BB and MCP replies include the browser link when `software-factory web` is running
 for the same storage. The implementation run is a normal run: use `/attach RUN_ID`,

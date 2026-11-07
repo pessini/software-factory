@@ -179,7 +179,7 @@ async fn page(State(state): State<Server>, uri: axum::http::Uri) -> Response {
     }
     (
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        include_str!("../../../src/software_factory/web_static/index.html"),
+        include_str!("../assets/web/index.html"),
     )
         .into_response()
 }
@@ -187,18 +187,22 @@ async fn asset(Path(name): Path<String>) -> Response {
     if name == "geist-latin.woff2" {
         return (
             [(header::CONTENT_TYPE, "font/woff2")],
-            include_bytes!("../../../src/software_factory/web_static/geist-latin.woff2").as_slice(),
+            include_bytes!("../assets/web/geist-latin.woff2").as_slice(),
         )
             .into_response();
     }
     let (kind, content) = match name.as_str() {
+        "geist-LICENSE.txt" => (
+            "text/plain; charset=utf-8",
+            include_str!("../assets/web/geist-LICENSE.txt"),
+        ),
         "app.js" => (
             "text/javascript; charset=utf-8",
-            include_str!("../../../src/software_factory/web_static/app.js"),
+            include_str!("../assets/web/app.js"),
         ),
         "app.css" => (
             "text/css; charset=utf-8",
-            include_str!("../../../src/software_factory/web_static/app.css"),
+            include_str!("../assets/web/app.css"),
         ),
         _ => return StatusCode::NOT_FOUND.into_response(),
     };

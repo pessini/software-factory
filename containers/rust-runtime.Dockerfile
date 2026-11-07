@@ -6,12 +6,13 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY rust/factory-runtime/Cargo.toml rust/factory-runtime/Cargo.toml
 COPY rust/factory-runtime/src rust/factory-runtime/src
 COPY rust/factory-runtime/migrations rust/factory-runtime/migrations
-COPY src/software_factory/web_static src/software_factory/web_static
+COPY rust/factory-runtime/assets rust/factory-runtime/assets
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/build/target \
     cargo build --locked --release -p factory-runtime \
-    && cp target/release/factory-runtime /factory-runtime
+    && cp target/release/factory-runtime /factory-runtime \
+    && cp target/release/software-factory /software-factory
 
 FROM debian:stable-slim@sha256:13e0a2e78aa0554ad5ff66e4e260c6dbcdff807eb1f39d43b9fb0288aae88b04
 ARG FACTORY_UID=10001
@@ -22,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && mkdir /data /workspace && chown factory:factory /data /workspace
 COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=build /factory-runtime /usr/local/bin/factory-runtime
+COPY --from=build /software-factory /usr/local/bin/software-factory
 COPY containers/worker-seccomp.json /opt/factory/worker-seccomp.json
 COPY containers/controller-entrypoint.sh /usr/local/bin/controller-entrypoint
 USER ${FACTORY_UID}:${FACTORY_GID}

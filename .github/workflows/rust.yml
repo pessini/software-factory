@@ -25,6 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: docker build -f containers/rust-runtime.Dockerfile -t factory-rust-slice:dev .
+      - name: Exercise Python-free native release entry points
+        run: bash scripts/accept-native-entrypoints.sh factory-rust-slice:dev
       - run: python3 scripts/accept-rust-container.py --image factory-rust-slice:dev --output .checks/rust-container.json
       - name: Build production topology for the runner UID
         run: |

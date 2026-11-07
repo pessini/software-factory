@@ -4,12 +4,18 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 publish = false
+default-run = "factory-runtime"
+
+[[bin]]
+name = "software-factory"
+path = "src/product.rs"
 
 [dependencies]
 adk-core = { git = "https://github.com/zavora-ai/adk-rust", rev = "bd1bd5f450a6489d08e14220809033401282ed67" }
 adk-graph = { git = "https://github.com/zavora-ai/adk-rust", rev = "bd1bd5f450a6489d08e14220809033401282ed67", features = ["sqlite"] }
 adk-session = { git = "https://github.com/zavora-ai/adk-rust", rev = "bd1bd5f450a6489d08e14220809033401282ed67", features = ["sqlite"] }
 adk-server = { git = "https://github.com/zavora-ai/adk-rust", rev = "bd1bd5f450a6489d08e14220809033401282ed67", features = ["background"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
@@ -17,7 +23,7 @@ serde_json = "1"
 sha2 = "0.11"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite"] }
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "process", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "process", "io-util", "io-std"] }
 tokio-util = "0.7"
 globset = "0.4"
 regex = "1"
