@@ -178,9 +178,29 @@ factory_client status RUN_ID
 
 Browser access uses the published host port. BB/Codex stdio clients need a
 compatible native executable on their own host, or an operator-reviewed launcher
-using this image-client pattern with `docker run -i` and `acp`/`mcp`. The controller
-image supplies those adapters without host Cargo/Python. This Linux host-network
-client recipe is separate from the persistent Compose controller.
+using the image's `acp`/`mcp` adapters without host Cargo/Python. MCP can use the
+image-client pattern above with `docker run -i`. ACP also needs persistent writable
+client storage for its presentation database; use this pattern in the BB launcher:
+
+```bash
+# Create once on the client host, outside the target and controller data directories.
+export FACTORY_CLIENT_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/software-factory/clients"
+install -d -m 700 "$FACTORY_CLIENT_HOME"
+factory_acp() {
+  docker run --rm -i --pull never --network host --read-only \
+    --mount "type=bind,src=$FACTORY_WORKSPACE,dst=$FACTORY_WORKSPACE,readonly" \
+    --mount "type=bind,src=$FACTORY_CLIENT_HOME,dst=/factory/client-state" \
+    -e FACTORY_CLIENT_HOME=/factory/client-state \
+    -e FACTORY_HTTP_TOKEN -e FACTORY_CONTROL_URL \
+    --entrypoint software-factory "$FACTORY_CONTROLLER_IMAGE" \
+    acp -w "$FACTORY_WORKSPACE"
+}
+```
+
+The client-state directory must be owned by the image's configured UID/GID. Reuse
+it across launcher invocations so saved BB chats survive container removal. Keep
+the workspace, service URL and token available to the launcher. These Linux
+host-network clients are separate from the persistent Compose controller.
 
 The configured token is never printed. Browser token exchange redirects to a
 clean URL. Keep bearer links private. Health certifies storage/startup recovery,
