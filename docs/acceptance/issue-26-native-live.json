@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "date": "2026-11-09",
+  "kind": "real_native_provider_and_enforcement",
+  "passed": true,
+  "source_base": "2c8ced1bdc25e458eca61a525fdb0badf2168e57",
+  "authorization": "User explicitly authorized real provider acceptance in this chat; disposable checkouts, no PR publication.",
+  "platform": "Linux x86-64 / WSL2, kernel 6.18.33.2-microsoft-standard-WSL2",
+  "provider": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "codex_version": "0.154.0",
+    "approval_policy": "on-request"
+  },
+  "execution_policy": "linux-bwrap-cgroup-v1",
+  "docker_host": "unix:///tmp/issue26-docker-unavailable.sock",
+  "command": "systemd-run --user --scope --unit=factory-issue26-native-acceptance -p Delegate=yes bash .checks/issue-26-native-live.sh",
+  "setup_script": "#!/usr/bin/env bash\nset -euo pipefail\ncd /home/lpessini/dev/software-factory\numask 077\nnative_config=$(mktemp /tmp/issue26-native.XXXXXX.json)\ntrap 'rm -f \"$native_config\"' EXIT\nfactory_cgroup=$(cut -d: -f3 /proc/self/cgroup)\njq -n --arg cgroup \"/sys/fs/cgroup$factory_cgroup\" \\\n  --arg provider \"$PWD/.checks/issue28-provider/codex\" \\\n  '{executable:$provider,bubblewrap:\"/usr/bin/bwrap\",cgroup_root:$cgroup,\n    runtime_roots:[\"/usr\"],auth_file:\"/home/lpessini/.codex/auth.json\",\n    approval_policy:\"on-request\"}' > \"$native_config\"\nprintf 'Source: '\ngit rev-parse HEAD\nsha256sum .checks/issue28-provider/codex .checks/issue28-provider/codex-code-mode-host /usr/bin/bwrap\nDOCKER_HOST=unix:///tmp/issue26-docker-unavailable.sock \\\n  FACTORY_NATIVE_TEST_CONFIG=\"$native_config\" FACTORY_NATIVE_TEST_MODEL=gpt-5.6-luna \\\n  cargo test --locked -p factory-runtime --test native_worker -- --ignored --nocapture --test-threads=1\n",
+  "sha256": {
+    ".checks/issue28-provider/codex": "3188814c35471432d4123203e0eb38e5bddc60226e3d7ddf0e59e649ea140022",
+    ".checks/issue28-provider/codex-code-mode-host": "0c57be435e73b70d9106c850d751cd259a7f04da958a453d7ef59090d82b70f1",
+    "/usr/bin/bwrap": "e318903862396f96de3df57264e0158682b952fd3fb53ac23d876413e7b30f71",
+    "Cargo.lock": "a6332a09bfb08f05d1f30fdcb46e80edd0ef2e4a1bbbc6e6ca63f8e79e8147d8",
+    "rust/factory-runtime/tests/native_worker.rs": "ab0fc0688d3ecd83cd3106cef39f761ba74dddca7f8d6a3cc523e18ce6e61c10",
+    "rust/factory-runtime/src/workflow/native_broker.rs": "6e423c914330dd8238665241f0d56a80f045c892d2b8abc9bcc128b894a6c853",
+    "rust/factory-runtime/src/workflow/native.rs": "658fea086c25702029319a600bf0b0dda37831a7eaa5c30b2b3e5fec1570a784"
+  },
+  "tests_passed": [
+    "native_builder_can_write_application_paths_but_cannot_escape",
+    "native_codex_reads_workspace_and_records_the_exact_session",
+    "native_quality_is_read_only_network_denied_and_durably_receipted",
+    "native_questions_before_turn_response_survive_reconnect_and_saved_answers",
+    "native_rust_engine_plans_approves_builds_checks_reviews_and_reports",
+    "native_timeout_and_cancellation_confirm_cleanup_of_detached_descendants",
+    "native_turn_survives_controller_process_death_without_duplicate_dispatch"
+  ],
+  "summary": "7 passed; 0 failed; 0 ignored; 5 filtered out",
+  "duration_seconds": 595.11,
+  "clean_host": false,
+  "production_cutover": false,
+  "legacy_retirement": false
+}

@@ -56,6 +56,58 @@ cancellation/worker cleanup. This is actual Docker isolation and Compose recover
 with a **simulated provider**, not real-model evidence. Existing #19 Docker and
 #28 live native acceptance records remain historical evidence and were not edited.
 
+## Authorized real-provider acceptance
+
+After the user explicitly authorized real provider calls in this chat, both live
+runs passed on the same development host and source
+`2c8ced1bdc25e458eca61a525fdb0badf2168e57`. No PR publication was authorized or
+performed by these fixtures. This is new issue-26 evidence, separate from the
+historical #19/#28 records.
+
+Compose used the retained controller image above and worker
+`sha256:5f5c3b7fb6c78332c22d2e501b54543410842da511170c149f52e9391c2ab579`:
+
+```bash
+python3 scripts/accept-rust-production.py --live --model gpt-5.6-sol \
+  --step-timeout-seconds 600 --run-timeout-seconds 3600 \
+  --image software-factory-controller:issue-26 \
+  --output .checks/issue-26-compose-live.json
+```
+
+[Compose live evidence](acceptance/issue-26-compose-live.json) records success,
+Codex 0.154.0 / gpt-5.6-sol / low effort, exact planning approval, restore of a
+pending approval, a completed `ready_for_review` report, controller hard recreation
+with its independent broker surviving, event replay and cancellation/worker cleanup.
+Host reboot was not exercised. The controller used the retained Rust image;
+image clients were validated separately by the smoke check above. Host Python
+drove the live fixture through the HTTP API; it was not the product runtime.
+
+All **seven native opt-ins passed** in a disposable delegated user-systemd scope,
+using the already staged standalone Codex 0.154.0 and companion, Bubblewrap 0.9.0,
+`gpt-5.6-luna` / low effort and the explicitly configured `on-request` account
+policy. The broker continued denying escalation requests. Docker was deliberately
+unreachable throughout the native run:
+
+```bash
+systemd-run --user --scope --unit=factory-issue26-native-acceptance \
+  -p Delegate=yes bash .checks/issue-26-native-live.sh
+# The script creates private JSON with its own delegated cgroup path, then runs:
+DOCKER_HOST=unix:///tmp/issue26-docker-unavailable.sock \
+  FACTORY_NATIVE_TEST_CONFIG="$native_config" FACTORY_NATIVE_TEST_MODEL=gpt-5.6-luna \
+  cargo test --locked -p factory-runtime --test native_worker \
+  -- --ignored --nocapture --test-threads=1
+```
+
+[Native live evidence](acceptance/issue-26-native-live.json) retains the exact
+setup script, test names, source/file hashes and provider/bubblewrap hashes.
+Three tests use the real provider: read-only planning, builder protection probes,
+and planning → stale-approval rejection → exact approval → reopened engine →
+implementation → verification/review → final report. The remaining four exercise
+actual OS permission/network denials, descendant timeout/cancellation cleanup,
+and simulated-protocol question/restart recovery. Those four do not claim real
+model behavior. Target Python verifies the disposable application; the native
+Rust engine runs without host Python as a product runtime or Docker execution.
+
 ## Standards
 
 The initial review identified missing read-only protection for the new workspace
@@ -66,10 +118,10 @@ Follow-up review: **0 outstanding Standards findings**.
 
 The initial review identified that same lock issue and a hidden host Cargo
 requirement in Compose client examples. Both were corrected. Follow-up review:
-**0 outstanding implementation findings**; **1 operational acceptance gate**
-remains: new clean-host and explicitly authorized real-provider validation.
+**0 outstanding implementation findings**. Authorized real-provider checks now
+pass; clean-host installation and client validation remain an operational gate.
 
-Standards: 0 outstanding findings. Spec: 0 implementation findings; clean-host/live
+Standards: 0 outstanding findings. Spec: 0 implementation findings; clean-host
 operational acceptance remains incomplete.
 
 ## Remaining release gates
@@ -77,11 +129,9 @@ operational acceptance remains incomplete.
 This change does not certify a clean-host install or production cutover. Follow
 both [quickstarts](startup.md) on newly provisioned supported hosts, retaining
 source SHA, image digests, exact prerequisite versions/commands, health, browser
-and actual BB/Codex connection evidence. Run a real planning → exact approval →
-implementation → checks/reviews → report workflow only with explicit provider
-account authorization. Validate Docker-free execution separately on a host with
-persistent namespace/cgroup enforcement and a pinned standalone provider.
+and actual BB/Codex connection evidence. The newly authorized real-provider and
+Docker-free enforcement workflows above pass on the existing development host;
+these do not establish fresh-host installation or production cutover.
 
-No new billable provider acceptance has run in this task without that explicit
-authorization. Production cutover (#27) and complete legacy recovery retirement
-remain separate operational milestones.
+Production cutover (#27) and complete legacy recovery retirement remain separate
+operational milestones.
