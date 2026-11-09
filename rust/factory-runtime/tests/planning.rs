@@ -651,11 +651,37 @@ async fn remote_browser_token_exchange_uses_secure_cookies_and_exact_https_origi
 
 #[tokio::test]
 async fn importing_a_waiting_revision_retains_previous_settled_decisions() {
+    struct NativeIdentityWorker;
+    #[async_trait::async_trait]
+    impl factory_runtime::Worker for NativeIdentityWorker {
+        fn execution_identity(&self) -> Option<serde_json::Value> {
+            Some(json!({"backend":"native","provider":"codex","policy":"restricted-v1"}))
+        }
+        async fn reconcile(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> factory_runtime::Result<factory_runtime::Reconciliation> {
+            panic!("importing and scheduling must not reconcile worker operations")
+        }
+        async fn dispatch(
+            &self,
+            _: &str,
+            _: &str,
+            _: tokio_util::sync::CancellationToken,
+        ) -> factory_runtime::Result<String> {
+            panic!("importing and scheduling must not dispatch worker operations")
+        }
+    }
     let data = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
-    let runtime = Runtime::open(Config::new(data.path(), workspace.path()).unwrap())
-        .await
-        .unwrap();
+    let runtime = Runtime::open_with_worker(
+        Config::new(data.path(), workspace.path()).unwrap(),
+        std::sync::Arc::new(NativeIdentityWorker),
+        std::sync::Arc::new(factory_runtime::NoFaults),
+    )
+    .await
+    .unwrap();
     let control = factory_runtime::control::Control::open(runtime.clone())
         .await
         .unwrap();
@@ -681,6 +707,7 @@ async fn importing_a_waiting_revision_retains_previous_settled_decisions() {
         .await
         .unwrap();
     assert_eq!(run.input.planning.unwrap().previous, Some(previous));
+    assert_eq!(run.execution_backend.unwrap()["backend"], "native");
     assert_eq!(status["pending"]["questions"][0]["id"], "scope");
     assert!(run.scheduler_id.is_none());
     control.call("plan_answer", json!({"session_id":"pln_saved", "interaction_id":status["pending"]["interaction_id"], "answers":{"scope":"yes"}})).await.unwrap();
