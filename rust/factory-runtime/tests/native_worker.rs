@@ -32,7 +32,9 @@ async fn native_configuration_refuses_an_unpinned_provider() {
     let config = Config::new(data.path(), workspace.path()).unwrap();
     let native: NativeConfig = serde_json::from_value(serde_json::json!({
         "executable": "/usr/bin/true",
-        "bubblewrap": "/usr/bin/bwrap",
+        // Version rejection happens before sandbox launch. Keep this fixture
+        // independent of whether Bubblewrap is installed on the test host.
+        "bubblewrap": "/usr/bin/true",
         "cgroup_root": "/sys/fs/cgroup/factory",
         "runtime_roots": ["/usr"],
         "auth_file": null,
