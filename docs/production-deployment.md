@@ -3,8 +3,8 @@
 The accepted Rust controller packaging supports one Linux Docker host, one
 controller and one dedicated target checkout. SQLite is local to that host.
 The [release evidence](issue-19-acceptance.md) determines cutover readiness.
-Keep the Python installation and old-run recovery environment until every release
-gate passes. ADK never opens or interprets LangGraph checkpoint tables.
+Python runtime code is retired; use an isolated historical release only when
+recovering old runs. ADK never opens or interprets LangGraph checkpoint tables.
 
 ## Install and configure
 
@@ -251,7 +251,7 @@ Keep both release paths available until old-run recovery and rollback are verifi
 
 ## Repeatable release acceptance
 
-Run `bash scripts/check-rust.sh` and `bash scripts/check.sh`, then build the
+Run `bash scripts/check-rust.sh`, then build the
 controller for the test operator UID/GID, build `containers/test-worker.Dockerfile`
 as `factory-test-worker:dev`, and run `python3 scripts/accept-rust-production.py`.
 The latter runs real Compose and Docker with an explicitly simulated provider
@@ -285,5 +285,5 @@ change into the prerequisite parity inventory, rebase/retest the candidate and
 record the tested source/image hashes. A previously closed migration issue alone
 does not certify a changed main. Complete the remaining live-provider, clean-host,
 browser, actual reboot and rollback gates in [issue 19 evidence](issue-19-acceptance.md)
-before declaring production cutover or complete legacy retirement. The product
-entry point is already Rust; retain Python only in its isolated recovery environment.
+before declaring production cutover. The product and CI are Rust; use an isolated
+historical release only to recover old Python records.

@@ -438,7 +438,7 @@ def main() -> None:
                         ROOT / "containers/worker.Dockerfile",
                         ROOT / "scripts/factory-snapshot.py",
                         ROOT / "scripts/accept-rust-production.py",
-                        ROOT / "tests/fixtures/fake_app_server.py",
+                        ROOT / "rust/factory-runtime/tests/fixtures/fake_app_server.py",
                         *sorted((ROOT / "rust/factory-runtime/src").rglob("*.rs")),
                     ]
                 },

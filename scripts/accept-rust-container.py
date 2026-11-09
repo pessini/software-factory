@@ -28,7 +28,11 @@ def main() -> None:
         )
 
     def launch() -> None:
-        docker("run", "-d", "--name", name, *mounts, args.image)
+        # This fixture tests fake-worker recovery, never product backend selection.
+        docker(
+            "run", "-d", "--name", name, *mounts,
+            "-e", "FACTORY_ALLOW_FAKE_WORKER=1", args.image,
+        )
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if (
@@ -39,7 +43,8 @@ def main() -> None:
             ):
                 return
             time.sleep(0.1)
-        raise AssertionError("service did not become ready")
+        logs = docker("logs", name, check=False)
+        raise AssertionError("service did not become ready: " + logs.stdout + logs.stderr)
 
     def stop() -> None:
         docker("kill", "--signal=KILL", name)

@@ -27,7 +27,7 @@ async fn command(mut args: Vec<String>) -> Result<()> {
     let command = args.first().map(String::as_str).unwrap_or("--help");
     if matches!(command, "--help" | "-h" | "help") {
         println!(
-            "Software Factory (Rust/ADK)\nUsage: software-factory COMMAND [ARGS] [-w WORKSPACE] [--session ID]\nCommands: web, serve, run, start, inspect, status, list, answer, resume, retry, cancel, models, settings, plan, plan-status, plan-answer, plan-revise, plan-approve, plan-resume, plan-cancel, plan-report, acp, mcp, settings-panel, doctor, configure-docker, configure-native, doctor-native, init, repo-check, graph, deliver, review-threads, fix-reviews, review-quality, review-feedback, convert-config\nService: software-factory web --storage /absolute/private/data -w /absolute/workspace\nClient: FACTORY_HTTP_TOKEN is required; FACTORY_CONTROL_URL defaults to http://127.0.0.1:4317\nLegacy: use software-factory-legacy in a separate recovery environment."
+            "Software Factory (Rust/ADK)\nUsage: software-factory COMMAND [ARGS] [-w WORKSPACE] [--session ID]\nCommands: web, serve, run, start, inspect, status, list, answer, resume, retry, cancel, models, settings, plan, plan-status, plan-answer, plan-revise, plan-approve, plan-resume, plan-cancel, plan-report, acp, mcp, settings-panel, doctor, configure-docker, configure-native, doctor-native, init, repo-check, graph, deliver, review-threads, fix-reviews, review-quality, review-feedback, convert-config\nService: software-factory web --storage /absolute/private/data -w /absolute/workspace\nClient: FACTORY_HTTP_TOKEN is required; FACTORY_CONTROL_URL defaults to http://127.0.0.1:4317"
         );
         return Ok(());
     }
@@ -60,7 +60,7 @@ async fn command(mut args: Vec<String>) -> Result<()> {
         return factory_runtime::operator::command_at(operator, bind).await;
     }
     if storage.is_some() {
-        return Err(Error::Config("--storage is a service option; clients use FACTORY_CONTROL_URL. LangGraph storage requires the separate software-factory-legacy environment".into()));
+        return Err(Error::Config("--storage is a service option; clients use FACTORY_CONTROL_URL. LangGraph storage is unsupported; use a historical release for old records".into()));
     }
     if matches!(command, "init" | "repo-check" | "convert-config" | "graph") {
         return local(&workspace, command, &args[1..]);
@@ -109,29 +109,99 @@ async fn command(mut args: Vec<String>) -> Result<()> {
     }
     let operation;
     let mut value = json!({"session_id":session});
-    match (command,&args[1..]) {
-        ("run" | "start",[request]) => { operation="start"; value["request"]=json!(request); value["request_id"]=json!(request_id.unwrap_or_else(factory_runtime::client::unique_id)); }
+    match (command, &args[1..]) {
+        ("run" | "start", [request]) => {
+            operation = "start";
+            value["request"] = json!(request);
+            value["request_id"] =
+                json!(request_id.unwrap_or_else(factory_runtime::client::unique_id));
+        }
         ("inspect" | "status" | "cancel" | "resume" | "retry", [id]) => {
-            operation = match command { "inspect" => "status", "retry" => "resume", other => other };
+            operation = match command {
+                "inspect" => "status",
+                "retry" => "resume",
+                other => other,
+            };
             value["run_id"] = json!(id);
         }
-        ("plan", [request]) => { operation="plan_start"; value=json!({"request":request,"request_id":request_id.unwrap_or_else(factory_runtime::client::unique_id),"client_session_id":session}); }
-        ("plan-status", []) => { operation="plan_list"; value=json!({}); }
-        ("plan-status" | "plan-cancel" | "plan-resume" | "plan-report", [id]) => {
-            operation=match command {"plan-status"=>"plan_status","plan-cancel"=>"plan_cancel","plan-resume"=>"plan_resume",_=>"plan_report"}; value=json!({"session_id":id});
+        ("plan", [request]) => {
+            operation = "plan_start";
+            value = json!({"request":request,"request_id":request_id.unwrap_or_else(factory_runtime::client::unique_id),"client_session_id":session});
         }
-        ("plan-answer",[id,interaction,answers]) => {operation="plan_answer";value=json!({"session_id":id,"interaction_id":interaction,"answers":serde_json::from_str::<Value>(answers)?});}
-        ("plan-revise",[id,feedback]) => {operation="plan_revise";value=json!({"session_id":id,"feedback":feedback});}
-        ("plan-approve",[id,hash]) => {operation="plan_approve";value=json!({"session_id":id,"plan_hash":hash});}
-        ("models"|"list",[])=>{operation=command;}
-        ("settings",[])=>{operation="settings";}
-        ("answer",[id,interaction,answers])=>{operation="answer";value["run_id"]=json!(id);value["interaction_id"]=json!(interaction);value["answers"]=serde_json::from_str(answers)?;}
-        ("deliver",[id])=>{operation="deliver";value["run_id"]=json!(id);if let Some(path)=policy {value["policy"]=serde_json::from_slice(&std::fs::read(path)?)?;}}
-        ("fix-reviews",[id])=>{operation="fix_reviews";value["run_id"]=json!(id);value["threads"]=json!(threads);}
-        ("review-threads"|"review-quality",[id])=>{operation=if command=="review-threads" {"review_threads"}else{"review_quality"};value["run_id"]=json!(id);}
-        ("review-feedback",[id,attempt,reviewer,finding,verdict,reason])=>{operation="review_feedback";value=json!({"run_id":id,"attempt":attempt.parse::<u64>().map_err(|_|Error::Config("attempt must be positive".into()))?,"reviewer":reviewer,"finding_id":finding,"verdict":verdict,"reason":reason});}
-        ("export-planning"|"legacy-inspect"|"legacy-resume"|"legacy-cancel"|"worker-acp",_)=>return Err(Error::Incompatible("this Python recovery operation belongs to the separate software-factory-legacy environment".into())),
-        _ => return Err(Error::Config("invalid command or arguments; use software-factory --help".into())),
+        ("plan-status", []) => {
+            operation = "plan_list";
+            value = json!({});
+        }
+        ("plan-status" | "plan-cancel" | "plan-resume" | "plan-report", [id]) => {
+            operation = match command {
+                "plan-status" => "plan_status",
+                "plan-cancel" => "plan_cancel",
+                "plan-resume" => "plan_resume",
+                _ => "plan_report",
+            };
+            value = json!({"session_id":id});
+        }
+        ("plan-answer", [id, interaction, answers]) => {
+            operation = "plan_answer";
+            value = json!({"session_id":id,"interaction_id":interaction,"answers":serde_json::from_str::<Value>(answers)?});
+        }
+        ("plan-revise", [id, feedback]) => {
+            operation = "plan_revise";
+            value = json!({"session_id":id,"feedback":feedback});
+        }
+        ("plan-approve", [id, hash]) => {
+            operation = "plan_approve";
+            value = json!({"session_id":id,"plan_hash":hash});
+        }
+        ("models" | "list", []) => {
+            operation = command;
+        }
+        ("settings", []) => {
+            operation = "settings";
+        }
+        ("answer", [id, interaction, answers]) => {
+            operation = "answer";
+            value["run_id"] = json!(id);
+            value["interaction_id"] = json!(interaction);
+            value["answers"] = serde_json::from_str(answers)?;
+        }
+        ("deliver", [id]) => {
+            operation = "deliver";
+            value["run_id"] = json!(id);
+            if let Some(path) = policy {
+                value["policy"] = serde_json::from_slice(&std::fs::read(path)?)?;
+            }
+        }
+        ("fix-reviews", [id]) => {
+            operation = "fix_reviews";
+            value["run_id"] = json!(id);
+            value["threads"] = json!(threads);
+        }
+        ("review-threads" | "review-quality", [id]) => {
+            operation = if command == "review-threads" {
+                "review_threads"
+            } else {
+                "review_quality"
+            };
+            value["run_id"] = json!(id);
+        }
+        ("review-feedback", [id, attempt, reviewer, finding, verdict, reason]) => {
+            operation = "review_feedback";
+            value = json!({"run_id":id,"attempt":attempt.parse::<u64>().map_err(|_|Error::Config("attempt must be positive".into()))?,"reviewer":reviewer,"finding_id":finding,"verdict":verdict,"reason":reason});
+        }
+        (
+            "export-planning" | "legacy-inspect" | "legacy-resume" | "legacy-cancel" | "worker-acp",
+            _,
+        ) => {
+            return Err(Error::Incompatible(
+                "this removed Python recovery operation requires a historical release".into(),
+            ));
+        }
+        _ => {
+            return Err(Error::Config(
+                "invalid command or arguments; use software-factory --help".into(),
+            ));
+        }
     }
     let result: Value = client.call(operation, value).await?;
     println!("{}", serde_json::to_string_pretty(&result)?);

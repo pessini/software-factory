@@ -2,8 +2,8 @@
 
 The standard Rust/ADK product runs protected planning, implementation, verification
 and review with durable evidence. See [startup](startup.md) for native-controller,
-Compose and Docker-free Linux execution quickstarts. Python is retained only for
-[isolated legacy recovery](interface-migration.md). Historical migration acceptance
+Compose and Docker-free Linux execution quickstarts. The Python runtime has been removed; old records require an
+[isolated historical release](interface-migration.md). Historical migration acceptance
 remains in the issue records; actual production cutover is tracked by #27.
 
 ## Execution and recovery

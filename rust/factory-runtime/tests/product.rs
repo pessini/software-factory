@@ -130,7 +130,7 @@ async fn cli_preserves_service_identity_and_checks_ownership() {
         .await
         .unwrap();
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("software-factory-legacy"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("historical release"));
 }
 
 struct Adapter {

@@ -36,11 +36,10 @@ Exact approval, workspace ownership, durable recovery, cancellation cleanup, and
 protected worker boundaries apply across every interface. Approval of a plan
 grants no publication or deployment authority.
 
-The native entry points do not decode LangGraph state. Keep old runs in their
-[separate Python recovery environment](docs/interface-migration.md).
-Release acceptance, current cutover readiness, actual production cutover (#27),
-and complete legacy retirement are distinct milestones. Startup documentation
-does not declare production cutover or recovery retirement.
+The Python/LangGraph runtime has been removed. Existing legacy records require a
+historical release in an isolated environment; the Rust service cannot read them.
+See [retirement and recovery](docs/interface-migration.md). Production cutover (#27)
+remains a separate operational milestone.
 
 ## Development
 
@@ -48,8 +47,10 @@ does not declare production cutover or recovery retirement.
 bash scripts/check-rust.sh
 ```
 
-Rust protocol/behavior checks do not install the Python application. The separate
-legacy CI job runs `bash scripts/check.sh` until recovery retirement is evidenced.
+CI builds, lints and tests the Rust application on Linux and macOS, plus protected
+Docker execution and deployment acceptance. Python 3 is used only by standalone
+acceptance/snapshot tools and simulated provider fixtures; there is no Python
+application, package environment or legacy CI job.
 See [issue 25 validation](docs/issue-25-acceptance.md) for scope and test evidence.
 
 Optional Linux native subprocess execution and its enforced policy requirements are described in [native execution](docs/native-execution.md). Docker remains selectable.

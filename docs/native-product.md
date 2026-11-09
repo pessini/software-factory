@@ -17,9 +17,8 @@ command -v software-factory
 
 The version output must include `Rust/ADK`. Cargo refuses to overwrite an existing
 executable by default. Before installing, locate old executables with
-`type -a software-factory`. Preserve the old Python environment and its data for
-recovery; update that isolated installation so its console script is
-`software-factory-legacy` (the Python package now declares only that entry point).
+`type -a software-factory`. The Python package is retired. Recover old runs only with an isolated historical
+release and its original data; see [recovery](interface-migration.md).
 Remove obsolete Python launchers from the product PATH, refresh the shell command
 cache with `hash -r`, then install Rust. Configure BB and Codex with the absolute
 native path. Do not overwrite an active recovery environment with `--force`.
@@ -114,7 +113,7 @@ its `status` (intentional exit-code consistency across CLI/MCP/ACP).
 | `web/serve`, `configure-docker FILE`, `import-planning FILE` | Explicit local service/operator commands requiring `--storage` or `FACTORY_DATA_DIR`. Import only uses the existing validated export format, never checkpoint decoding. |
 | `acp`, `mcp` | Native newline-delimited JSON-RPC stdio adapters. Stdout contains protocol frames only. |
 | `settings-panel` | Bounded stdin JSON bridge used by the BB plugin, with the existing `sessionId/configOptions` response. |
-| `export-planning`, `legacy-inspect/resume/cancel`, hidden `worker-acp` | Deliberately excluded from the native runtime; errors direct users to isolated `software-factory-legacy`. Protected Rust workers use their native backend/broker. |
+| `export-planning`, `legacy-inspect/resume/cancel`, hidden `worker-acp` | Deliberately excluded from the native runtime; errors direct users to a historical release. Protected Rust workers use their native backend/broker. |
 
 Service/worker errors return nonzero. Run outcomes are data, not transport errors.
 `--storage` is rejected for client commands: they connect to the service instead
@@ -158,7 +157,7 @@ environment variables to MCP. It does not install/start Python or a controller.
 
 Native clients reject known Python run/checkpoint identities with an actionable
 error. They never read a LangGraph ledger. Keep old runs under their original
-Python environment/context/storage and use `software-factory-legacy`; see
+Python environment/context/storage in an isolated historical release; see
 [isolated recovery](interface-migration.md). An explicit validated terminal/waiting
 planning export may be imported through the existing operator import. Active
 checkpoint ownership is never transferred. [Startup](startup.md) describes deployment

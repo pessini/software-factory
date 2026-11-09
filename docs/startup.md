@@ -14,8 +14,8 @@ brokers. Installing Rust alone does not install provider CLIs or target tools.
 | Compose controller from retained images | Linux, local Docker Engine, Compose v2, Git, `just`, Bash, jq, OpenSSL; non-root operator with socket access | Controller image contains Rust executables, Git, curl, gh and Docker CLI; host Cargo/Python unnecessary |
 | Protected Docker execution with either controller | Docker daemon, retained worker image, reviewed seccomp profile, non-root target ownership, provider login on daemon host | Worker contains pinned Codex 0.154.0 and matching code-mode host; its Python/uv are worker tools |
 | Native subprocess execution | Linux x86-64 (including capable WSL2), Bubblewrap, delegated cgroup v2 with cgroup.kill, user/PID/mount/network namespaces, standalone Codex 0.154.0 plus adjacent matching codex-code-mode-host, provider login, target tools | No Docker; unsupported providers/platforms/policies fail closed; see [capability matrix](native-execution.md) |
-| Development / release acceptance | Rust toolchain, Git; Docker for Docker opt-ins | Python 3 for existing acceptance/consistent-snapshot helpers; Python 3.14 + uv for separate legacy checks; jq for JSON preparation |
-| Legacy recovery only | Original Python 3.14 environment, locked dependencies, uv, original provider/workspace/storage | `software-factory-legacy`; never a dependency of the Rust service or clients |
+| Development / release acceptance | Rust toolchain, Git; Docker for Docker opt-ins | Python 3 for existing acceptance/consistent-snapshot helpers; jq for JSON preparation |
+| Historical recovery | Isolated checkout of a pre-retirement release and its original dependencies/storage | Not shipped or checked by current CI; see [recovery](interface-migration.md) |
 
 Docker workers need Linux-compatible target tools inside their image. Native
 workers need reviewed host toolchain directories and explicit verification argv.
@@ -238,10 +238,9 @@ Do not point the Docker snapshot helper at active native execution.
 
 Implementation/release acceptance (#16–#19, #25, #28) is recorded historical
 evidence. Readiness for cutover requires current source/image/provider checks.
-Actual production cutover (#27) and complete legacy retirement require separate
-operational evidence. This guide declares neither milestone. Keep the isolated
-[legacy recovery installation](interface-migration.md) and rollback assets until
-retirement is explicitly evidenced. [Issue 26 validation](issue-26-acceptance.md)
+Actual production cutover (#27) requires separate operational evidence. This guide does not declare cutover.
+The Python runtime has been removed; recover old records only through an isolated
+[historical release](interface-migration.md). [Issue 26 validation](issue-26-acceptance.md)
 records checks and any uncompleted clean-host/provider gates.
 
 `just demo-start` explicitly enables fake workers with separate `-demo` storage;
