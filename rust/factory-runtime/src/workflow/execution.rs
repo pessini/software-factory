@@ -85,6 +85,7 @@ pub(crate) async fn execute(
     cancel: CancellationToken,
 ) -> Result<String> {
     let run = runtime.status(id).await?;
+    runtime.validate_backend(&run)?;
     let input = run.input.implementation.as_ref().unwrap();
     let operation_id = format!("{id}-{key}");
     let state = run.workflow.as_ref().unwrap();
@@ -255,6 +256,7 @@ pub(crate) async fn execute(
 
 pub(crate) async fn stop_all(runtime: &Runtime, id: &str) -> Result<()> {
     let run = runtime.status(id).await?;
+    runtime.validate_backend(&run)?;
     if let Some(state) = run.workflow {
         for (operation, request) in state.requests {
             runtime

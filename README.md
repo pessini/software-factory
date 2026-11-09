@@ -56,3 +56,5 @@ bash scripts/check-rust.sh
 Rust protocol/behavior checks do not install the Python application. The separate
 legacy CI job runs `bash scripts/check.sh` until recovery retirement is evidenced.
 See [issue 25 validation](docs/issue-25-acceptance.md) for scope and test evidence.
+
+Optional Linux native subprocess execution and its enforced policy requirements are described in [native execution](docs/native-execution.md). Docker remains selectable.

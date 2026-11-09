@@ -86,7 +86,7 @@ to the exact content version. Criterion coverage, evidence references, finding
 history and every judge assessment are validated. Tampering, stale evidence or
 incorrect Builder file reports blocks acceptance and preserves the workspace.
 
-## Native setup
+## Controller setup
 
 Build with `cargo build --locked -p factory-runtime`. Install Docker and build the
 existing `containers/worker.Dockerfile` as `software-factory-worker:0.154.0`.
@@ -133,6 +133,9 @@ under `/data/artifacts/`. Persist the whole private data directory, including WA
 receipts, provider homes, broker logs and evidence. The current controller remains
 single-host; authentication, lifecycle/health endpoints and backup automation are
 production packaging work, not implicit guarantees of this native CLI.
+
+For Docker-free agent and verification execution, see [native execution](native-execution.md).
+The operator backend configuration selects Docker versus native; the saved workflow graph is shared.
 
 ## Authorized delivery
 

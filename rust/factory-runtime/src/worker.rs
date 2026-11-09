@@ -19,6 +19,10 @@ pub enum Reconciliation {
 /// discoverable through reconciliation. Protected process cleanup is part of #17.
 #[async_trait]
 pub trait Worker: Send + Sync {
+    /// Saved with every run; changing execution authority requires a new run.
+    fn execution_identity(&self) -> Option<serde_json::Value> {
+        None
+    }
     async fn model_catalog(&self) -> Result<Vec<crate::workflow::config::ModelOption>> {
         Ok(Vec::new())
     }

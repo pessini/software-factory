@@ -8,11 +8,20 @@ permissions:
   contents: read
 jobs:
   checks:
-    runs-on: macos-15
+    name: ${{ matrix.name }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-15
+            name: checks
+          - os: ubuntu-24.04
+            name: checks (ubuntu-24.04)
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install latest Homebrew toolchain and verify the tested pin
+        if: runner.os == 'macOS'
         run: |
           brew update
           brew install rust
