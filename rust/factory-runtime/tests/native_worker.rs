@@ -1,5 +1,30 @@
 use factory_runtime::{Config, workflow::native::NativeConfig};
 
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+#[tokio::test]
+async fn native_configuration_refuses_unsupported_platform_before_accessing_provider() {
+    let data = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let config = Config::new(data.path(), workspace.path()).unwrap();
+    let native: NativeConfig = serde_json::from_value(serde_json::json!({
+        "executable": data.path().join("missing-provider"),
+        "bubblewrap": data.path().join("missing-bwrap"),
+        "cgroup_root": data.path().join("missing-cgroup"),
+        "runtime_roots": [data.path().join("missing-runtime")],
+        "auth_file": null,
+        "approval_policy": "never"
+    }))
+    .unwrap();
+    let error = native.pin(&config).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("native execution requires Linux namespaces and delegated cgroup v2"),
+        "{error}"
+    );
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[tokio::test]
 async fn native_configuration_refuses_an_unpinned_provider() {
     let data = tempfile::tempdir().unwrap();
@@ -465,6 +490,7 @@ async fn native_timeout_and_cancellation_confirm_cleanup_of_detached_descendants
     );
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[tokio::test]
 async fn diagnostics_reject_changed_provider_bytes_before_executing_them() {
     use std::os::unix::fs::PermissionsExt;
@@ -490,6 +516,7 @@ async fn diagnostics_reject_changed_provider_bytes_before_executing_them() {
     );
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[tokio::test]
 async fn native_policy_refuses_host_socket_and_process_roots_before_provider_start() {
     let data = tempfile::tempdir().unwrap();
@@ -777,6 +804,7 @@ fn native_test_configuration() -> NativeConfig {
     .unwrap()
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[tokio::test]
 async fn reconfiguration_without_hashes_checks_the_saved_backend_before_executing() {
     use std::os::unix::fs::PermissionsExt;
