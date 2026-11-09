@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "kind": "real_compose_docker_simulated_provider",
+  "passed": true,
+  "retained_image_client_doctor_and_list": true,
+  "planning_session": "pln_3da1709fbefb",
+  "run_id": "run-97bd0e710d466ca257133bccac37d8ad881478a0f488059de1437ee1a0dd9d9a",
+  "image_id": "sha256:4972a36ce4f800d4b837ed75b224a871dc6e9addb5594aa858347a2782943d64",
+  "status": "ready_for_review",
+  "operations": 5,
+  "fixture_limits": {
+    "step_timeout_seconds": 30,
+    "total_run_timeout_seconds": 300
+  },
+  "workers": [
+    {
+      "id": "6527916fa4d77f446368f66cb6d0dfd5d5a9e1572c39bacef9d34ddfa504ec2b",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "669bb961d1b75d4b91be03487d6d6d4b5bf6e3fe42089bd561e3d3d5a64dc3ea",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "5df16204d01e17b7d1d7f8814c2479f6ae4afbfbddcdab235d10ad3d5af89861",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "882d07e195aabd5bfe5ea0a0a5004cbb42f55867291ed339fd746ade5fc42584",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "82d87ee71b7e1097ef7eeaf122d4aec1c9870e41e59dca14523f65f1adecbf22",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "5a09b705e75571cac1d1db881fed18d7524b9e71b6206a27f62f64626819c5bc",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "9faf9dbc756461262af124975ab954b999fd0d82bebdc27322bd9ccbf6fd42a7",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "9469a0cf1e18ac81e85c8a830ed4c32117846386a9984fd4a6c3b6b4b1f95660",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "5fbe5a7ceddad178f5857a42081a4a1ed96d276a046047e1153c43757c0caeb9",
+      "read_only_root": true,
+      "stopped": true
+    },
+    {
+      "id": "35ff601b16f1bb4685b94864a774f664276ee1a5b1658a001c337a4460981768",
+      "read_only_root": true,
+      "stopped": true
+    }
+  ],
+  "restore_pending_approval": true,
+  "restored_plan_hash": "236613bc850a0e3b581f9fbfbfdb8a4a7f0e958d8d96360070a75acaea2bd711",
+  "catalog_admission": [
+    "busy",
+    "busy",
+    "busy",
+    "ok"
+  ],
+  "sse_replay": true,
+  "cancelled_run": "run-0b0d2cdbdc7138df5629e96d33a53a1438f35abfbc3960ae72cfa995d16e60fa",
+  "hard_recreation": true,
+  "independent_broker_survived_controller": true,
+  "root": "/home/lpessini/dev/software-factory/.checks/issue-19-kkrnzunx",
+  "source_base": "b4e871c98b2036742a7cc6a838615c97f751b2d2",
+  "source_hashes": {
+    "compose.yaml": "cb275d1813c9bbaa4523f99e175c2389659b2bb17997007f0ac7e4448804508a",
+    "containers/rust-runtime.Dockerfile": "629ab94bb1e9965e66477a2a28c3542beacc26cb0cbc0b2defb73a7c444119e2",
+    "containers/controller-entrypoint.sh": "c2d22ff4ad66a8054185e31c7a6ffc25a28217d3b34ac53f31b1e802d6a62411",
+    "containers/worker.Dockerfile": "efda1849c8437af79cfc065f10ec272a73c5691309303aeb2152af601e36b6ce",
+    "scripts/factory-snapshot.py": "c1e69969ee67b73b1cf7e3b85bb6572c2e0c6865ff895c22fe6329be4ad0cf21",
+    "scripts/accept-rust-production.py": "75668aa914abeaff4a9554400af7734c386becc766c807ec720f2f9ce58d7b1b",
+    "tests/fixtures/fake_app_server.py": "bd1472ebe8eab5eff72e7e3c3a12a5e61e86c1275bcc45d298eb2e074630b274",
+    "rust/factory-runtime/src/chat.rs": "b95e485748d50eae2e6d8c32bd14e2aad830d9f2f7d8165adbae8ab912d8dc8f",
+    "rust/factory-runtime/src/client.rs": "1238677aeee3cf9d8c0745a6d747300dd2c6ae2ea5fb73f9681159c978b2cbdc",
+    "rust/factory-runtime/src/config.rs": "660f87897f80e5283196aed2217afbad8c65e7265223a81eeb3c49c3c0b017cd",
+    "rust/factory-runtime/src/contracts.rs": "10d5e36e1ab6e5045a9c2e3ed54da5e5d0ade42e9d442c2032026a0972f41ea9",
+    "rust/factory-runtime/src/control/client_ops.rs": "cc0fcc64d32afed63d40a61747cd5e1bf74cbde7a462fdfdb7346ada4edd1265",
+    "rust/factory-runtime/src/control/migration.rs": "8e74f0362f763717327d4dc8d84b282a18184582205695a8322c9ec1eeeb08b3",
+    "rust/factory-runtime/src/control.rs": "2b9f38d9273f19cc124ef2d2e3353470f80832f662bf075f7b4f92b0b6f1498e",
+    "rust/factory-runtime/src/error.rs": "06480a9c02b873cc94aaa3d6dc7ac83a6c7ebcb04c6d2dd2fdaba1b93542f192",
+    "rust/factory-runtime/src/graph.rs": "dedd3c491c836425c163d6336206af670089555d822f2ce9edaa89f8d55905b5",
+    "rust/factory-runtime/src/http.rs": "8a66252b65811a6bf525bccdbdd2f0620aa1eb9be352ad8042b2c07a88345589",
+    "rust/factory-runtime/src/lib.rs": "481f02186850486881bdd39aa6651af03f0cd0ab60207d30ac478a14bb07d857",
+    "rust/factory-runtime/src/main.rs": "8a3b7277dcf11aa80674a0b1785fa20ea5d63420d80a2de44f15ce7069c48de0",
+    "rust/factory-runtime/src/operator.rs": "7be06a552d1368e345209acfe438c76044da077ecd4808fa1eef5b37457ea018",
+    "rust/factory-runtime/src/planning.rs": "ab6d9345bb4ccc96e470df741de1e694984e5fb31c5472117647b20dbf579841",
+    "rust/factory-runtime/src/product.rs": "f30164d896af37f49eabda9fb16ab649d362c1c8154e8cc4cf64c461d645ccd3",
+    "rust/factory-runtime/src/protocol.rs": "7d4216f9ef1b97bcc14086736dda47c4b46c0e02c1c5c777a3e453e10314faf8",
+    "rust/factory-runtime/src/runtime.rs": "44d4d4367f13a370718d49dd16f5db7f0b95ba491e1da89c2401a99223d910c9",
+    "rust/factory-runtime/src/store.rs": "8ef0e6a6c6513071897bf67f074711f987cbeb25db83abec65172de71ee9ebd9",
+    "rust/factory-runtime/src/worker.rs": "81115aefc681d81f048c728fe34c7b6386d97da0e305e8440d8885b0fcf2af64",
+    "rust/factory-runtime/src/workflow/artifacts.rs": "3e2fd04acafea3f9b4e48e2821ece7d3ec7afad52b087bc5c35c76e8e0d2d1a5",
+    "rust/factory-runtime/src/workflow/broker.rs": "b7939a44fe2ed8d3ca234796b5e4e1d97236184b246d930997f7e2754e4bd0d6",
+    "rust/factory-runtime/src/workflow/config.rs": "b8bfed7f1c02d23d76ab54c2bd0e620fc70f274e902f4e52874d344949070b14",
+    "rust/factory-runtime/src/workflow/delivery.rs": "e06f25b25d2ad9a1170e80903521533166247a5ad6e9c7ffec22f8f37aa1d156",
+    "rust/factory-runtime/src/workflow/docker.rs": "5e053f4667d50c3ac78e898080cbc1a9c9061d74a65a8968cdf2b046fbd5c765",
+    "rust/factory-runtime/src/workflow/docker_broker.rs": "24d8d8922c756c3f70e6ed00f62902ee0a8450384cd066eefaa73e98ee6c6195",
+    "rust/factory-runtime/src/workflow/docker_transport.rs": "050e5be542819c21c8649e4c49e44cc2a4e348b1a16fea04103dd5d962159ffa",
+    "rust/factory-runtime/src/workflow/execution.rs": "ec24ebd7e1a3605415e9258ad796a3d504cdfb5370297fdfac8de024920663ee",
+    "rust/factory-runtime/src/workflow/github.rs": "54ce3b04e691db473fdfcf49acd4e1130358bea8723c64e57e9481c2643b5d21",
+    "rust/factory-runtime/src/workflow/handoffs.rs": "909236ce79e1ac6593d564503b13542108c38968c379afb01955d67b3c80a1a9",
+    "rust/factory-runtime/src/workflow/mod.rs": "277d11f22d6188f8697e31f35559a992ccfd04e5faa959e6103931941240ea96",
+    "rust/factory-runtime/src/workflow/native.rs": "658fea086c25702029319a600bf0b0dda37831a7eaa5c30b2b3e5fec1570a784",
+    "rust/factory-runtime/src/workflow/native_broker.rs": "6e423c914330dd8238665241f0d56a80f045c892d2b8abc9bcc128b894a6c853",
+    "rust/factory-runtime/src/workflow/phases.rs": "ded84457beb1f01742e671c3c933003bf9df67c2763ef61a0fd8e6034b002773",
+    "rust/factory-runtime/src/workflow/process.rs": "ab565edc5a42f1ce96eb427e3b4652fd0a7569db593521d703c077326e0fa92a",
+    "rust/factory-runtime/src/workflow/project.rs": "db72d449fcc6030ca91ce891149c89a22de4d46e6dade87212d492447065398b",
+    "rust/factory-runtime/src/workflow/prompts.rs": "2b5c259a235179d0632f91bd66385c7cc77763b567f6a0d9b8b6b7581fed0a3f",
+    "rust/factory-runtime/src/workflow/repository.rs": "f43767c3f8ea1919d6c0b8a79aa27594f4624ab4c3677f7be91f357a9055bcb8",
+    "rust/factory-runtime/src/workflow/review_fixes.rs": "581e4817b453afbfbabc8ec10c523a26a72a261b5e25d9eabf10e948c3d54bc8",
+    "rust/factory-runtime/src/workflow/review_policy.rs": "b2821df34bc6c17e9ea7aa117d5246d444b67866af1cdb369ce0b8b3cf8ec71b",
+    "rust/factory-runtime/src/workflow/verified_git.rs": "e31c1fd048953e601935fda71af2a15502f9015b5309963a22d65a9152af1b0b"
+  },
+  "docker_version": "29.1.3",
+  "live_provider": "not exercised",
+  "worker_image_ids": [
+    "sha256:63ed0cb5491c228b88b1a17fd7ba6528155203c11c77d61b7001521026242903"
+  ],
+  "host_reboot": "not exercised"
+}

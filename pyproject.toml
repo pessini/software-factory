@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bb-langgraph-software-factory"
 version = "0.1.0"
-description = "Deterministic LangGraph planning and SDLC workflows for BB, Codex, and the browser"
+description = "Legacy Python recovery environment for Software Factory; the supported product runtime is Rust/ADK"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [

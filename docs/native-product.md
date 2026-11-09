@@ -40,6 +40,8 @@ installed executable to a compatible OS/architecture needs no Python source tree
 The Docker release includes both `software-factory` and the retained low-level
 `factory-runtime` operator executable.
 
+For full native/Compose prerequisites and recipe examples, see [startup](startup.md).
+
 ## Start and connect
 
 ```sh
@@ -53,7 +55,7 @@ software-factory web --storage /absolute/private/data -w /absolute/target
 ```
 
 The [protected backend guide](rust-workflow.md) documents backend configuration.
-Canonical service startup requires this backend. `FACTORY_ALLOW_FAKE_WORKER=1`
+Canonical service startup requires a configured Docker or supported Linux native backend. `FACTORY_ALLOW_FAKE_WORKER=1`
 is an explicit development-only opt-in for protocol tests, not implementation
 acceptance. `FACTORY_DATA_DIR` can replace the service `--storage` argument.
 Service storage must be absolute, private, outside the canonical workspace, and
@@ -159,5 +161,6 @@ error. They never read a LangGraph ledger. Keep old runs under their original
 Python environment/context/storage and use `software-factory-legacy`; see
 [isolated recovery](interface-migration.md). An explicit validated terminal/waiting
 planning export may be imported through the existing operator import. Active
-checkpoint ownership is never transferred. #26 and #27 own deployment UX and
-actual production cutover; this change does not re-run #16–#19 release gates.
+checkpoint ownership is never transferred. [Startup](startup.md) describes deployment
+UX; #27 tracks actual production cutover. Historical release evidence does not
+automatically certify a changed source/image or legacy retirement.

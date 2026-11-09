@@ -155,6 +155,7 @@ impl ExecutionWorker {
                 ".factory-rust.identity",
                 ".factory-rust.claim",
                 ".factory-rust.lock",
+                ".factory-rust.service.lock",
             ]
             .map(|p| self.config.workspace().join(p)),
         );

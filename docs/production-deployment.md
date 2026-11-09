@@ -1,6 +1,6 @@
-# Single-host Rust deployment (#19)
+# Single-host Rust deployment
 
-This is the production packaging candidate for one Linux Docker host, one
+The accepted Rust controller packaging supports one Linux Docker host, one
 controller and one dedicated target checkout. SQLite is local to that host.
 The [release evidence](issue-19-acceptance.md) determines cutover readiness.
 Keep the Python installation and old-run recovery environment until every release
@@ -8,7 +8,10 @@ gate passes. ADK never opens or interprets LangGraph checkpoint tables.
 
 ## Install and configure
 
-Install Docker Engine with Compose v2, Git, Python 3, jq and OpenSSL. Use a local
+Install Docker Engine with Compose v2, Git, Bash, just, jq and OpenSSL.
+Host Rust/Cargo and Python are unnecessary for retained-image startup; Python 3
+is optional tooling for the snapshot/acceptance helpers below. See the
+[dependency matrix and just recipes](startup.md). Use a local
 daemon (`/var/run/docker.sock`), not a remote Docker context. Prepare a dedicated
 checkout with its `.git` directory inside it; do not use external linked worktrees
 for this initial topology. Give the checkout and private data directory the same
@@ -218,7 +221,7 @@ answering the original interaction or resuming an eligible run.
 Record controller image digest, worker image ID, main SHA, configuration and the
 release evidence. Drain active operations and take the consistent snapshot above
 before replacing the controller. Run acceptance on a separate copy first.
-This release supports Factory schema/envelope 1, control schema 1 and saved
+This release supports Factory schema/envelope 1, control schema 2 and saved
 `factory-fake-v1`, `factory-sdlc-v1`, `factory-grill-v1` graphs; newer versions
 fail closed. There is no automatic downgrade or LangGraph checkpoint conversion.
 Keep old images/provider homes and do not silently replace the saved backend
@@ -282,4 +285,5 @@ change into the prerequisite parity inventory, rebase/retest the candidate and
 record the tested source/image hashes. A previously closed migration issue alone
 does not certify a changed main. Complete the remaining live-provider, clean-host,
 browser, actual reboot and rollback gates in [issue 19 evidence](issue-19-acceptance.md)
-before removing the default Python/LangGraph path or declaring production cutover.
+before declaring production cutover or complete legacy retirement. The product
+entry point is already Rust; retain Python only in its isolated recovery environment.

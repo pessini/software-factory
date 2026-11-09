@@ -473,6 +473,7 @@ fn planning_url(origin: &str, token: &str) -> String {
 }
 
 pub async fn serve(control: Control, address: &str, token: &str) -> Result<()> {
+    let _workspace_service_lock = control.workspace_service_lock()?;
     let _service_lock = control.maintenance_lock()?;
     let host = std::env::var("FACTORY_HTTP_HOST").unwrap_or_else(|_| address.into());
     let address: std::net::SocketAddr = address

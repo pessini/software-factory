@@ -55,17 +55,6 @@ async fn command(mut args: Vec<String>) -> Result<()> {
             })
             .transpose()?;
         let storage = storage.or_else(||std::env::var("FACTORY_DATA_DIR").ok()).ok_or_else(||Error::Config("service startup requires --storage /absolute/private/data or FACTORY_DATA_DIR, separate from the workspace".into()))?;
-        if matches!(args[0].as_str(), "serve" | "web")
-            && !std::path::Path::new(&storage)
-                .join("docker-backend.json")
-                .is_file()
-            && !std::path::Path::new(&storage)
-                .join("native-backend.json")
-                .is_file()
-            && std::env::var("FACTORY_ALLOW_FAKE_WORKER").as_deref() != Ok("1")
-        {
-            return Err(Error::Config("configure a protected backend first: software-factory configure-docker/configure-native BACKEND.json --storage DATA -w WORKSPACE. FACTORY_ALLOW_FAKE_WORKER=1 is for development tests only".into()));
-        }
         let mut operator = vec![storage, workspace.canonicalize()?.display().to_string()];
         operator.extend(args);
         return factory_runtime::operator::command_at(operator, bind).await;

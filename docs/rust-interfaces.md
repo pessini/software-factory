@@ -1,17 +1,16 @@
 # Rust shared interfaces and planning (#18)
 
-Migration step 3 adds `factory-grill-v1`, the existing planning Web UI, and a
-version-1 control API to the durable Rust/ADK service. It does not replace or read
-LangGraph checkpoints. #19 owns production cutover. The historical step-1
-[contract inventory](rust-contract-inventory.md) remains a record of that release;
-the table below describes the current interface contract.
+The standard Rust/ADK service exposes durable planning, the browser UI and the
+version-1 control API to native CLI/ACP/MCP clients. It never reads LangGraph
+checkpoints. See [startup](startup.md) for supported installation and execution
+choices. Historical #16–#19 acceptance is separate from actual cutover (#27).
 
 ## Run the service
 
 Configure the target's `.factory/factory.yaml`, then configure the protected
-Docker backend as described in [the workflow guide](rust-workflow.md). A service
-without a Docker backend retains the step-1 fake worker, which cannot run real
-Grill/implementation specialist prompts. Provider/model choices come from the
+Docker or Linux native backend as described in [startup](startup.md). A service
+without a configured backend fails before listening; fake workers require explicit
+development opt-in and cannot run real specialist prompts. Provider/model choices come from the
 configured worker's catalog. HTTP clients cannot submit worker configurations,
 workspace paths, execution policies or delivery authorization.
 

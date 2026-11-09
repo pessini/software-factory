@@ -36,6 +36,7 @@ fn paths(raw: Vec<u8>) -> Result<BTreeSet<String>> {
 pub(crate) fn internal(path: &str) -> bool {
     [
         ".factory-rust.lock",
+        ".factory-rust.service.lock",
         ".factory-rust.claim",
         ".factory-rust.identity",
     ]

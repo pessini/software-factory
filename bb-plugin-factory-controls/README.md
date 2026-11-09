@@ -39,3 +39,7 @@ Rust product tests cover ACP reload, shared panel settings, and service identity
 the historical live BB 0.42.1 check. Current verification and remaining live
 checks are recorded in `docs/issue-9-acceptance.md`.
 The generated BB UI components remain available for panel maintenance.
+
+For native or Compose service prerequisites, backend configuration, token setup
+and lifecycle commands, follow the [startup guide](../docs/startup.md). The panel
+and ACP use the same Rust service; installing the panel does not start it.

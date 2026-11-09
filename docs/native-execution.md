@@ -60,7 +60,8 @@ Bubblewrap, the standalone Linux Codex 0.154.0 binary **and its adjacent matchin
 `codex-code-mode-host`**, and target verification tools. Supply a stable delegated
 cgroup v2 directory owned by the operator. Its lifecycle must outlive transient
 clients and controller reconnects. Do not point production storage at a temporary
-acceptance-test scope. Native/Compose service startup recipes belong to #26.
+acceptance-test scope. See [startup](startup.md#docker-free-controller-and-native-execution) for the
+Docker-free `just` quickstart and the controller/backend dependency matrix.
 
 Example operator JSON, outside the target repository:
 

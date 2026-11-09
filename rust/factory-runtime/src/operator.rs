@@ -89,6 +89,13 @@ pub async fn command_at(args: Vec<String>, bind: Option<String>) -> Result<()> {
                 "production requires a configured daemon broker backend".into(),
             ));
         }
+        if matches!(args[2].as_str(), "serve" | "web")
+            && std::env::var("FACTORY_ALLOW_FAKE_WORKER").as_deref() != Ok("1")
+        {
+            return Err(Error::Config(
+                "configure a protected backend first: software-factory configure-docker/configure-native BACKEND.json --storage DATA -w WORKSPACE. FACTORY_ALLOW_FAKE_WORKER=1 is for development tests only".into(),
+            ));
+        }
         Arc::new(FakeWorker::open(&config.data_dir().join("worker-records")).await?)
     };
     let runtime = Runtime::open_with_worker(config, worker, Arc::new(ProcessFaults)).await?;

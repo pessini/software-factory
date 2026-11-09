@@ -15,3 +15,5 @@ __pycache__/
 dist/
 target/
 .factory-rust.lock
+
+.factory-rust.service.lock
