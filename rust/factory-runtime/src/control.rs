@@ -545,9 +545,13 @@ impl Control {
                     config.validate()?;
                     let mut criteria: Vec<crate::workflow::Criterion> =
                         serde_json::from_value(snapshot["plan"]["completion_checks"].clone())?;
-                    if snapshot["glossary"]
-                        .as_array()
-                        .is_some_and(|a| !a.is_empty())
+                    let write_scope = crate::planning::snapshot_write_scope(snapshot)?;
+                    if write_scope
+                        .as_ref()
+                        .is_none_or(|paths| paths.iter().any(|p| p == "CONTEXT.md"))
+                        && snapshot["glossary"]
+                            .as_array()
+                            .is_some_and(|a| !a.is_empty())
                     {
                         criteria.push(crate::workflow::Criterion {
                             id: "planning-glossary".into(),
@@ -559,7 +563,12 @@ impl Control {
                         .as_array()
                         .into_iter()
                         .flatten()
-                        .filter(|d| d["adr"] == true)
+                        .filter(|d| {
+                            d["adr"] == true
+                                && write_scope.as_ref().is_none_or(|paths| {
+                                    paths.iter().any(|p| p.starts_with("docs/adr/"))
+                                })
+                        })
                     {
                         criteria.push(crate::workflow::Criterion {
                             id: format!("planning-adr-{}", decision["id"].as_str().unwrap_or("")),
@@ -585,7 +594,7 @@ impl Control {
                         ),
                         &format!("impl-{id}"),
                         &format!(
-                            "Implement the exact approved_plan for planning session {id} (sha256 {hash}). Its immutable content contains the settled scope, decisions and document versions. Ask only about new blockers. Write the approved glossary to CONTEXT.md and ADR decisions under docs/adr, preserving unrelated content. Approval grants no commit, push, merge or deploy authorization."
+                            "Implement the exact approved_plan for planning session {id} (sha256 {hash}). Its immutable content contains the settled scope, decisions and document versions. Ask only about new blockers. Respect its explicit write_scope: glossary and ADR content is reference-only unless their files are included. Historical plans without write_scope retain their approved glossary/ADR obligations. Preserve unrelated content. Approval grants no commit, push, merge or deploy authorization."
                         ),
                     );
                     input.implementation = Some(ImplementationInput {

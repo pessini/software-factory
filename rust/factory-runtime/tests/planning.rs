@@ -81,6 +81,8 @@ quality:
 #[derive(Default)]
 struct Interviewer {
     tamper_round: Option<usize>,
+    narrow_scope: bool,
+    omit_scope: bool,
     receipts: std::sync::Mutex<std::collections::BTreeMap<String, (String, String)>>,
 }
 #[async_trait::async_trait]
@@ -117,6 +119,16 @@ impl factory_runtime::Worker for Interviewer {
         }
         assert!(std::path::Path::new(&request.evidence_directory).is_dir());
         let result=if id.ends_with("grill-1") {json!({"version":1,"status":"questions","summary":"Choose a recipient","questions":[{"id":"recipient","question":"Who?","options":["world"],"recommendation":"world","context":"A public greeting"}],"plan":null})} else {json!({"version":1,"status":"ready","summary":"Greeting planned","questions":[],"decisions":[{"id":"recipient","title":"Recipient","decision":"world","rationale":"User selected world","adr":true}],"glossary":[{"term":"Greeting","definition":"A welcome"}],"plan":{"goal":"Greet world","scope":["Greeting"],"requirements":["Say hello to world"],"completion_checks":[{"id":"greeting","description":"Prints Hello, world!"}],"assumptions":[],"exclusions":[],"deferred":[],"sources":[]}})}.to_string();
+        let mut result: serde_json::Value = serde_json::from_str(&result)?;
+        if self.narrow_scope && result["status"] == "ready" {
+            result["plan"]["write_scope"] = json!(["greeting.txt"]);
+            result["decisions"][0]["adr"] = json!(false);
+        }
+        if !self.narrow_scope && !self.omit_scope && result["status"] == "ready" {
+            result["plan"]["write_scope"] =
+                json!(["greeting.txt", "CONTEXT.md", "docs/adr/recipient.md"]);
+        }
+        let result = result.to_string();
         self.receipts
             .lock()
             .unwrap()
@@ -127,16 +139,26 @@ impl factory_runtime::Worker for Interviewer {
 
 #[tokio::test]
 async fn answers_restart_exact_approval_and_revision_are_durable() {
-    planning_journey(None).await;
+    planning_journey(None, false, false).await;
+}
+
+#[tokio::test]
+async fn narrow_plan_reference_glossary_does_not_authorize_new_document() {
+    planning_journey(None, true, false).await;
+}
+
+#[tokio::test]
+async fn newly_generated_plan_without_explicit_write_scope_is_blocked() {
+    planning_journey(None, false, true).await;
 }
 
 #[tokio::test]
 async fn planning_rejects_worker_writes_on_first_and_later_turns() {
-    planning_journey(Some(1)).await;
-    planning_journey(Some(2)).await;
+    planning_journey(Some(1), false, false).await;
+    planning_journey(Some(2), false, false).await;
 }
 
-async fn planning_journey(tamper_round: Option<usize>) {
+async fn planning_journey(tamper_round: Option<usize>, narrow_scope: bool, omit_scope: bool) {
     use factory_runtime::control::Control;
     use std::{process::Command, sync::Arc};
     let data = tempfile::tempdir().unwrap();
@@ -183,6 +205,8 @@ quality: {commands: [{name: check, argv: ["true"]}]}
     let config = Config::new(data.path(), root.path()).unwrap();
     let worker = Arc::new(Interviewer {
         tamper_round,
+        narrow_scope,
+        omit_scope,
         ..Default::default()
     });
     let runtime = Runtime::open_with_worker(
@@ -237,6 +261,11 @@ quality: {commands: [{name: check, argv: ["true"]}]}
         .await
         .unwrap();
     let second_turn = restarted.resume(run).await.unwrap();
+    if omit_scope {
+        assert_eq!(second_turn.status, factory_runtime::Status::Blocked);
+        assert!(second_turn.error.unwrap().contains("explicit write_scope"));
+        return;
+    }
     if tamper_round == Some(2) {
         assert_eq!(second_turn.status, factory_runtime::Status::Blocked);
         assert!(
@@ -280,7 +309,18 @@ quality: {commands: [{name: check, argv: ["true"]}]}
         .approved_plan
         .unwrap();
     assert_eq!(approved.sha256, planned["plan_hash"]);
-    assert_eq!(approved.completion_checks.len(), 3);
+    assert_eq!(
+        approved.completion_checks.len(),
+        if narrow_scope { 1 } else { 3 }
+    );
+    if narrow_scope {
+        assert!(
+            !implementation
+                .input
+                .request
+                .contains("Write the approved glossary")
+        );
+    }
     std::fs::write(
         root.path().join(".factory/factory.yaml"),
         "invalid yaml for future sessions",

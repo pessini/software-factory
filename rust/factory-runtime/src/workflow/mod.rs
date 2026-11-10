@@ -43,6 +43,22 @@ pub struct ApprovedPlan {
     pub content: String,
     pub completion_checks: Vec<Criterion>,
 }
+impl ApprovedPlan {
+    pub(crate) fn check_write_scope(&self, changed: &[String]) -> Result<()> {
+        let snapshot = serde_json::from_str(&self.content)?;
+        if let Some(allowed) = crate::planning::snapshot_write_scope(&snapshot)? {
+            for path in changed {
+                handoffs::require(
+                    allowed.contains(path),
+                    &format!(
+                        "file outside approved write_scope: {path}; workspace preserved for inspection"
+                    ),
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
 impl ImplementationInput {
     pub fn validate(&self) -> Result<()> {
         self.config.validate()?;
@@ -56,6 +72,7 @@ impl ImplementationInput {
             )?;
             handoffs::text(&plan.planning_session_id)?;
             handoffs::text(&plan.revision_id)?;
+            plan.check_write_scope(&[])?;
             criteria.extend(plan.completion_checks.clone());
         }
         handoffs::unique(criteria.iter().map(|c| c.id.as_str()))?;

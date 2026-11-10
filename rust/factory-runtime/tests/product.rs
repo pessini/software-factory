@@ -646,7 +646,7 @@ impl factory_runtime::Worker for JourneyWorker {
             ExecutionKind::Quality {command,content_version}=>serde_json::to_value(CheckResult{name:command.name,argv:command.argv,exit_code:Some(0),timed_out:false,cancelled:false,output_tail:String::new(),content_version,comparison:String::new()})?,
             ExecutionKind::Specialist{prompt,..} if prompt.contains("read-only Grill with Docs")=>{
                 if id.ends_with("grill-1") {json!({"version":1,"status":"questions","summary":"Choose recipient","questions":[{"id":"recipient","question":"Who?","options":["world"],"recommendation":"world"}]})}
-                else {json!({"version":1,"status":"ready","summary":"Greeting plan","plan":{"goal":"Change greeting","scope":["greeting.txt"],"requirements":["Hello, world!"],"completion_checks":[{"id":"greeting","description":"The greeting is Hello, world!"}]}})}
+                else {json!({"version":1,"status":"ready","summary":"Greeting plan","plan":{"goal":"Change greeting","scope":["greeting.txt"],"write_scope":["greeting.txt"],"requirements":["Hello, world!"],"completion_checks":[{"id":"greeting","description":"The greeting is Hello, world!"}]}})}
             }
             ExecutionKind::Specialist{step,..} if step=="plan"=>json!({"version":2,"status":"ready","summary":"Update greeting","acceptance_criteria":[{"id":"greeting","description":"The greeting is Hello, world!"}],"implementation_steps":["Update greeting.txt"],"test_strategy":"Verify greeting"}),
             ExecutionKind::Specialist{step,..} if step=="build"=>{
