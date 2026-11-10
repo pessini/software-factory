@@ -2,11 +2,11 @@
 # Services stay in the foreground; Ctrl+C preserves saved work. Clients require
 # the same FACTORY_HTTP_TOKEN and workspace as the independent service.
 set shell := ["bash", "-euo", "pipefail", "-c"]
-export FACTORY_WORKSPACE := env("FACTORY_WORKSPACE", justfile_directory())
+export FACTORY_WORKSPACE := env_var_or_default("FACTORY_WORKSPACE", justfile_directory())
 # Preserve the existing default so upgrades reconnect to saved runs.
-export FACTORY_DATA_DIR := env("FACTORY_DATA_DIR", env("XDG_DATA_HOME", home_directory() / ".local/share") / "swe-factory/rust-slice")
-factory := env("FACTORY_BIN", justfile_directory() / "scripts/factory.sh")
-compose := 'docker compose --env-file ' + quote(env("FACTORY_COMPOSE_ENV", ".env.production"))
+export FACTORY_DATA_DIR := env_var_or_default("FACTORY_DATA_DIR", env_var_or_default("XDG_DATA_HOME", env_var("HOME") / ".local/share") / "swe-factory/rust-slice")
+factory := env_var_or_default("FACTORY_BIN", justfile_directory() / "scripts/factory.sh")
+compose := 'docker compose --env-file ' + quote(env_var_or_default("FACTORY_COMPOSE_ENV", ".env.production"))
 
 # List commands; does not start a service.
 default:

@@ -26,6 +26,10 @@ before configuration. Never copy credentials into the target checkout.
 
 ## Native controller with Docker execution
 
+Use `just` 1.21 or newer (including Ubuntu 24.04's packaged 1.21). The recipes
+also work with current Homebrew versions; a newer Homebrew installation is not
+required for the quickstarts.
+
 Use a dedicated target Git checkout owned by your non-root operator. From the
 Factory source checkout, install rustup, the pinned toolchain, Git, Bash, `just`,
 Docker, jq and OpenSSL using your supported host's package manager. `just --list` only
