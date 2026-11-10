@@ -5,8 +5,9 @@ operating through Rust.** Production workflow, whole-state restore, controller
 restart, CLI/MCP/ACP/browser reconnect and cancellation checks passed. This is
 the user's selected ongoing Software Factory workspace, outside `.checks`, not a
 disposable acceptance fixture. Issue 27 is not declared fully complete: the
-current-candidate clean-host acceptance tracked under #26 and independent
-ChatGPT desktop interaction remain unverified.
+current-candidate clean-host acceptance tracked under #26 remains unverified.
+The user independently confirmed the desktop Factory tool returned
+`ready_for_review` for this same production run.
 
 The [machine record](acceptance/issue-27-production.json) contains exact hashes,
 identities, receipts and limitations. The [cutover procedure](production-cutover.md)
@@ -70,7 +71,11 @@ artifacts; they are not relabelled as executions of this candidate.
 `bash scripts/check-rust.sh` passed formatting, all-target typechecking, Clippy
 with warnings denied and **81 tests**; **11 opt-in tests** were ignored. The initial
 sandboxed invocation failed to bind the deployment-test listener; the rerun with
-local-network permission passed. Production checks used real Docker and real
+local-network permission passed. After production started on 4317, final validation
+also exposed the existing recovery test's hardcoded default-port collision. The
+isolated test reproduced `Address already in use`; its fixture now binds
+`127.0.0.1:0`, matching the other service tests. This test-only change does not
+alter the deployed application/image. Production checks used real Docker and real
 ChatGPT-authenticated provider calls, `gpt-5.6-sol` / low effort, with saved 600s
 step and 3600s run budgets. This existing WSL development host is not a clean host.
 
@@ -111,7 +116,7 @@ historical evidence.
 | --- | --- |
 | CLI | No installed Factory command → `~/.local/bin/software-factory` links to the fixed production launcher; native Rust binary, target, origin, private token source and client home are explicit; `doctor` and saved status passed |
 | Terminal Codex | No Factory registration for this target → trusted `control/.codex/config.toml`, absolute Rust MCP launcher, fixed target, read-only outer sandbox and explicit managed `on-request` approval policy; actual Codex 0.167.0 MCP calls read plan then completed run in separate processes |
-| ChatGPT desktop | Same project-scoped MCP configuration is installed in the production control folder; independent interactive verification remains pending |
+| ChatGPT desktop | Same project-scoped MCP configuration in the production control folder; user independently confirmed the Factory status tool returned `ready_for_review` for the exact production run |
 | BB ACP | BB absent → Homebrew cask `bb` 0.49.0, provider `acp-software-factory`, absolute Rust ACP launcher, dedicated project `proj_4aayf3hzfu`; real BB model discovery and saved-plan reading passed; thread `thr_dq4dcqbwer` attached the completed run after restart |
 | Browser | No service → authenticated ChatGPT in-app browser at the loopback origin; clean post-token-exchange URL, selected plan, completed report and browser reconnect visually verified |
 
@@ -204,10 +209,20 @@ no independent WSL boot/service-manager guarantee is added by this operation.
 - Run both #26 quickstarts and actual clients on clean supported hosts using the
   current candidate. The closed GitHub issue and older VM result do not supply
   this missing evidence.
-- Confirm the independent ChatGPT desktop Factory-tool interaction; terminal
-  Codex and the in-app browser are already verified, but are different surfaces.
 - Resolve the additional glossary artifact during production output review;
   do not describe this narrow task as changing exactly one file.
 - No production legacy recovery dependency exists in this inventory's scope.
   Retain historical acceptance environments/state; deleting them requires their
   own documented disposition and is outside this cutover.
+
+## Standards
+
+Independent review against the branch's original `main` baseline: **0 findings**.
+The review checked private-state handling, artifact identities, inventory scope,
+backup/recovery ownership and accurate milestone wording.
+
+## Spec
+
+Independent review: **0 actionable implementation findings**. Actual production
+adoption is evidenced; current-candidate clean-host acceptance remains partial.
+The additional glossary artifact and task-scope limitation are explicitly recorded.

@@ -191,7 +191,7 @@
     "chatgpt_desktop": {
       "project_configured": true,
       "control_folder": "/home/lpessini/.local/share/software-factory-production/control",
-      "independent_interactive_journey": "not exercised"
+      "independent_interactive_journey": "user verified factory_status returns ready_for_review for the exact production run in this chat"
     },
     "bb_acp": {
       "version": "0.49.0",
@@ -230,11 +230,11 @@
   },
   "validation": {
     "rust": "fmt, all-target check, Clippy -D warnings; 81 passed, 11 opt-ins ignored",
-    "clean_host_current_candidate": "not exercised on this existing WSL development host"
+    "clean_host_current_candidate": "not exercised on this existing WSL development host",
+    "recovery_fixture_correction": "After deployment occupied default port 4317, isolated recovery test reproduced Address already in use. Set FACTORY_HTTP_BIND=127.0.0.1:0 in existing test; focused test and all-target typecheck passed without stopping production. No deployed application change."
   },
   "limitations": [
     "Current-candidate clean-host quickstart acceptance for issue 26 remains open.",
-    "ChatGPT desktop project configuration is installed; a separate interactive desktop control journey remains unverified.",
     "The worker image and configured quality command support this documentation task; Rust development requires a reviewed Rust-capable worker/toolchain and repository-wide quality commands.",
     "The generated plan included a glossary despite the introductory-only scope; its CONTEXT.md output is disclosed and not copied to this branch.",
     "No host reboot, old-release rollback, remote publication, or deletion of historical recovery state was performed."
