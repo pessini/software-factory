@@ -1,71 +1,105 @@
-# Development commands. Install tools with Homebrew: brew install just rust jq
-# Run `just` to list commands. Long-running commands stay in the foreground;
-# stop them with Ctrl+C. Saved runs survive restarting the process.
-#
-# The native service serves the existing planning UI and owns background runs.
-# Open the token link it prints. Configure the protected Docker backend before
-# requesting provider work; see docs/rust-interfaces.md.
-#
-# Choose a target checkout and persistent storage outside that checkout:
-#   FACTORY_WORKSPACE=/absolute/checkout just start
-#   FACTORY_DATA_DIR=/absolute/data FACTORY_WORKSPACE=/absolute/checkout just start
-# Defaults below use this repository and persistent per-user Rust slice storage.
-# Keep these paths unchanged when reconnecting to saved runs.
-
+# Rust product operations. See docs/startup.md for prerequisites and backend setup.
+# Services stay in the foreground; Ctrl+C preserves saved work. Clients require
+# the same FACTORY_HTTP_TOKEN and workspace as the independent service.
 set shell := ["bash", "-euo", "pipefail", "-c"]
-
 export FACTORY_WORKSPACE := env("FACTORY_WORKSPACE", justfile_directory())
+# Preserve the existing default so upgrades reconnect to saved runs.
 export FACTORY_DATA_DIR := env("FACTORY_DATA_DIR", env("XDG_DATA_HOME", home_directory() / ".local/share") / "swe-factory/rust-slice")
+factory := env("FACTORY_BIN", justfile_directory() / "scripts/factory.sh")
+compose := 'docker compose --env-file ' + quote(env("FACTORY_COMPOSE_ENV", ".env.production"))
 
-# List available commands without starting a service.
+# List commands; does not start a service.
 default:
     @just --list
 
-# Compile the standalone native binary: target/release/factory-runtime.
+# Build both Rust executables using the pinned toolchain and lockfile.
 build:
     cargo build --locked --release -p factory-runtime
 
-# Start the native Rust service and planning UI; builds automatically.
+# Create target policy; review quality argv before any work (refuses overwrite).
+init:
+    {{quote(factory)}} init -w "$FACTORY_WORKSPACE"
+
+# Pin protected Docker workers from reviewed operator JSON; requires Docker.
+configure-docker backend:
+    {{quote(factory)}} configure-docker {{quote(backend)}} --storage "$FACTORY_DATA_DIR" -w "$FACTORY_WORKSPACE"
+
+# Probe Linux namespaces/cgroups and pinned native Codex prerequisites.
+doctor-native backend:
+    {{quote(factory)}} doctor-native {{quote(backend)}} --storage "$FACTORY_DATA_DIR" -w "$FACTORY_WORKSPACE"
+
+# Select Docker-free Linux execution; use separate storage from Docker runs.
+configure-native backend:
+    {{quote(factory)}} configure-native {{quote(backend)}} --storage "$FACTORY_DATA_DIR" -w "$FACTORY_WORKSPACE"
+
+# Start native controller/UI with its saved real backend; Ctrl+C to stop.
 start:
-    @printf '%s\n' 'Starting the Rust service and planning UI; Ctrl+C to stop.'
-    cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" serve
+    {{quote(factory)}} web --storage "$FACTORY_DATA_DIR" -w "$FACTORY_WORKSPACE"
 
-# Example: just run greeting-1 'Build a greeting' demo-session
-# Reusing the same request ID/input returns saved state; new work needs a new ID.
-# jq encodes the request safely; no Python process is used.
-# Create a fake Rust run; use the supervisor or explicitly resume it.
+# Check service/workspace, target policy and real provider model catalog.
+doctor:
+    {{quote(factory)}} doctor -w "$FACTORY_WORKSPACE"
+
+# Submit implementation to the running service; request IDs are idempotent.
 run request_id request session_id="default":
-    cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" start \
-      "$(jq -cn --arg request_id {{ quote(request_id) }} --arg session_id {{ quote(session_id) }} --arg request {{ quote(request) }} '{request_id: $request_id, session_id: $session_id, request: $request, timeout_seconds: 3600, max_dispatches: 3}')"
+    {{quote(factory)}} run {{quote(request)}} --request-id {{quote(request_id)}} --session {{quote(session_id)}} -w "$FACTORY_WORKSPACE"
 
-# List saved Rust runs, including their status and pending interactions.
+# Submit planning; approve the exact saved hash through UI/client when ready.
+plan request_id request session_id="default":
+    {{quote(factory)}} plan {{quote(request)}} --request-id {{quote(request_id)}} --session {{quote(session_id)}} -w "$FACTORY_WORKSPACE"
+
+# List saved runs through the service; never dispatches work.
 runs:
-    cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" list
+    {{quote(factory)}} list -w "$FACTORY_WORKSPACE"
 
-# Inspect one run; copy its interaction_id to answer the saved approval.
+# Inspect a run through the service; never dispatches work.
 status run_id:
-    cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" status {{ quote(run_id) }}
+    {{quote(factory)}} status {{quote(run_id)}} -w "$FACTORY_WORKSPACE"
 
-# Approve or decline the fake worker: just answer RUN_ID INTERACTION_ID true/false.
-answer run_id interaction_id approved="true":
-    cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" answer {{ quote(run_id) }} {{ quote(interaction_id) }} {{ quote(approved) }}
+# Save answers JSON for an exact pending interaction (copy its question IDs).
+answer run_id interaction_id answers:
+    {{quote(factory)}} answer {{quote(run_id)}} {{quote(interaction_id)}} {{quote(answers)}} -w "$FACTORY_WORKSPACE"
 
-# Advance a run without the supervisor, or explicitly retry recovery_needed work.
+# Explicitly request saved-run reconciliation through the service.
 resume run_id:
-    cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" resume {{ quote(run_id) }}
+    {{quote(factory)}} resume {{quote(run_id)}} -w "$FACTORY_WORKSPACE"
 
-# Save cancellation and stop the selected run. Stopping the service is Ctrl+C.
+# Save cancellation; the service confirms worker cleanup.
 cancel run_id:
-    cargo run --locked --quiet -p factory-runtime -- "$FACTORY_DATA_DIR" "$FACTORY_WORKSPACE" cancel {{ quote(run_id) }}
+    {{quote(factory)}} cancel {{quote(run_id)}} -w "$FACTORY_WORKSPACE"
 
-# Run Rust formatting, typechecking, Clippy and tests.
+# Start a FAKE service for UI/protocol demos only; use separate demo storage.
+demo-start:
+    FACTORY_ALLOW_FAKE_WORKER=1 {{quote(factory)}} web --storage "$FACTORY_DATA_DIR-demo" -w "$FACTORY_WORKSPACE"
+
+# Format/typecheck/lint and run the ordinary Rust test suite.
 check:
     bash scripts/check-rust.sh
 
-# Build the production controller; configure Compose before starting it.
+# Build Compose controller locally (Docker builder contains Cargo).
 container-build:
-    docker build --build-arg FACTORY_UID="$(id -u)" --build-arg FACTORY_GID="$(id -g)" -f containers/rust-runtime.Dockerfile -t software-factory-controller:issue-19 .
+    {{compose}} build controller
 
-# Validate actual Compose mounts, restore and protected workers (simulated provider).
+# Pin worker/broker images using reviewed JSON inside the controller container.
+container-configure backend:
+    {{compose}} run --rm --no-deps controller configure-docker {{quote(backend)}}
+
+# Start Compose from retained images; never builds or pulls implicitly.
+container-start:
+    {{compose}} up -d --no-build --pull never --wait
+
+# Show Compose health and container identities.
+container-status:
+    {{compose}} ps
+
+# Follow controller logs (private); Ctrl+C stops following only.
+container-logs:
+    {{compose}} logs --follow controller
+
+# Stop Compose controller, retaining storage, checkout, brokers and workers.
+container-stop:
+    {{compose}} stop controller
+
+# Optional acceptance helper: real Compose/workers with simulated provider.
 container-accept:
     python3 scripts/accept-rust-production.py

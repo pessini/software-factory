@@ -6,6 +6,25 @@ use crate::{
     workflow::SavedInteraction,
 };
 impl Control {
+    // Distinct from the short-lived execution lock: held for the HTTP service lifetime,
+    // across all data directories that might otherwise target the same checkout.
+    pub(crate) fn workspace_service_lock(&self) -> Result<std::fs::File> {
+        let path = self.workspace().join(".factory-rust.service.lock");
+        if path.is_symlink() {
+            return Err(Error::Config(
+                "workspace service lock cannot be a symbolic link".into(),
+            ));
+        }
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)?;
+        lock.try_lock().map_err(|_| Error::Busy)?;
+        Ok(lock)
+    }
+
     pub(crate) fn maintenance_lock(&self) -> Result<std::fs::File> {
         let path = self.runtime.config.data_dir.join("control-service.lock");
         let lock = std::fs::OpenOptions::new()

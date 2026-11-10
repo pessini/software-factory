@@ -1361,7 +1361,7 @@ mod quality_tests {
         let run_id = if run_expired {
             let runtime = crate::Runtime::open(config.clone()).await.unwrap();
             let mut input = crate::StartRequest::new("expired", "session", "fixture");
-            input.timeout_seconds = 1;
+            input.timeout_seconds = 60;
             runtime.start(input).await.unwrap().run_id
         } else {
             "run-quality".into()
@@ -1421,7 +1421,7 @@ mod quality_tests {
 
     #[tokio::test]
     async fn run_expiry_stays_a_deadline_and_unconfirmed_cleanup_stays_an_error() {
-        for (mode, run_expired) in [("timeout", true), ("cleanup-fails", false)] {
+        for (mode, run_expired) in [("run-expired", true), ("cleanup-fails", false)] {
             let (_data, _workspace, worker, request) = fixture(mode, run_expired).await;
             let error = worker
                 .dispatch_local(
@@ -1432,7 +1432,7 @@ mod quality_tests {
                 .await
                 .unwrap_err();
             if run_expired {
-                assert!(matches!(error, Error::Deadline));
+                assert!(matches!(error, Error::Deadline), "{error:?}");
             } else {
                 assert!(
                     error.to_string().contains("cleanup could not be confirmed"),

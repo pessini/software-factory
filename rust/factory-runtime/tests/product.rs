@@ -130,7 +130,7 @@ async fn cli_preserves_service_identity_and_checks_ownership() {
         .await
         .unwrap();
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("software-factory-legacy"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("historical release"));
 }
 
 struct Adapter {
@@ -592,6 +592,27 @@ async fn canonical_web_packages_assets_and_requires_a_real_backend_by_default() 
         assert_eq!(response.status(), 200, "{path}");
         assert!(!response.bytes().await.unwrap().is_empty());
     }
+    // A different data directory/port cannot bypass workspace service ownership.
+    let other_data = tempfile::tempdir().unwrap();
+    let duplicate = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        tokio::process::Command::new(env!("CARGO_BIN_EXE_software-factory"))
+            .args(["web", "--storage"])
+            .arg(other_data.path())
+            .arg("-w")
+            .arg(workspace.path())
+            .env("FACTORY_ALLOW_FAKE_WORKER", "1")
+            .env("FACTORY_HTTP_BIND", "127.0.0.1:0")
+            .env_remove("FACTORY_HTTP_HOST")
+            .env_remove("FACTORY_HTTP_ORIGIN")
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .expect("second controller must fail before listening")
+    .unwrap();
+    assert!(!duplicate.status.success());
+    assert!(String::from_utf8_lossy(&duplicate.stderr).contains("owned by another executor"));
     // The unset URL selects the same local Rust service (default port is documented).
     child.kill().await.unwrap();
 }

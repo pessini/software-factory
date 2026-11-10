@@ -22,6 +22,7 @@ fn docker_loopback_service_starts_without_logging_secret_and_handles_sigterm() {
             workspace.path().to_str().unwrap(),
             "serve",
         ])
+        .env("FACTORY_ALLOW_FAKE_WORKER", "1")
         .env("FACTORY_HTTP_BIND", format!("0.0.0.0:{port}"))
         .env("FACTORY_HTTP_HOST", format!("127.0.0.1:{port}"))
         .env("FACTORY_HTTP_ORIGIN", format!("http://127.0.0.1:{port}"))
@@ -121,4 +122,32 @@ async fn health_probes_need_no_secret_and_reject_unknown_hosts() {
         .await
         .unwrap();
     assert_eq!(response.status(), 421);
+}
+
+#[tokio::test]
+async fn operator_service_rejects_missing_backend_without_demo_opt_in() {
+    let data = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    for executable in [
+        env!("CARGO_BIN_EXE_factory-runtime"),
+        env!("CARGO_BIN_EXE_software-factory"),
+    ] {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            tokio::process::Command::new(executable)
+                .arg(data.path())
+                .arg(workspace.path())
+                .arg("serve")
+                .env_remove("FACTORY_ALLOW_FAKE_WORKER")
+                .env_remove("FACTORY_REQUIRE_DAEMON_BROKER")
+                .env("FACTORY_HTTP_BIND", "127.0.0.1:0")
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .expect("unconfigured service must fail before listening")
+        .unwrap();
+        assert!(!result.status.success());
+        assert!(String::from_utf8_lossy(&result.stderr).contains("configure-docker"));
+    }
 }

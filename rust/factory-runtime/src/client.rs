@@ -38,7 +38,7 @@ impl Client {
         }
         let token = std::env::var("FACTORY_HTTP_TOKEN").unwrap_or_default();
         if token.is_empty() {
-            return Err(Error::Config("FACTORY_HTTP_TOKEN is required. Start the Rust service with software-factory web --storage /absolute/private/data; configure the same token in the service and client. FACTORY_CONTROL_URL defaults to http://127.0.0.1:4317; legacy recovery uses software-factory-legacy separately".into()));
+            return Err(Error::Config("FACTORY_HTTP_TOKEN is required. Start the Rust service with software-factory web --storage /absolute/private/data; configure the same token in the service and client. FACTORY_CONTROL_URL defaults to http://127.0.0.1:4317".into()));
         }
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -92,7 +92,7 @@ impl Client {
             .as_str()
             .is_some_and(|id| id.starts_with("fct_") || id.ends_with(".sqlite") || id.contains('/'))
         {
-            return Err(Error::Incompatible("LangGraph checkpoints are not Rust state; use the separate software-factory-legacy recovery environment".into()));
+            return Err(Error::Incompatible("LangGraph checkpoints are not Rust state; use a historical release to recover old records".into()));
         }
         self.verify().await?;
         self.response(

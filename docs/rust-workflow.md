@@ -1,8 +1,10 @@
 # Rust implementation workflow and Docker workers (#17)
 
-Migration step 2 extends the separate Rust database from [step 1](rust-runtime.md).
-Python remains supported. Interface integration is #18; production packaging and
-cutover are #19. Router and Wayfinder remain separate.
+The standard Rust/ADK product runs protected planning, implementation, verification
+and review with durable evidence. See [startup](startup.md) for native-controller,
+Compose and Docker-free Linux execution quickstarts. The Python runtime has been removed; old records require an
+[isolated historical release](interface-migration.md). Historical migration acceptance
+remains in the issue records; actual production cutover is tracked by #27.
 
 ## Execution and recovery
 
@@ -114,25 +116,26 @@ cannot silently replace that backend. Existing file login is mounted only into
 the native provider home, read-only, and denied to model tools.
 
 ```bash
-target/debug/factory-runtime /absolute/factory-data /absolute/target configure-docker /absolute/docker.json
-target/debug/factory-runtime /absolute/factory-data /absolute/target implement \
-  '{"request_id":"work-17","session_id":"session-17","request":"Implement the request","timeout_seconds":3600,"max_dispatches":3}' \
-  /absolute/target/.factory/factory.yaml
-target/debug/factory-runtime /absolute/factory-data /absolute/target serve
+software-factory configure-docker /absolute/docker.json --storage /absolute/factory-data -w /absolute/target
+export FACTORY_HTTP_TOKEN='your-private-token-at-least-24-characters'
+software-factory web --storage /absolute/factory-data -w /absolute/target
+# Another terminal, same token and workspace:
+software-factory run 'Implement the request' --request-id work-17 -w /absolute/target
 ```
 
-`start` also accepts the full `StartRequest` JSON with `implementation.config`,
+
+The low-level operator `factory-runtime DATA WORKSPACE start` accepts `StartRequest` JSON with `implementation.config`,
 `implementation.required_criteria`, and optional `implementation.approved_plan`.
 `status`, `list`, `resume`, and `cancel` work independently of `serve`.
 `answer-questions RUN INTERACTION '{"question-id":"answer"}'` saves typed answers.
-The default/fake slice still uses `answer RUN INTERACTION true/false`.
+Explicit demo/test fake runs use the low-level `answer RUN INTERACTION true/false`.
 
 `/data/evidence/<run-id>/` contains immutable artifacts and a manifest. Hashes in
 SQLite are authoritative. Final run JSON, including the handoff, is materialized
 under `/data/artifacts/`. Persist the whole private data directory, including WAL,
-receipts, provider homes, broker logs and evidence. The current controller remains
-single-host; authentication, lifecycle/health endpoints and backup automation are
-production packaging work, not implicit guarantees of this native CLI.
+receipts, provider homes, broker logs and evidence. The supported controller remains single-host. Authentication, lifecycle/health
+endpoints and consistent Docker backup tooling are described in
+[production deployment](production-deployment.md).
 
 For Docker-free agent and verification execution, see [native execution](native-execution.md).
 The operator backend configuration selects Docker versus native; the saved workflow graph is shared.

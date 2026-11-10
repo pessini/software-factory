@@ -209,7 +209,7 @@ class Fixture:
         bin_dir = self.root / "bin"
         bin_dir.mkdir()
         gh = bin_dir / "gh"
-        shutil.copy2(REPOSITORY / "tests/fixtures/fake_github.py", gh)
+        shutil.copy2(REPOSITORY / "rust/factory-runtime/tests/fixtures/fake_github.py", gh)
         gh.chmod(0o755)
         control = self.root / "publication-processes.json"
         base = execute(["git", "rev-parse", "HEAD"], cwd=self.workspace).stdout.strip()
@@ -304,8 +304,8 @@ def main() -> None:
             REPOSITORY / "Cargo.lock",
             REPOSITORY / "rust/factory-runtime/Cargo.toml",
             Path(__file__).resolve(),
-            REPOSITORY / "tests/fixtures/fake_app_server.py",
-            REPOSITORY / "tests/fixtures/fake_github.py",
+            REPOSITORY / "rust/factory-runtime/tests/fixtures/fake_app_server.py",
+            REPOSITORY / "rust/factory-runtime/tests/fixtures/fake_github.py",
             REPOSITORY / "containers/worker-seccomp.json",
         ]
     )

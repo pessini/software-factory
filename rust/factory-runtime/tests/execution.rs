@@ -303,6 +303,7 @@ async fn service_expires_unattended_recovery_needed_runs() {
         .arg(data.path())
         .arg(workspace.path())
         .arg("serve")
+        .env("FACTORY_ALLOW_FAKE_WORKER", "1")
         .stdout(std::process::Stdio::null())
         .spawn()
         .unwrap();

@@ -1,4 +1,8 @@
-# Experimental Rust durable slice (#16)
+# Historical Rust durable slice (#16)
+
+This document preserves the original fake-worker acceptance slice. It is historical
+evidence, not a current startup guide. Use [supported startup](startup.md) for the
+accepted Rust product and real backend requirements.
 
 This page documents migration step 1, not a production replacement. Step 2 adds
 [the implementation workflow and protected Docker brokers](rust-workflow.md),

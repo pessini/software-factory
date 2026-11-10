@@ -1,6 +1,7 @@
 [package]
 name = "factory-runtime"
 version = "0.1.0"
+description = "Rust/ADK Software Factory controller, CLI, ACP and MCP clients"
 edition.workspace = true
 rust-version.workspace = true
 publish = false

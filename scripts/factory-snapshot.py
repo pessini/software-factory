@@ -92,6 +92,8 @@ def main() -> None:
             lock = stack.enter_context((data / "control-service.lock").open("a+b"))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if workspace.exists():
+            lock = stack.enter_context((workspace / ".factory-rust.service.lock").open("a+b"))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             lock = stack.enter_context((workspace / ".factory-rust.lock").open("a+b"))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if args.action == "backup":
