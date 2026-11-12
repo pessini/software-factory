@@ -17,6 +17,11 @@ brokers. Installing Rust alone does not install provider CLIs or target tools.
 | Development / release acceptance | Rust toolchain, Git; Docker for Docker opt-ins | Python 3 for existing acceptance/consistent-snapshot helpers; jq for JSON preparation |
 | Historical recovery | Isolated checkout of a pre-retirement release and its original dependencies/storage | Not shipped or checked by current CI; see [recovery](interface-migration.md) |
 
+Current limitation: real-provider execution in the fresh AppArmor-enabled Ubuntu
+test host stopped at nested sandbox mount setup, despite successful health and
+catalog checks. The [recorded clean-host gate](issue-27-rust-acceptance.md#clean-host-result-still-blocked)
+remains blocked; no confinement bypass is provided.
+
 Docker workers need Linux-compatible target tools inside their image. Native
 workers need reviewed host toolchain directories and explicit verification argv.
 A target using Python does not turn Python into a Factory runtime dependency.

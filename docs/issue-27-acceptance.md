@@ -1,5 +1,12 @@
 # Issue 27 production adoption evidence
 
+**Follow-up recorded 2026-11-12:** the
+[current Rust production record](issue-27-rust-acceptance.md) supersedes the
+documentation-only setup described below. Full Rust verification and a real Rust
+task now pass, the scope defect is fixed and the original glossary is archived.
+The clean-host provider gate remains blocked by host confinement, by explicit
+user decision. The following sections preserve the initial adoption evidence.
+
 Date: 2026-11-10 (America/Sao_Paulo). **A named WSL production workspace is now
 operating through Rust.** Production workflow, whole-state restore, controller
 restart, CLI/MCP/ACP/browser reconnect and cancellation checks passed. This is
