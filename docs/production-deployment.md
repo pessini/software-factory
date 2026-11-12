@@ -279,11 +279,13 @@ Use `--slow-host` for bounded 180s step/1200s run budgets when testing under sof
 CPU emulation. These are acceptance fixture settings, not changes to deployed
 workspace policies.
 
-Before cutover, fetch current `origin/main`, record its SHA and compare
-`a9358d80fde74bf4ebfa5f7e967f2c98d8a515f0..origin/main`. Reconcile every new behavioral
-change into the prerequisite parity inventory, rebase/retest the candidate and
-record the tested source/image hashes. A previously closed migration issue alone
-does not certify a changed main. Complete the remaining live-provider, clean-host,
-browser, actual reboot and rollback gates in [issue 19 evidence](issue-19-acceptance.md)
-before declaring production cutover. The product and CI are Rust; use an isolated
-historical release only to recover old Python records.
+Before cutover, resolve current `origin/main` from GitHub, record its SHA and compare
+it with the source/artifacts in the acceptance record being reused. Reconcile
+intervening behavioral changes, retest the candidate and record immutable artifact
+hashes. A closed migration issue alone does not certify a changed main.
+[Issue 19 evidence](issue-19-acceptance.md) preserves the completed pinned-release
+gates; [issue 26 evidence](issue-26-acceptance.md) records the current-candidate
+clean-host gap. Follow the [production cutover procedure](production-cutover.md)
+and publish actual workspace checks separately, as in the
+[named WSL adoption record](issue-27-acceptance.md). The product and CI are Rust;
+use an isolated historical release only to recover old Python records.

@@ -133,6 +133,7 @@ for line in sys.stdin:
                     "plan": {
                         "goal": "Greet world",
                         "scope": ["greeting.txt"],
+                        "write_scope": ["greeting.txt"],
                         "requirements": ["Hello, world!"],
                         "completion_checks": [
                             {"id": "greeting", "description": "The greeting is Hello, world!"}

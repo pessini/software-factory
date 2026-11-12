@@ -13,4 +13,9 @@ into Rust storage or relabel their evidence as Rust execution.
 
 Historical acceptance documents describe their tested releases and may reference
 removed Python commands. They are not current installation instructions.
-Production cutover remains tracked separately in #27.
+Production cutover remains tracked separately in #27. Use the
+[cutover procedure](production-cutover.md) for inventory, legacy-run dispositions,
+freeze, whole-state backup/rollback and client switching. The
+[named WSL adoption record](issue-27-acceptance.md) identifies the deployed release,
+production checks and outstanding acceptance; it does not declare global legacy
+retirement.

@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "date": "2026-11-10",
+  "issue": 27,
+  "kind": "named_wsl_production_adoption_real_provider",
+  "production_operational_checks_passed": true,
+  "all_issue_acceptance_complete": false,
+  "host": {
+    "platform": "6.18.33.2-microsoft-standard-WSL2",
+    "uid": 1001,
+    "gid": 1001
+  },
+  "workspace": "/home/lpessini/dev/software-factory-production",
+  "storage": "/home/lpessini/.local/share/software-factory-production/data-on-request",
+  "private_deployment_root": "/home/lpessini/.local/share/software-factory-production",
+  "inventory": {
+    "mode": "new_dedicated_production_checkout_selected_by_user",
+    "prior_production_controller": null,
+    "legacy_runs": [],
+    "prior_pending_approvals": [],
+    "prior_workers": [],
+    "scope": "this named deployment only; historical .checks fixtures and other hosts are excluded and retained"
+  },
+  "release": {
+    "source": "e50adb1e3994ec0e05439134ac2bc520b751710e",
+    "github_main_at_revalidation": "e50adb1e3994ec0e05439134ac2bc520b751710e",
+    "target_policy_commit": "5516c2b998db4e27b8b39b3582cd9a66c4d4f770",
+    "controller_image": "sha256:d81871252788edbf7bb2eac7f03ec4d7cfe74e53f333c9d302b39ed97cb5c91d",
+    "worker_image": "sha256:5f5c3b7fb6c78332c22d2e501b54543410842da511170c149f52e9391c2ab579",
+    "broker_image": "sha256:d81871252788edbf7bb2eac7f03ec4d7cfe74e53f333c9d302b39ed97cb5c91d",
+    "client_sha256": "6a306aed6a065c3ac6567155e18d1df0b24424e966985c48a12f9ac432c03312",
+    "seccomp_sha256": "ecce35844aea91c8379f03d00ca4431e854db0b8177cfa1bd9d1fa69f3b8f6fc",
+    "policy_sha256": "42ff7d061130fd782def49d8feb43f4a12e7cbd169eefcb9b09790e98608dc23",
+    "backend_sha256": "bc9d12edeb812e715cf9d05d24da7ab91be174d1d0c7bca0a903011c9c0de91a",
+    "image_archive_sha256": "bb7647916c6c810ce17e3fd46deca3b644def6c4100b30a0b8dfb80781a6d873"
+  },
+  "provider": {
+    "authentication": "existing ChatGPT login, mounted read-only",
+    "codex_worker_version": "0.154.0",
+    "codex_client_version": "0.167.0",
+    "model": "gpt-5.6-sol",
+    "effort": "low",
+    "approval_policy": "on-request",
+    "escalation_requests": "denied by broker"
+  },
+  "workflow": {
+    "session_id": "pln_dfaec6690948",
+    "planning_run_id": "run-acad202ad82d73954b73b9f0f5c0f4c4eaa59f8cf6baadbda11ab075fe0ff58e",
+    "revision": 1,
+    "approved_plan_hash": "a66ab451c78cb20af2e53678cbdc4e49dbe08caedacac75f4921d3e60a2a2715",
+    "approval": "explicit user approval of exact hash in this chat",
+    "run_id": "run-af57388e073e4940b1986798c66d8540a97b1aaedada8a88fe9837491240a26b",
+    "status": "ready_for_review",
+    "event_position_after_recreation": 19,
+    "tracked_change": "docs/run-recovery.md introduction",
+    "additional_generated_file": "CONTEXT.md from approved glossary; retained uncommitted in production checkout",
+    "changed_files": [
+      "CONTEXT.md",
+      "docs/run-recovery.md"
+    ],
+    "checks": [
+      {
+        "name": "recovery-documentation-links",
+        "exit_code": 0,
+        "cancelled": false,
+        "timed_out": false,
+        "comparison": "baseline_fixed",
+        "content_version": "14328fa481d8a01e24fa0174886a6f185e77065406b19b9cb29ea6eacc54b713"
+      }
+    ],
+    "report_sha256": "d0b055a6a4a5bc9166b8d2ff813f050cb5ccac6e97a01fab14261e7052d9ca0d",
+    "review_approved": true,
+    "all_saved_receipts_stopped": true,
+    "receipts": [
+      {
+        "operation_id": "run-af57388e073e4940b1986798c66d8540a97b1aaedada8a88fe9837491240a26b-review-1",
+        "execution_id": "01a1c566-e878-70c1-8954-a2266da34550",
+        "provider_thread_id": "01a1c566-e7d6-7510-ab7f-f6bc74dc29df",
+        "container_id": "81d3e2c5750c8864ef067b3a6bb57b4a39d3c6c80ae6efa6a6328184fcb7241b",
+        "broker_container_id": "c7ef93dd45dc90bf848320102524a411b4c1f29883f2f141b98d96cc7c25440d",
+        "stopped": true
+      },
+      {
+        "operation_id": "run-af57388e073e4940b1986798c66d8540a97b1aaedada8a88fe9837491240a26b-plan-1",
+        "execution_id": "01a1c565-4dd4-7dd2-93c2-a8c6dffef01f",
+        "provider_thread_id": "01a1c565-4d52-78c0-a2d3-b5ff09d2af92",
+        "container_id": "dcf79eb53dbdfd0caed6991b0c92fa978cda6371be3a6956268ad571d75cc18f",
+        "broker_container_id": "3378c96ffb2e28672df461519035b5ef3704e6c7948a743b37fed2150d13b450",
+        "stopped": true
+      },
+      {
+        "operation_id": "run-af57388e073e4940b1986798c66d8540a97b1aaedada8a88fe9837491240a26b-build-1",
+        "execution_id": "01a1c565-fc41-7490-ac71-b4aab7efd0d8",
+        "provider_thread_id": "01a1c565-fba8-7a50-8a67-d1b79e11f5cd",
+        "container_id": "2d5a631c53e0342e1cd797f8028f777f364835e8eacfb9dc105636d532a373c1",
+        "broker_container_id": "726cbdc561ba14f1c1875c1ca3f1ad98307caab950f977cbd51b5db61c082195",
+        "stopped": true
+      },
+      {
+        "operation_id": "run-acad202ad82d73954b73b9f0f5c0f4c4eaa59f8cf6baadbda11ab075fe0ff58e-grill-1",
+        "execution_id": "01a1c562-3e91-7de2-a10e-b98807d11757",
+        "provider_thread_id": "01a1c562-3df8-7302-bb40-db8234436fc2",
+        "container_id": "658e9c6cbeb029c4a34a1744d5a3e176f299f6f5ab4ab6a20e5d09411040060d",
+        "broker_container_id": "f0b13997151ebaf520582600e48ec5e14901a843e98a838420304ad01d2762ac",
+        "stopped": true
+      },
+      {
+        "operation_id": "run-af57388e073e4940b1986798c66d8540a97b1aaedada8a88fe9837491240a26b-baseline-1-recovery-documentation-links",
+        "execution_id": null,
+        "provider_thread_id": null,
+        "container_id": "9c4b70320e9195b9fdeeeba8d6f0b6c0c0bf4ca49dd895b64785526746ee38f2",
+        "broker_container_id": "cfd67d5b7d3dff51977bba407c0d6dbd407b4e4d63b8f71d072e23ccbe19f757",
+        "stopped": true
+      },
+      {
+        "operation_id": "run-af57388e073e4940b1986798c66d8540a97b1aaedada8a88fe9837491240a26b-tests-1-recovery-documentation-links",
+        "execution_id": null,
+        "provider_thread_id": null,
+        "container_id": "b07b0556e2d3b6ea1c2826d8581768a1ff0b0cea448e8d5d65a77b525ed38009",
+        "broker_container_id": "a4032fe475a1a0c76fc86ebe753195a916d249d6c034855d92cc9323fd31a637",
+        "stopped": true
+      }
+    ]
+  },
+  "backup_restore": {
+    "snapshots": [
+      {
+        "name": "pre-cutover-2026-11-10",
+        "manifest_sha256": "43f78424104dc9c8d6ef7db70cb14f0510af26d35763e0041de1a6a2be2640dc"
+      },
+      {
+        "name": "initial-policy-cancelled-2026-11-10",
+        "manifest_sha256": "36904e1df748dc17c8ce31728d393430850e5324c581f68d08bb610db0cd24b5"
+      },
+      {
+        "name": "awaiting-approval-2026-11-10",
+        "manifest_sha256": "b2afdb4d1f69b018cf743bd8968a2cdc1bf80fbe42c4acfbfd44e2d5af7ddbb6"
+      },
+      {
+        "name": "completed-workflow-2026-11-10",
+        "manifest_sha256": "e45ada465897665ff65f1ae2829a851789d677b4e9111c697a4e202fb53c4efe"
+      }
+    ],
+    "pending_plan_restored_at_original_paths": true,
+    "identical_fields": [
+      "session_id",
+      "run_id",
+      "revision",
+      "plan_hash",
+      "snapshot",
+      "status"
+    ],
+    "displaced_original_directories_retained": true,
+    "completed_workflow_snapshotted": true,
+    "prior_production_release_rollback": "not applicable: no previous production service; rollback disables new service and restores pre-cutover snapshot/configuration"
+  },
+  "restart": {
+    "controller_recreated": true,
+    "same_completed_run_report_and_event_cursor": true,
+    "in_flight_restart_exercised": false,
+    "in_flight_probe": "declined before mutation because Builder had already completed; prior pinned release evidence remains historical"
+  },
+  "clients": {
+    "cli": {
+      "launcher": "/home/lpessini/.local/bin/software-factory",
+      "doctor": "passed",
+      "after_restart_status": "ready_for_review"
+    },
+    "codex_mcp": [
+      {
+        "client_process": "issue-27-codex-cli.jsonl",
+        "calls": [
+          {
+            "tool": "factory_plan_status",
+            "server": "software-factory",
+            "error": null
+          }
+        ]
+      },
+      {
+        "client_process": "issue-27-codex-reconnect.jsonl",
+        "calls": [
+          {
+            "tool": "factory_status",
+            "server": "software-factory",
+            "error": null
+          }
+        ]
+      }
+    ],
+    "chatgpt_desktop": {
+      "project_configured": true,
+      "control_folder": "/home/lpessini/.local/share/software-factory-production/control",
+      "independent_interactive_journey": "user verified factory_status returns ready_for_review for the exact production run in this chat"
+    },
+    "bb_acp": {
+      "version": "0.49.0",
+      "provider_id": "acp-software-factory",
+      "project_id": "proj_4aayf3hzfu",
+      "thread_id": "thr_dq4dcqbwer",
+      "model_discovery": true,
+      "read_same_plan": true,
+      "attach_after_restart": "ready_for_review"
+    },
+    "browser": {
+      "origin": "http://127.0.0.1:4317",
+      "session_id": "pln_dfaec6690948",
+      "authenticated_clean_url": true,
+      "report_inspected": true,
+      "reconnected_after_restart": true,
+      "client": "ChatGPT in-app browser"
+    }
+  },
+  "cancellation": {
+    "session_id": "pln_44969fdee050",
+    "run_id": "run-c82a17a6ad2381ced3a80124166263e2480ee1100ba55b2d3b336659f1255e85",
+    "confirmed_real_provider_turn": "01a1c569-6304-7ee1-8a47-143ea61b9829",
+    "initial_cancel_status": "stopping",
+    "status": "cancelled",
+    "receipts": [
+      {
+        "operation_id": "run-c82a17a6ad2381ced3a80124166263e2480ee1100ba55b2d3b336659f1255e85-grill-1",
+        "execution_id": "01a1c569-6304-7ee1-8a47-143ea61b9829",
+        "container_id": "8ebcfe64b70fbffb10557b0fb691b1ec9b19d32575b76b1465559e20da77241a",
+        "broker_container_id": "0c45544d598e6c1e4428a13553d24fac4bc1470c147dab506c698a459a1283eb",
+        "stopped": true
+      }
+    ],
+    "running_owned_workers": 0
+  },
+  "validation": {
+    "rust": "fmt, all-target check, Clippy -D warnings; 81 passed, 11 opt-ins ignored",
+    "clean_host_current_candidate": "not exercised on this existing WSL development host",
+    "recovery_fixture_correction": "After deployment occupied default port 4317, isolated recovery test reproduced Address already in use. Set FACTORY_HTTP_BIND=127.0.0.1:0 in existing test; focused test and all-target typecheck passed without stopping production. No deployed application change."
+  },
+  "limitations": [
+    "Current-candidate clean-host quickstart acceptance for issue 26 remains open.",
+    "The worker image and configured quality command support this documentation task; Rust development requires a reviewed Rust-capable worker/toolchain and repository-wide quality commands.",
+    "The generated plan included a glossary despite the introductory-only scope; its CONTEXT.md output is disclosed and not copied to this branch.",
+    "No host reboot, old-release rollback, remote publication, or deletion of historical recovery state was performed."
+  ]
+}

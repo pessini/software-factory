@@ -212,6 +212,9 @@ function planView(state) {
       h("h2", {}, plan.goal),
       h("p", {}, snap.summary),
       h("h3", {}, "Scope"), list(plan.scope),
+      h("h3", {}, "Files authorized to change"),
+      plan.write_scope ? list(plan.write_scope.length ? plan.write_scope : ["No file changes authorized."])
+        : h("p", { class: "muted small" }, "Historical plan: no explicit file boundary was recorded."),
       h("h3", {}, "Requirements"), list(plan.requirements),
       h("h3", {}, "Completion checks"), list(plan.completion_checks, (check) => [h("span", { class: "mono" }, check.id), ` ${check.description}`]),
       h("h3", {}, "Decisions"), list(snap.decisions, (item) => [h("strong", {}, item.title), `: ${item.decision} — ${item.rationale}`, item.adr ? h("span", { class: "muted small" }, " (ADR)") : null]),
@@ -291,12 +294,14 @@ function leftColumn(state) {
 
 function rightColumn(state) {
   const source = state.snapshot || latestEnvelope(state) || { glossary: [], decisions: [] };
+  const writeScope = source.plan && source.plan.write_scope;
+  const writesGlossary = writeScope == null || writeScope.includes("CONTEXT.md");
   const sources = (state.snapshot && state.snapshot.plan.sources) || [];
   return h("aside", { class: "side right stack" },
     h("div", { class: "card" }, h("h2", {}, "Glossary — CONTEXT.md"),
       source.glossary && source.glossary.length ? source.glossary.map((item) => h("div", { class: "term" }, h("strong", {}, item.term), h("div", { class: "muted" }, item.definition)))
         : h("p", { class: "muted small" }, "No glossary changes proposed."),
-      h("p", { class: "small muted" }, state.snapshot ? "Proposed wording; the implementation run writes it after approval." : "Proposed wording; not saved until a plan is approved.")),
+      h("p", { class: "small muted" }, !writesGlossary ? "Reference only; no CONTEXT.md change is authorized." : state.snapshot ? "Proposed wording; the implementation run writes it after approval." : "Proposed wording; not saved until a plan is approved.")),
     h("div", { class: "card" }, h("h2", {}, "Decision records"),
       source.decisions && source.decisions.length ? source.decisions.map((item) => h("div", { class: "term" },
         h("strong", {}, item.title), item.adr ? h("span", { class: "muted small" }, " · ADR in docs/adr/") : null,
