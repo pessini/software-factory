@@ -242,7 +242,7 @@ impl Runtime {
             events: Vec::new(),
             workflow,
         };
-        run.event("start", "started", "Durable fake run saved");
+        run.event("start", "started", "Durable run saved");
         let saved = self.services.store.create(&run).await?;
         self.ensure_scheduled(&saved).await
     }

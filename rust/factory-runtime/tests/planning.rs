@@ -28,6 +28,7 @@ quality:
         .unwrap();
     let input = json!({"request":"Add a greeting", "request_id":"planning-start"});
     let first = control.call("plan_start", input.clone()).await.unwrap();
+    assert_eq!(first["events"][0]["message"], "Durable run saved");
     let restarted = factory_runtime::control::Control::open(Runtime::open(config).await.unwrap())
         .await
         .unwrap();
