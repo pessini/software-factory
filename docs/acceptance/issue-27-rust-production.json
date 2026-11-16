@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "recorded_date": "2026-11-12",
+  "issue": 27,
+  "production_checks_passed": true,
+  "all_issue_acceptance_complete": false,
+  "workspace": "/home/lpessini/dev/software-factory-production",
+  "active_storage": "/home/lpessini/.local/share/software-factory-production/data-rust",
+  "release": {
+    "source": "fcc1b556446bcb7f67cf6a7e4df219cb47d833cd",
+    "target_head": "5b8d69d10e3054a09444655f9498feb2b72cae01",
+    "controller_image": "sha256:ed6c33083ec47b2fa16f6e1970060a9188b7df0dd49e71391b28ef61926b683e",
+    "worker_image": "sha256:cf9c10df8901a0f14fe1a23b4cc0396c2c9867d36be36f7efbe74e8fec12fd69",
+    "new_data": "/home/lpessini/.local/share/software-factory-production/data-rust",
+    "previous_data": "/home/lpessini/.local/share/software-factory-production/data-on-request",
+    "glossary_disposition": "archived outside active checkout; original output/report retained in complete snapshot",
+    "policy_sha256": "c7d2cdc01046be3ad57f01f469953c34b47268ca9c1ae3dad911db677f49cac5",
+    "controller_source": "fcc1b556446bcb7f67cf6a7e4df219cb47d833cd",
+    "verified_output_adoption_commit": "545ababa8b781a485a4060923702ef56df1e820e",
+    "archive_sha256": "4932fafd7a1db19848793b49f8d9cad3be8a2de67b31f42a75aa6e43721a6370",
+    "client_sha256": "02eb10c428229c8f886ee765ac7b2a890b0ef278871a4671a609f04df1222afc",
+    "controller_contains_python_or_uv": false
+  },
+  "worker_acceptance": {
+    "passed": true,
+    "source": "fcc1b556446bcb7f67cf6a7e4df219cb47d833cd",
+    "image": "sha256:cf9c10df8901a0f14fe1a23b4cc0396c2c9867d36be36f7efbe74e8fec12fd69",
+    "network": "none",
+    "workspace_read_only": true,
+    "ordinary_tests": {
+      "passed": 84,
+      "ignored": 11
+    },
+    "quality_command": [
+      "factory-rust-check",
+      "all"
+    ],
+    "memory_bytes": 2147483648,
+    "cpus": 2,
+    "pids": 256,
+    "tmpfs_bytes": 536870912,
+    "capabilities": "ALL dropped",
+    "mutable_build_output": "separate per-run quality home; no repository caches",
+    "target_toolchain": "Rust/Cargo 1.99.1, rustfmt, Clippy; Python only for test fixtures"
+  },
+  "scope_regressions": {
+    "new_plans_require_explicit_write_scope": true,
+    "reference_glossary_does_not_authorize_extra_document": true,
+    "out_of_scope_builder_output_blocks_before_handoff": true,
+    "historical_snapshot_hashes_preserved": true,
+    "tests": "public planning/approval and workflow outcome integration boundaries explicitly approved by user"
+  },
+  "production_workflow": {
+    "session_id": "pln_e35d44bad148",
+    "revision": 1,
+    "plan_hash": "ee9c8f3054e13dae93826f2cd7df79f1423df13b0ad14077ca52205a85d900a8",
+    "approval": "user explicitly approved exact revision/hash",
+    "run_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5",
+    "status": "ready_for_review",
+    "event_position": 25,
+    "write_scope": [
+      "rust/factory-runtime/src/runtime.rs",
+      "rust/factory-runtime/tests/planning.rs"
+    ],
+    "changed_files": [
+      "rust/factory-runtime/src/runtime.rs",
+      "rust/factory-runtime/tests/planning.rs"
+    ],
+    "checks": [
+      {
+        "name": "rust-repository",
+        "exit_code": 0,
+        "timed_out": false,
+        "cancelled": false,
+        "comparison": "passed",
+        "content_version": "b9cd1364432c2060dd76af5dbc50f0fdc3f4275663ffb108157bff4c8368c897"
+      }
+    ],
+    "ordinary_tests": {
+      "passed": 84,
+      "ignored": 11
+    },
+    "focused_review_approved": true,
+    "findings": 0,
+    "receipts": [
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-judge-1",
+        "execution_id": "01a1c6d0-353a-7783-b062-008b94c134da",
+        "stopped": true,
+        "step": "judge",
+        "role": "judge"
+      },
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-request_review-1",
+        "execution_id": "01a1c6cf-7617-7f12-a80e-b0c700c6b478",
+        "stopped": true,
+        "step": "request_review",
+        "role": "request_reviewer"
+      },
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-build-1",
+        "execution_id": "01a1c6cc-bb4f-7650-90d8-19a6a8236c34",
+        "stopped": true,
+        "step": "build",
+        "role": "builder"
+      },
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-security_review-1",
+        "execution_id": "01a1c6cf-ff3d-7f81-b4b7-e657bde8bf8c",
+        "stopped": true,
+        "step": "security_review",
+        "role": "security_reviewer"
+      },
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-baseline-1-rust-repository",
+        "execution_id": null,
+        "stopped": true,
+        "step": null,
+        "role": null
+      },
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-code_review-1",
+        "execution_id": "01a1c6cf-c3b3-7d13-8bfc-6f0a8476a718",
+        "stopped": true,
+        "step": "code_review",
+        "role": "code_reviewer"
+      },
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-tests-1-rust-repository",
+        "execution_id": null,
+        "stopped": true,
+        "step": null,
+        "role": null
+      },
+      {
+        "operation_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5-plan-1",
+        "execution_id": "01a1c6cc-34c1-73c3-a31b-ec49f430d66e",
+        "stopped": true,
+        "step": "plan",
+        "role": "planner"
+      }
+    ],
+    "report_sha256": "b55fc158d8a6d850d88edc7fc7cdb222b6aad06faafa49a5b22da5b8bbc3a1f1",
+    "output_disposition": "verified fix adopted into issue branch; production checkout output remains uncommitted for ordinary human review; no worker commit/push/publication/deployment"
+  },
+  "legacy_glossary_disposition": {
+    "active_context_file_exists": false,
+    "archived_sha256": "b3e6306f97546cf55c2d61497aae135db9f91f83424fb20e3023fcf3b1206285",
+    "original_snapshot_retained": true
+  },
+  "backup_restart": {
+    "snapshot": "/home/lpessini/.local/share/software-factory-production/backups/completed-rust-workflow-2026-11-12",
+    "manifest_sha256": "c11234e8d49d5f17cd7634f4f736ef1f1e35f0f144ee5b5060bc3149ecd05296",
+    "controller_recreated": true,
+    "same_run_status_report_and_event_cursor": true,
+    "previous_deployment_retained": "/home/lpessini/.local/share/software-factory-production/data-on-request"
+  },
+  "clean_host": {
+    "status": "blocked; user explicitly declined AppArmor configuration changes",
+    "base_sha256": "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94",
+    "platform": "fresh Ubuntu Noble VM, kernel 6.8.0-147-generic, TCG",
+    "quickstart_source": "09f0e785891b3684213edc9879db642096a2c8f8",
+    "runtime_artifacts_source": "fcc1b556446bcb7f67cf6a7e4df219cb47d833cd",
+    "docker": "29.1.3",
+    "compose": "2.40.3+ds1-0ubuntu1~24.04.1",
+    "just": "1.21.0",
+    "initial_docker_image_cache_empty": true,
+    "host_cargo_or_rustc_installed": false,
+    "native_just_start_and_compose_start_healthy": true,
+    "cli_catalog_checks_passed": true,
+    "authenticated_browser_connected": {
+      "native": "http://localhost:24317/",
+      "compose": "http://localhost:24318/"
+    },
+    "failed_planning_sessions": {
+      "native": "pln_6e31fd17ad05",
+      "compose": "pln_cb66fdbc6465"
+    },
+    "observed_failure": "nested Codex filesystem sandbox failed: bwrap: Failed to make / slave: Permission denied",
+    "host_security_options": [
+      "apparmor",
+      "seccomp",
+      "cgroupns"
+    ],
+    "full_workflows_passed": false,
+    "apparmor_proposal_applied": false,
+    "global_security_settings_changed": false,
+    "vm_process_running_at_final_check": false,
+    "private_disk_and_diagnostics_retained": true,
+    "temporary_bb_registration": "created but live BB/Codex VM journey not completed before gate was deferred"
+  },
+  "limitations": [
+    "Current-candidate clean-host real-provider acceptance under #26 remains blocked by nested sandbox mount permissions on the AppArmor-enabled Ubuntu VM. User explicitly chose to leave this gate blocked.",
+    "The event-message fix is verified source output awaiting normal review/publication; the deployed controller remains the recorded scope-enforcing artifact.",
+    "Historical legacy/test environments and previous Rust storage remain retained; no global LangGraph retirement is asserted."
+  ],
+  "client_reconnect": {
+    "cli_after_restart": "ready_for_review",
+    "actual_codex_mcp_calls": [
+      {
+        "tool": "factory_status",
+        "run_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5",
+        "status": "ready_for_review",
+        "current_step": "done"
+      }
+    ],
+    "bb_final_attempt": "desktop BB server was not running; earlier verified registration retained"
+  }
+}

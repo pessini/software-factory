@@ -17,14 +17,28 @@ brokers. Installing Rust alone does not install provider CLIs or target tools.
 | Development / release acceptance | Rust toolchain, Git; Docker for Docker opt-ins | Python 3 for existing acceptance/consistent-snapshot helpers; jq for JSON preparation |
 | Historical recovery | Isolated checkout of a pre-retirement release and its original dependencies/storage | Not shipped or checked by current CI; see [recovery](interface-migration.md) |
 
+On AppArmor-enabled Docker hosts, review and load the
+[named worker profile](docker-worker-apparmor.md) and explicitly select it in the
+backend JSON before configuration. Docker's default profile can deny the nested
+Codex sandbox mounts even when health and catalog checks pass. Existing saved
+backends remain unchanged; profile changes require separate private storage.
+
 Docker workers need Linux-compatible target tools inside their image. Native
 workers need reviewed host toolchain directories and explicit verification argv.
+Model discovery starts a protected provider process. Clients allow up to 90
+seconds per request, covering the service's 60-second catalog budget and cleanup;
+on software-emulated VMs, run acceptance journeys sequentially to avoid CPU
+contention. Health checks do not start that provider process.
 A target using Python does not turn Python into a Factory runtime dependency.
 Use the pinned provider login policy (`never`, or explicitly reviewed
 `on-request`); all escalation requests remain denied. Authenticate Codex separately
 before configuration. Never copy credentials into the target checkout.
 
 ## Native controller with Docker execution
+
+Use `just` 1.21 or newer (including Ubuntu 24.04's packaged 1.21). The recipes
+also work with current Homebrew versions; a newer Homebrew installation is not
+required for the quickstarts.
 
 Use a dedicated target Git checkout owned by your non-root operator. From the
 Factory source checkout, install rustup, the pinned toolchain, Git, Bash, `just`,

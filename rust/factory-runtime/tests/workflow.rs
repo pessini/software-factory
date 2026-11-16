@@ -88,7 +88,7 @@ impl Worker for Provider {
         let request: ExecutionRequest = serde_json::from_str(input)?;
         self.calls.lock().unwrap().push(request.clone());
         let result = match &request.execution {
-            ExecutionKind::Specialist { prompt, .. } if prompt.contains("read-only Grill with Docs") => json!({"version":1,"status":"ready","summary":"Greeting plan","plan":{"goal":"Change greeting","scope":["greeting.txt"],"requirements":["Hello, world!"],"completion_checks":[{"id":"greeting","description":"The greeting is Hello, world!"}]}}).to_string(),
+            ExecutionKind::Specialist { prompt, .. } if prompt.contains("read-only Grill with Docs") => json!({"version":1,"status":"ready","summary":"Greeting plan","plan":{"goal":"Change greeting","scope":["greeting.txt"],"write_scope":["greeting.txt"],"requirements":["Hello, world!"],"completion_checks":[{"id":"greeting","description":"The greeting is Hello, world!"}]}}).to_string(),
             ExecutionKind::Specialist { step, prompt, .. } if step == "plan" && ((self.behavior=="questions" || (self.behavior=="fix_questions" && context(prompt)["original_request"].as_str().is_some_and(|r|r.starts_with("Apply the selected PR review fixes")))) && context(prompt)["saved_answers"].as_object().is_none_or(|m|m.is_empty())) => json!({"version":2,"status":"needs_input","summary":"Need recipient","acceptance_criteria":[],"implementation_steps":[],"test_strategy":"Check exact greeting","questions":[{"id":"recipient","question":"Who should be greeted?","options":["world"]}]}).to_string(),
             ExecutionKind::Specialist { step, .. } if step == "plan" => json!({"version":2,"status":"ready","summary":"Update the greeting","acceptance_criteria":[{"id":"greeting","description":"The greeting is Hello, world!"}],"implementation_steps":["Update greeting.txt"],"test_strategy":"Check the exact greeting"}).to_string(),
             ExecutionKind::Specialist { step,prompt,.. } if ["build","repair","revision"].contains(&step.as_str()) => {
@@ -98,7 +98,12 @@ impl Worker for Provider {
                 }else{
                 let greeting=if self.behavior=="failure" || (self.behavior=="repair" && step=="build") {"BROKEN\n"}else if self.behavior=="no_change" {"Hello\n"}else {"Hello, world!\n"};
                 std::fs::write(Path::new(&request.workspace).join("greeting.txt"),greeting)?;
-                json!({"status":"completed","summary":"Updated greeting","changed_files":if self.behavior=="no_change" {json!([])}else{json!(["greeting.txt"])}}).to_string()
+                let mut changed = if self.behavior=="no_change" {vec![]}else{vec!["greeting.txt"]};
+                if self.behavior == "extra_glossary" {
+                    std::fs::write(Path::new(&request.workspace).join("CONTEXT.md"), "Unrequested glossary\n")?;
+                    changed.push("CONTEXT.md");
+                }
+                json!({"status":"completed","summary":"Updated greeting","changed_files":changed}).to_string()
                 }
             }
             ExecutionKind::Quality { command,content_version } => {
@@ -157,6 +162,55 @@ async fn implementation_runs_checks_and_review_before_a_verified_handoff() {
     let calls = provider.calls.lock().unwrap().len();
     assert_eq!(runtime.resume(&run.run_id).await.unwrap(), result);
     assert_eq!(provider.calls.lock().unwrap().len(), calls);
+}
+
+#[tokio::test]
+async fn approved_file_scope_blocks_extra_glossary_even_if_checks_and_reviewer_would_pass() {
+    use factory_runtime::workflow::ApprovedPlan;
+    use sha2::{Digest, Sha256};
+
+    let data = tempfile::tempdir().unwrap();
+    let root = repository();
+    let provider = Arc::new(Provider {
+        behavior: "extra_glossary",
+        ..Default::default()
+    });
+    let runtime = Runtime::open_with_worker(
+        Config::new(data.path(), root.path()).unwrap(),
+        provider,
+        Arc::new(NoFaults),
+    )
+    .await
+    .unwrap();
+    let mut input = request("narrow-approved-scope");
+    let content = json!({"plan":{"write_scope":["greeting.txt"]},"glossary":[{"term":"Greeting","definition":"Reference only"}]}).to_string();
+    input.implementation.as_mut().unwrap().approved_plan = Some(ApprovedPlan {
+        planning_session_id: "planning-scope".into(),
+        revision_id: "revision-1".into(),
+        sha256: Sha256::digest(content.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+        content,
+        completion_checks: vec![factory_runtime::workflow::Criterion {
+            id: "greeting".into(),
+            description: "The greeting is Hello, world!".into(),
+        }],
+    });
+    let run = runtime.start(input).await.unwrap();
+    let result = runtime.resume(&run.run_id).await.unwrap();
+    assert_eq!(result.status, Status::Blocked, "{:?}", result.error);
+    assert!(
+        result
+            .error
+            .unwrap()
+            .contains("outside approved write_scope: CONTEXT.md")
+    );
+    assert!(result.workflow.unwrap().handoff.is_none());
+    assert!(
+        root.path().join("CONTEXT.md").exists(),
+        "preserve unauthorized output for inspection"
+    );
 }
 
 struct CrashAfterBuild(std::sync::atomic::AtomicU32);

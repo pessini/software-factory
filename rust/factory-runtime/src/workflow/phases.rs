@@ -413,6 +413,9 @@ async fn phase(runtime: &Runtime, id: &str, name: &str, cancel: CancellationToke
                 &format!("Builder blocked: {}", build.summary),
             )?;
             let actual = repository::changed_files(&runtime.config.workspace).await?;
+            if let Some(approved) = &input.approved_plan {
+                approved.check_write_scope(&actual)?;
+            }
             handoffs::require(
                 build.changed_files.iter().collect::<BTreeSet<_>>() == actual.iter().collect(),
                 "Builder report does not match the actual complete diff",
@@ -481,6 +484,11 @@ async fn phase(runtime: &Runtime, id: &str, name: &str, cancel: CancellationToke
         }
         "review" => review(runtime, id, cancel).await,
         "finalize" => {
+            if let Some(approved) = &input.approved_plan {
+                approved.check_write_scope(
+                    &repository::changed_files(&runtime.config.workspace).await?,
+                )?;
+            }
             let snapshot = state
                 .tested_snapshot
                 .as_ref()

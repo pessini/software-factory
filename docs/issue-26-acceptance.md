@@ -1,5 +1,11 @@
 # Issue 26 startup validation
 
+Current follow-up: [Ubuntu confinement fix and remaining provider
+acceptance](issue-26-ubuntu-acceptance.md), recorded 2026-11-16. The original mount
+failure is fixed; authenticated Ubuntu workflow acceptance remains incomplete
+because the current account login stays on WSL. The earlier evidence below is
+retained with its original scope and dates.
+
 Source baseline: `17dc3f9` (includes #25 native product and #28 native execution).
 Validation date: 2026-11-09.
 Validation host: Linux x86-64 / WSL2, operator UID/GID 1001, Rust/Cargo 1.99.1,
@@ -135,3 +141,19 @@ these do not establish fresh-host installation or production cutover.
 
 Production cutover (#27) and complete legacy recovery retirement remain separate
 operational milestones.
+
+## Follow-up recorded 2026-11-12: fresh-host attempt
+
+The [current production record](issue-27-rust-acceptance.md#clean-host-result-still-blocked)
+and [machine evidence](acceptance/issue-27-rust-production.json) identify a new
+Ubuntu Noble VM with empty initial Docker cache and no host Rust toolchain.
+Native installed-binary and retained-image Compose startup, health, CLI catalog
+and authenticated browser access passed. This also found and corrected the
+justfile's incompatibility with Ubuntu's packaged just 1.21.
+
+Full real-provider workflows **did not pass**: the nested Codex sandbox failed
+to perform a mount under the host's confinement policy. The user explicitly
+declined the proposed AppArmor change and kept this gate blocked. No sandbox or
+global security setting was disabled. Do not treat the successful startup checks,
+the working WSL production deployment or historical VM evidence as satisfying
+this still-open clean-host workflow requirement.

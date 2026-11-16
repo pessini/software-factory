@@ -109,6 +109,19 @@ versus revision and concurrent approval. Repeated approval returns one run;
 a different/stale hash fails. Completion checks plus glossary/ADR obligations are
 required implementation criteria. Later revisions never mutate that input.
 
+New plans also record `plan.write_scope`: exact repository-relative file paths
+authorized to change, with an empty list authorizing no changes. The browser
+shows this list before approval and it is part of the approved hash. Reference
+glossary terms do not authorize `CONTEXT.md`; glossary/ADR implementation
+obligations are added only when their document files are in the write scope.
+After each Builder/repair/revision turn and before final handoff, the engine
+checks the actual diff against that list. Out-of-scope output blocks the run and
+is preserved for inspection even if a model Reviewer would approve it.
+Historical snapshots without this field preserve their original approval
+hashes and glossary/ADR behavior; they do not gain a retroactive file boundary.
+Use a matching whole-state snapshot when rolling back to a release that predates
+scope enforcement; older controllers cannot enforce this new guarantee.
+
 ## Events
 
 `GET /api/runs/{run_id}/events` is SSE with numeric `id:` equal to the persisted

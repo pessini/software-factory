@@ -39,7 +39,7 @@ grants no publication or deployment authority.
 The Python/LangGraph runtime has been removed. Existing legacy records require a
 historical release in an isolated environment; the Rust service cannot read them.
 See [retirement and recovery](docs/interface-migration.md). Production cutover (#27)
-remains a separate operational milestone.
+now has a [Rust-capable WSL deployment and recorded remaining gate](docs/issue-27-rust-acceptance.md).
 
 ## Development
 

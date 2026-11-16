@@ -146,6 +146,11 @@
           "title": "Requirements",
           "type": "array"
         },
+        "write_scope": {
+          "description": "Exact repository-relative file paths authorized by the request to change; [] means no writes. Glossary/ADR files require explicit in-scope authorization.",
+          "items": { "type": "string", "minLength": 1 },
+          "type": "array"
+        },
         "completion_checks": {
           "items": {
             "$ref": "#/$defs/CompletionCriterion"
@@ -190,6 +195,7 @@
       "required": [
         "goal",
         "scope",
+        "write_scope",
         "requirements",
         "completion_checks"
       ],
