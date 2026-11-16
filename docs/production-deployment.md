@@ -68,6 +68,12 @@ docker compose --env-file .env.production ps
 ```
 
 `configure-docker` saves the immutable worker and broker image IDs and seccomp hash.
+On AppArmor-enabled daemon hosts, first review and install the
+[named worker profile](docker-worker-apparmor.md), then add
+`"apparmor_profile":"software-factory-worker"` to the backend JSON before saving
+it. The profile is selected only for coding/quality workers; it does not change
+controller or trusted broker confinement. Existing saved backends require
+separate storage for this configuration change.
 The broker uses the same trusted image as the controller, with the same profile
 path and a Docker socket group matching the daemon host. Service
 startup fails if the Docker backend or daemon-broker configuration is absent; production never silently

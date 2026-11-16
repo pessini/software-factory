@@ -24,6 +24,9 @@ pub struct DockerConfig {
     pub gid: u32,
     #[serde(default = "seccomp_profile")]
     pub seccomp_profile: PathBuf,
+    /// Optional profile already loaded on the Docker daemon host. Never disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apparmor_profile: Option<String>,
     #[serde(default = "never")]
     pub approval_policy: String,
     pub seccomp_sha256: Option<String>,
@@ -54,6 +57,7 @@ impl DockerConfig {
             uid: meta.uid(),
             gid: meta.gid(),
             seccomp_profile: seccomp_profile(),
+            apparmor_profile: None,
             approval_policy: never(),
             seccomp_sha256: None,
             broker: None,
@@ -75,6 +79,19 @@ impl ExecutionWorker {
         }
         if docker.image.trim().is_empty() {
             return Err(Error::Config("worker image is required".into()));
+        }
+        if let Some(name) = &docker.apparmor_profile
+            && (name.is_empty()
+                || name.len() > 128
+                || name.eq_ignore_ascii_case("unconfined")
+                || !name.as_bytes()[0].is_ascii_alphanumeric()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)))
+        {
+            return Err(Error::Config(
+                "worker AppArmor profile must be an explicit confined profile name".into(),
+            ));
         }
         if docker
             .broker
@@ -320,6 +337,9 @@ impl ExecutionWorker {
             "--security-opt".into(),
             format!("seccomp={}", self.docker().seccomp_profile.display()),
         ]);
+        if let Some(profile) = &self.docker().apparmor_profile {
+            args.extend(["--security-opt".into(), format!("apparmor={profile}")]);
+        }
         args.extend([
             "--mount".into(),
             self.mount(

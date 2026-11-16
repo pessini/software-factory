@@ -18,6 +18,128 @@ fn git(root: &Path, args: &[&str]) {
             .success()
     );
 }
+
+#[tokio::test]
+async fn docker_worker_rejects_disabled_or_ambiguous_apparmor_names() {
+    let data = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let config = Config::new(data.path(), workspace.path()).unwrap();
+    for name in [
+        "",
+        "unconfined",
+        "Unconfined",
+        "a/b",
+        "a\nb",
+        "-profile",
+        "profile=other",
+    ] {
+        let mut input = serde_json::to_value(DockerConfig::local(&config, None)).unwrap();
+        input["apparmor_profile"] = serde_json::json!(name);
+        let docker: DockerConfig = serde_json::from_value(input).unwrap();
+        let error = match DockerWorker::open(config.clone(), docker) {
+            Ok(_) => panic!("unsafe profile accepted: {name:?}"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("confined profile name"),
+            "{error}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn docker_worker_uses_only_the_explicit_named_apparmor_profile() {
+    use std::os::unix::fs::PermissionsExt;
+    for profile in [Some("software-factory-worker"), None] {
+        let data = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        git(workspace.path(), &["init", "-q"]);
+        let config = Config::new(data.path(), workspace.path()).unwrap();
+        let executable = data.path().join("docker");
+        std::fs::write(&executable, include_str!("fixtures/docker-quality.py")).unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(data.path().join("mode"), "output").unwrap();
+        let mut input = serde_json::to_value(DockerConfig::local(&config, None)).unwrap();
+        input["executable"] = serde_json::json!(executable);
+        input["uid"] = serde_json::json!(1001);
+        input["gid"] = serde_json::json!(1001);
+        if let Some(name) = profile {
+            input["apparmor_profile"] = serde_json::json!(name);
+        }
+        let worker =
+            DockerWorker::open(config.clone(), serde_json::from_value(input).unwrap()).unwrap();
+        let request = ExecutionRequest {
+            version: 1,
+            operation_id: "run-apparmor-check".into(),
+            run_id: "run-apparmor".into(),
+            workspace: config.workspace().to_string_lossy().into_owned(),
+            evidence_directory: config
+                .data_dir()
+                .join("evidence/run-apparmor")
+                .to_string_lossy()
+                .into_owned(),
+            protected_paths: vec![],
+            deadline_at: chrono::Utc::now() + chrono::Duration::seconds(30),
+            execution: ExecutionKind::Quality {
+                command: QualityCommand {
+                    name: "fixture".into(),
+                    argv: vec!["true".into()],
+                    timeout_seconds: 30,
+                    repeat_on_recovery: false,
+                },
+                content_version: "content".into(),
+            },
+        };
+        std::fs::create_dir_all(&request.evidence_directory).unwrap();
+        let encoded = serde_json::to_string(&request).unwrap();
+        let output = worker
+            .dispatch(&request.operation_id, &encoded, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(
+            serde_json::from_str::<CheckResult>(&output)
+                .unwrap()
+                .passed()
+        );
+        assert!(
+            worker
+                .receipt(&request.operation_id)
+                .unwrap()
+                .unwrap()
+                .stopped
+        );
+        let args: Vec<String> =
+            serde_json::from_slice(&std::fs::read(data.path().join("create-args.json")).unwrap())
+                .unwrap();
+        let profiles: Vec<_> = args
+            .iter()
+            .filter(|a| a.starts_with("apparmor="))
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            profiles,
+            profile
+                .map(|_| vec!["apparmor=software-factory-worker"])
+                .unwrap_or_default()
+        );
+        for required in [
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+        ] {
+            assert!(args.iter().any(|a| a == required));
+        }
+        assert!(args.iter().any(|a| a.starts_with("seccomp=")));
+        let saved = serde_json::to_value(worker.backend()).unwrap();
+        assert_eq!(
+            saved.get("apparmor_profile").and_then(|v| v.as_str()),
+            profile
+        );
+        if profile.is_none() {
+            assert!(saved.get("apparmor_profile").is_none());
+        }
+    }
+}
 #[tokio::test]
 #[ignore = "requires local Docker daemon and pinned software-factory-worker:0.154.0 image"]
 async fn docker_quality_is_read_only_receipted_and_confirmed_stopped() {

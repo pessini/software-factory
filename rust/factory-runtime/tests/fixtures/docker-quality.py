@@ -14,6 +14,7 @@ path = root / "container.json"
 args = sys.argv[1:]
 command = args[1]
 if command == "create":
+    (root / "create-args.json").write_text(json.dumps(args))
     if (root / "mode").read_text() == "run-expired":
         # Deliberately exceed the old one-second setup budget. The expiry test
         # must target a running worker, even on a slow CI host.

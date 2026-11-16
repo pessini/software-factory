@@ -1,0 +1,35 @@
+# Load on an AppArmor-enabled Docker daemon host, then explicitly select this
+# profile in the reviewed worker backend. Do not disable AppArmor globally.
+# Namespace mounts are needed by the pinned Codex filesystem sandbox. Linux
+# capabilities, seccomp, mount locks, read-only binds and namespaces remain
+# enforced independently by the outer worker container.
+#include <tunables/global>
+
+profile software-factory-worker flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  network,
+  capability,
+  file,
+  signal,
+  ptrace (trace,read,tracedby,readby) peer=software-factory-worker,
+  userns,
+  mount,
+  umount,
+  pivot_root,
+
+  # Keep the kernel-control filesystem restrictions from Docker confinement.
+  deny /proc/* w,
+  deny /proc/{[^1-9],[^1-9][^0-9],[^1-9][^0-9][^0-9],[^1-9][^0-9][^0-9][^0-9],[^1-9][^0-9][^0-9][^0-9][^0-9],sys/kernel/shm*}/** w,
+  deny /proc/sysrq-trigger rwklx,
+  deny /proc/kcore rwklx,
+  deny /proc/keys rwklx,
+  deny /proc/timer_list rwklx,
+  deny /proc/scsi/** rwklx,
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+}
