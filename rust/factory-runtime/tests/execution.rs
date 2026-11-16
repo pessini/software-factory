@@ -281,6 +281,11 @@ async fn cancellation_saved_during_finalization_wins_over_completion() {
 
 #[tokio::test]
 async fn service_expires_unattended_recovery_needed_runs() {
+    use adk_core::{DurableRunStore, RunState};
+    use adk_session::SqliteRunStore;
+    use factory_runtime::{FactoryStore, SqliteFactoryStore};
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
     let data = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let config = Config::new(data.path(), workspace.path()).unwrap();
@@ -292,13 +297,45 @@ async fn service_expires_unattended_recovery_needed_runs() {
     .await
     .unwrap();
     let mut input = StartRequest::new("recovery-deadline", "session", "Greeting");
-    input.timeout_seconds = 1;
+    input.timeout_seconds = 60;
     let id = approve(&runtime, input).await;
     assert_eq!(
         runtime.resume(&id).await.unwrap().status,
         Status::RecoveryNeeded
     );
     drop(runtime);
+
+    // Approval/setup is not the expiry window under test. Seed an overdue saved
+    // recovery run after setup so a busy runner cannot expire the approval first.
+    let pool = SqlitePoolOptions::new()
+        .connect_with(
+            SqliteConnectOptions::new().filename(config.data_dir().join("factory-rust.sqlite")),
+        )
+        .await
+        .unwrap();
+    let store = SqliteFactoryStore::new(pool.clone()).await.unwrap();
+    let mut overdue = store.load(&id).await.unwrap();
+    let revision = overdue.revision;
+    overdue.revision += 1;
+    overdue.deadline_at = chrono::DateTime::UNIX_EPOCH;
+    assert!(store.save(revision, &overdue).await.unwrap());
+    let saved = store.load(&id).await.unwrap();
+    assert_eq!(saved.status, Status::RecoveryNeeded);
+    assert_eq!(saved.deadline_at, overdue.deadline_at);
+    let queue = SqliteRunStore::from_pool(pool.clone());
+    assert_eq!(
+        queue
+            .get(saved.scheduler_id.as_deref().unwrap())
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        RunState::Queued
+    );
+    drop(queue);
+    drop(store);
+    pool.close().await;
+
     let mut service = std::process::Command::new(env!("CARGO_BIN_EXE_factory-runtime"))
         .arg(data.path())
         .arg(workspace.path())
@@ -321,10 +358,9 @@ async fn service_expires_unattended_recovery_needed_runs() {
     .await;
     service.kill().unwrap();
     service.wait().unwrap();
-    assert_eq!(
-        result
-            .expect("service must expire recovery-needed runs")
-            .status,
-        Status::Failed
-    );
+    let expired = result.expect("service must expire recovery-needed runs");
+    assert_eq!(expired.status, Status::Failed);
+    assert_eq!(expired.deadline_at, overdue.deadline_at);
+    assert!(expired.error.as_deref().unwrap().contains("deadline"));
+    assert_eq!(expired.operation.unwrap().dispatch_count, 0);
 }
