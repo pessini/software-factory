@@ -1,0 +1,435 @@
+{
+  "version": 1,
+  "recorded_date": "2026-11-16",
+  "kind": "ubuntu_confinement_and_credential_free_execution",
+  "complete_clean_host_acceptance": false,
+  "remaining_gate": "Authenticated real-provider workflow inside Ubuntu; user keeps account login on WSL",
+  "candidate": {
+    "source": "6c43fb0e7e0582249afc56d1e5e195a850549d3f",
+    "image": "sha256:ad9101ad4570f16b3f8aaf55b794812d560566c68a866beda75f5089e6b140a6",
+    "worker_image": "sha256:383f7367dc2ee8651318ef62611a01db1f324b0dd7637c554b1f68133e6c99a6",
+    "host_cargo_present": false,
+    "host_rustc_present": false,
+    "docker": "29.1.3",
+    "compose": "Docker Compose version 2.40.3+ds1-0ubuntu1~24.04.1",
+    "kernel": "6.8.0-147-generic",
+    "apparmor_profile": "software-factory-worker",
+    "apparmor_sha256": "35b48c20016e6868d51a88e6f31fd46dc2a9992b0f391ab6d43346babe92f4bb"
+  },
+  "initial_install": {
+    "source": "fcc1b556446bcb7f67cf6a7e4df219cb47d833cd",
+    "image": "sha256:ed6c33083ec47b2fa16f6e1970060a9188b7df0dd49e71391b28ef61926b683e",
+    "worker_image": "sha256:5f5c3b7fb6c78332c22d2e501b54543410842da511170c149f52e9391c2ab579",
+    "empty_image_cache_before_install": true,
+    "cargo_on_host": false,
+    "rustc_on_host": false,
+    "native_binary_version": "software-factory 0.1.0 (Rust/ADK)",
+    "docker": "29.1.3",
+    "compose": "Docker Compose version 2.40.3+ds1-0ubuntu1~24.04.1",
+    "kernel": "6.8.0-147-generic"
+  },
+  "just_version": "just 1.21.0",
+  "native_binaries": {
+    "software-factory": "fc14f1d83d3760b9caba69ea57bf6a9ed1fa6e48533fc0e2a281e6b19456bc71",
+    "factory-runtime": "c2b3ddb229fcd7aedc8740b54278ab5b706d5bb5b1118eb07cbd4db5b3c2184f"
+  },
+  "sandbox_default": {
+    "apparmor_profile": "docker-default",
+    "passed": false,
+    "exit_code": 1,
+    "output": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/probe-home\"))\nbwrap: Failed to make / slave: Permission denied\n"
+  },
+  "sandbox_named": {
+    "apparmor_profile": "software-factory-worker",
+    "passed": true,
+    "exit_code": 0,
+    "output": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/probe-home\"))\n"
+  },
+  "sandbox_after_host_reboot": {
+    "apparmor_profile": "software-factory-worker",
+    "passed": true,
+    "exit_code": 0,
+    "output": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/probe-home\"))\n"
+  },
+  "outer_protection_probe": {
+    "passed": true,
+    "exit_code": 0,
+    "output": "outer-protections-preserved\ntouch: cannot touch '/cannot-write-root': Read-only file system\nsh: 1: cannot create /fixture-ro/sentinel: Read-only file system\nmount: /fixture-ro: permission denied.\n       dmesg(1) may have more information after failed mount system call.\nsh: 1: cannot create /fixture-ro/sentinel: Read-only file system\n",
+    "apparmor_profile": "software-factory-worker",
+    "root_read_only": true,
+    "cap_drop": [
+      "ALL"
+    ],
+    "non_root_user": "1001:1001",
+    "network": "none",
+    "seccomp_configured": true
+  },
+  "workflow": {
+    "kind": "fresh_host_native_and_compose_simulated_provider",
+    "passed": true,
+    "source": "6c43fb0e7e0582249afc56d1e5e195a850549d3f",
+    "modes": {
+      "native": {
+        "session_id": "pln_67e8ffd35d69",
+        "planning_run_id": "run-bfd54fb0033f04fcaf660c498f55c8234641b451fff93ed43114d479b72dcfb6",
+        "plan_hash": "b92629d0687006616d7ae05ff5eecb553c044080b9fb51518a90e75c0c2d4ef6",
+        "revision": 1,
+        "write_scope": [
+          "greeting.txt"
+        ],
+        "approval": "automated exact-hash fixture approval within user-authorized acceptance",
+        "whole_state_restore": true,
+        "run_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d",
+        "status": "ready_for_review",
+        "event_position": 19,
+        "changed_files": [
+          "greeting.txt"
+        ],
+        "receipts": [
+          {
+            "operation_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d-tests-1-greeting",
+            "execution_id": null,
+            "stopped": true
+          },
+          {
+            "operation_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d-build-1",
+            "execution_id": "turn-16dfe534d38e649e9be4",
+            "stopped": true
+          },
+          {
+            "operation_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d-baseline-1-greeting",
+            "execution_id": null,
+            "stopped": true
+          },
+          {
+            "operation_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d-plan-1",
+            "execution_id": "turn-9c520b9c0682f95f62ce",
+            "stopped": true
+          },
+          {
+            "operation_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d-review-1",
+            "execution_id": "turn-092c77da5485f586d9b2",
+            "stopped": true
+          }
+        ],
+        "report_available": true,
+        "greeting_verified": true,
+        "parked_plan_survived_controller_restart": true
+      },
+      "compose": {
+        "session_id": "pln_d40fb879b547",
+        "planning_run_id": "run-4cb0ec3071676efce7d0d3a0926f88f48ac950ff67d4818b15b0c02aa5517c4d",
+        "plan_hash": "77142329cf7bcc424844d240f4d009664195800503b2fc206814284b3b3c3963",
+        "revision": 1,
+        "write_scope": [
+          "greeting.txt"
+        ],
+        "approval": "automated exact-hash fixture approval within user-authorized acceptance",
+        "whole_state_restore": true,
+        "run_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8",
+        "status": "ready_for_review",
+        "event_position": 19,
+        "changed_files": [
+          "greeting.txt"
+        ],
+        "receipts": [
+          {
+            "operation_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8-build-1",
+            "execution_id": "turn-6b9123711db041905e3d",
+            "stopped": true
+          },
+          {
+            "operation_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8-baseline-1-greeting",
+            "execution_id": null,
+            "stopped": true
+          },
+          {
+            "operation_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8-plan-1",
+            "execution_id": "turn-35613d4b403f6a3965aa",
+            "stopped": true
+          },
+          {
+            "operation_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8-tests-1-greeting",
+            "execution_id": null,
+            "stopped": true
+          },
+          {
+            "operation_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8-review-1",
+            "execution_id": "turn-f931019a97b186f43e4c",
+            "stopped": true
+          }
+        ],
+        "report_available": true,
+        "greeting_verified": true,
+        "parked_plan_survived_controller_restart": true
+      }
+    }
+  },
+  "active_cancellation": {
+    "native": {
+      "run_id": "run-fd16c1840ec1fd5f22e7e545dd9e6943270ff29647ccde4ceca24e3923648bce",
+      "confirmed_active_execution_id": "turn-4c85bd322fb2040eb62e",
+      "initial_status": "stopping",
+      "status": "cancelled",
+      "receipts": [
+        {
+          "operation_id": "run-fd16c1840ec1fd5f22e7e545dd9e6943270ff29647ccde4ceca24e3923648bce-plan-1",
+          "execution_id": "turn-4c85bd322fb2040eb62e",
+          "container_id": "f217f46db1760c6c379527ab92601d5d63daaf248cb76f502dda9251d5cafa55",
+          "broker_container_id": null,
+          "stopped": true
+        },
+        {
+          "operation_id": "run-fd16c1840ec1fd5f22e7e545dd9e6943270ff29647ccde4ceca24e3923648bce-baseline-1-greeting",
+          "execution_id": null,
+          "container_id": "6b92e009af2d87d0d9ee7b6f705b0904c62b8a3286b5ef95260db2822c2d73be",
+          "broker_container_id": null,
+          "stopped": true
+        }
+      ],
+      "running_owned_workers": 0,
+      "target_unchanged": true
+    },
+    "compose": {
+      "run_id": "run-55b664816f22260c27e90c0db7858b34c55665ea96f16c8ba08e5521906b375a",
+      "confirmed_active_execution_id": "turn-994525df7412860a02af",
+      "initial_status": "stopping",
+      "status": "cancelled",
+      "receipts": [
+        {
+          "operation_id": "run-55b664816f22260c27e90c0db7858b34c55665ea96f16c8ba08e5521906b375a-baseline-1-greeting",
+          "execution_id": null,
+          "container_id": "e862404a0f9da4026745341c384f593f5c16ef85c6353fdf3a8127769a49ba3b",
+          "broker_container_id": "cc0fefd9817354e620a8eeb15068e64873730848a3d33eb6a44b19fda8620e5d",
+          "stopped": true
+        },
+        {
+          "operation_id": "run-55b664816f22260c27e90c0db7858b34c55665ea96f16c8ba08e5521906b375a-plan-1",
+          "execution_id": "turn-994525df7412860a02af",
+          "container_id": "777da72f6a499b594ec48b9c7b64517de0584a6be68a0ecd91a6c5f08d2efa3d",
+          "broker_container_id": "6c7ecafb578f7d01940baab25c6408c44a84592400f16c5300c24543b52a354e",
+          "stopped": true
+        }
+      ],
+      "running_owned_workers": 0,
+      "target_unchanged": true
+    }
+  },
+  "host_reboot": {
+    "boot_id_changed": true,
+    "apparmor_profile_enforced_after_reboot": true,
+    "native_restart": "documented just start with retained environment",
+    "compose_restart": "Docker restart unless-stopped",
+    "modes": {
+      "native": {
+        "run_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d",
+        "status": "ready_for_review",
+        "event_position": 19,
+        "result_sha256": "3f541ac5eb5e6cd59a2afb88f99d6004bbe88bad41b401fac1971058bd3a46b1",
+        "same_saved_state": true,
+        "cli_reconnected": true,
+        "health": 200
+      },
+      "compose": {
+        "run_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8",
+        "status": "ready_for_review",
+        "event_position": 19,
+        "result_sha256": "8fe5cca0656ec6559353725f597ad46c303ba4d6a3414a4f637d4226812d9321",
+        "same_saved_state": true,
+        "cli_reconnected": true,
+        "health": 200
+      }
+    },
+    "account_credential_present": false
+  },
+  "representative_workers": [
+    {
+      "mode": "native",
+      "container_id": "a28378316a50e9380630e0e7e11b2cefbdf0a3b21e6ce6498197806d409a8c40",
+      "image": "sha256:383f7367dc2ee8651318ef62611a01db1f324b0dd7637c554b1f68133e6c99a6",
+      "apparmor_profile": "software-factory-worker",
+      "root_read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "memory_bytes": 2147483648,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256,
+      "stopped": true,
+      "no_docker_socket_mount": true,
+      "account_auth_mount": false,
+      "read_only_mounts": [
+        "/home/factory/acceptance-v4/native-data/evidence/run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-native/.factory",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-native/.factory-rust.claim",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-native/.factory-rust.identity",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-native/.factory-rust.lock",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-native/.factory-rust.service.lock",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-native/.git"
+      ]
+    },
+    {
+      "mode": "compose",
+      "container_id": "6a16f10e9277515211ea8dacd69c7eb6d6a0a94c4048f31e63c3e68d904fc3cc",
+      "image": "sha256:383f7367dc2ee8651318ef62611a01db1f324b0dd7637c554b1f68133e6c99a6",
+      "apparmor_profile": "software-factory-worker",
+      "root_read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "memory_bytes": 2147483648,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256,
+      "stopped": true,
+      "no_docker_socket_mount": true,
+      "account_auth_mount": false,
+      "read_only_mounts": [
+        "/home/factory/acceptance-v4/compose-data/evidence/run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-compose/.factory-rust.claim",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-compose/.factory-rust.identity",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-compose/.factory-rust.service.lock",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-compose/.git",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-compose/.factory",
+        "/home/lpessini/dev/software-factory/.checks/issue-27-clean-vm/control-compose/.factory-rust.lock"
+      ]
+    }
+  ],
+  "snapshots": {
+    "native": {
+      "manifest_sha256": "3ca18fd5789e4480f652aa91033ce8927b3166d6fc2c8eb9c74a3647222e2e87",
+      "whole_state_restore": true
+    },
+    "compose": {
+      "manifest_sha256": "51a8563f3046b9dcb787a19b8bc3ea6bb5a0b55af44b7aa30b3d5039dbb84dad",
+      "whole_state_restore": true
+    }
+  },
+  "credential_handling": {
+    "current_wsl_login_exported": false,
+    "stale_vm_login_removed": true,
+    "simulation_backends_auth_file": null
+  },
+  "real_provider_attempt": {
+    "completed": false,
+    "failure": "Auth 401: stale refresh token already used",
+    "disposition": "Failed plans retained and cancelled; current WSL login was not exported"
+  },
+  "host_validation": {
+    "format": "passed",
+    "all_target_check": "passed",
+    "clippy": "passed",
+    "tests_passed": 86,
+    "tests_ignored": 11,
+    "test_threads": 1,
+    "log_sha256": "75a79ccf1e6975ba1f67289e3471b5c30c915250c427b4b6e2c0e525db26e137"
+  },
+  "reviews": {
+    "standards_findings": 0,
+    "spec_findings": 0
+  },
+  "clients": {
+    "native": {
+      "codex_mcp": {
+        "client_version": "0.169.0",
+        "server": "factory",
+        "tool": "factory_status",
+        "completed_calls": 1,
+        "run_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d",
+        "status": "ready_for_review",
+        "account_login_location": "WSL"
+      },
+      "bb_acp": {
+        "client_version": "0.49.0",
+        "thread_id": "thr_hr4pb6fffv",
+        "command": "/attach run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d",
+        "run_id": "run-4742c07db35a5ac3d7db2df0b8f500780236643b228238a3cc108237c9c2988d",
+        "status": "ready_for_review"
+      },
+      "browser": {
+        "origin": "http://localhost:25317",
+        "session_id": "pln_67e8ffd35d69",
+        "authenticated_clean_url": true,
+        "connected_after_host_reboot": true,
+        "ready_for_review_visible": true,
+        "final_report_inspected": true
+      }
+    },
+    "compose": {
+      "codex_mcp": {
+        "client_version": "0.169.0",
+        "server": "factory",
+        "tool": "factory_status",
+        "completed_calls": 1,
+        "run_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8",
+        "status": "ready_for_review",
+        "account_login_location": "WSL"
+      },
+      "bb_acp": {
+        "client_version": "0.49.0",
+        "thread_id": "thr_rjxc8f3k9n",
+        "command": "/attach run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8",
+        "run_id": "run-fcd5d6601ffd24e95295ad0c94766233247117e3b077b8abf2dac45ad3f30dd8",
+        "status": "ready_for_review"
+      },
+      "browser": {
+        "origin": "http://localhost:25318",
+        "session_id": "pln_d40fb879b547",
+        "authenticated_clean_url": true,
+        "connected_after_host_reboot": true,
+        "ready_for_review_visible": true,
+        "final_report_inspected": true
+      }
+    }
+  },
+  "bb_cold_catalog_limitation": "Compose catalog discovery timed out on the software-emulated VM; explicit acp-default conversations subsequently read both completed runs successfully.",
+  "production_reconnect": {
+    "codex_mcp": {
+      "client_version": "0.169.0",
+      "server": "factory",
+      "tool": "factory_status",
+      "completed_calls": 1,
+      "run_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5",
+      "status": "ready_for_review",
+      "account_login_location": "WSL"
+    },
+    "bb_acp": {
+      "client_version": "0.49.0",
+      "thread_id": "thr_dq4dcqbwer",
+      "command": "/attach run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5",
+      "run_id": "run-7de9def3590549137dae0e5757c3288fdaaa3a049f40e757e4271897a39d13c5",
+      "status": "ready_for_review"
+    },
+    "deployment_changed": false
+  },
+  "retained_artifacts": {
+    "controller-apparmor-final.tar.gz": "ebdf9afae1dac5fe03541c90573dd11b38de858138fd27a424b3c710c3de8747",
+    "source-apparmor-final.bundle": "d773009b65dc93b4b80685febe482fdd863775fbe33e61b86dbacf70774406a9"
+  },
+  "browser_launcher": {
+    "served_paths": [
+      "/compose",
+      "/native"
+    ],
+    "account_credential_used": false
+  },
+  "bounded_rust_worker": {
+    "passed": true,
+    "ordinary_tests_passed": 86,
+    "opt_ins_ignored": 11,
+    "network": "none",
+    "workspace_read_only": true,
+    "memory_bytes": 2147483648,
+    "cpus": 2,
+    "pids": 256,
+    "source": "6c43fb0e7e0582249afc56d1e5e195a850549d3f",
+    "log_sha256": "7d5952b42d80271d04c992c82d43446a51bf03624c72fa57d6889bfb96f323f1",
+    "image": "sha256:cf9c10df8901a0f14fe1a23b4cc0396c2c9867d36be36f7efbe74e8fec12fd69"
+  },
+  "cleanup": {
+    "test_vm_off": true,
+    "fixture_bb_providers_disabled": true,
+    "production_healthy": true,
+    "production_image": "sha256:ed6c33083ec47b2fa16f6e1970060a9188b7df0dd49e71391b28ef61926b683e",
+    "production_restarted_for_tests": false
+  }
+}

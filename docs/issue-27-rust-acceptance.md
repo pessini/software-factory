@@ -1,11 +1,14 @@
 # Production Rust work and remaining clean-host gate
 
-Recorded 2026-11-12. **The named WSL workspace now has a Rust-capable worker and
+Production recorded 2026-11-12; follow-up recorded 2026-11-16.
+**The named WSL workspace now has a Rust-capable worker and
 has completed a real Rust implementation task.** The scope-control regression
 is fixed, and the earlier unrequested glossary output has been archived outside
-the active checkout. The remaining acceptance gate is clean-host provider
-execution under #26. The user explicitly chose to leave that gate blocked rather
-than change AppArmor policy.
+the active checkout. The remaining acceptance gate is authenticated clean-host
+provider execution under #26. The [Ubuntu follow-up](issue-26-ubuntu-acceptance.md)
+fixes the AppArmor mount failure and verifies credential-free execution/recovery
+and real client connections. The user chose to keep the current account login
+on WSL, so authenticated Ubuntu workflow acceptance remains incomplete.
 
 The [machine record](acceptance/issue-27-rust-production.json) contains exact
 artifacts, approval, checks, receipts and backup hashes. The
@@ -77,8 +80,10 @@ as `backups/completed-rust-workflow-2026-11-12`, and the controller recreated.
 The same run ID, terminal status, report and event cursor survived. Controller and
 worker image archives/checksums and source history are retained under `release/`.
 A fresh Codex CLI process also read this same `ready_for_review` run through the
-actual MCP adapter after recreation. BB's previously verified registration remains
-installed; its desktop server was closed during the final reconnect attempt.
+actual MCP adapter after recreation. On November 16, fresh terminal Codex 0.169.0
+and the existing BB 0.49.0 production conversation both independently read this
+same completed run through the actual adapters. The production deployment was
+not restarted or upgraded for the Ubuntu tests and remained healthy.
 
 ```bash
 software-factory doctor
@@ -92,6 +97,13 @@ The previous deployment's run IDs belong to retained old storage; they are not
 automatically imported into this fresh backend.
 
 ## Clean-host result: still blocked
+
+**November 16 update:** the original mount failure below is fixed. The
+[current Ubuntu evidence](issue-26-ubuntu-acceptance.md) records the named-profile
+verification, simulated-provider workflows, backup/restore, cancellation,
+reboot and actual browser/MCP/ACP connections. The remaining gate is an
+authenticated real-provider workflow; the user kept the current login on WSL.
+The November 10–12 account below remains historical evidence.
 
 A fresh checksum-verified Ubuntu Noble VM was provisioned with an initially
 empty Docker image cache, Docker 29.1.3, Compose 2.40.3 and packaged just 1.21.0.
@@ -117,6 +129,6 @@ was loaded, no security setting was relaxed, and no confinement bypass was added
 to the application. The VM is no longer running; its private disk/diagnostics are
 retained. These failed attempts are not counted as clean-host workflow passes.
 
-#26's current-candidate clean-host acceptance and therefore full #27 closure
-remain open. Revisit the host confinement prerequisite and repeat the affected
-fresh-host real-provider/client checks only when that work is authorized.
+#26's authenticated clean-host acceptance and therefore full #27 closure remain
+open. Confinement work was subsequently authorized and completed on November 16;
+the current remaining obligation is documented in the follow-up above.

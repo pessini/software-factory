@@ -1,5 +1,11 @@
 # Issue 26 startup validation
 
+Current follow-up: [Ubuntu confinement fix and remaining provider
+acceptance](issue-26-ubuntu-acceptance.md), recorded 2026-11-16. The original mount
+failure is fixed; authenticated Ubuntu workflow acceptance remains incomplete
+because the current account login stays on WSL. The earlier evidence below is
+retained with its original scope and dates.
+
 Source baseline: `17dc3f9` (includes #25 native product and #28 native execution).
 Validation date: 2026-11-09.
 Validation host: Linux x86-64 / WSL2, operator UID/GID 1001, Rust/Cargo 1.99.1,

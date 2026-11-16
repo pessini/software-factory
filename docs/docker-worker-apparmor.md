@@ -45,3 +45,6 @@ evidence.
 
 After reboot, verify the host AppArmor service loaded the profile and run a real
 provider workflow. Readiness probes alone cannot establish execution support.
+See the [Ubuntu validation record](issue-26-ubuntu-acceptance.md) for verified
+sandbox/protection/recovery/client results and the outstanding authenticated
+provider gate.
