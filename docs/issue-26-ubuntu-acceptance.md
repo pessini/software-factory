@@ -83,6 +83,11 @@ the focused rerun and final serial suite passed. Homebrew's newly installed Rust
 1.100 was not used for final acceptance; validation used a temporary pinned
 1.99.1 toolchain.
 
+The first published macOS CI setup installed Homebrew Rust 1.100 and then failed
+its assertion that the latest formula was 1.99.1. The workflow now selects the
+pinned rustup toolchain's binary directory explicitly. This corrects CI tool
+selection without changing the runtime build inputs or the tested compiler.
+
 The exact committed source also passed `scripts/accept-rust-project-worker.sh`
 in the retained Rust worker `sha256:cf9c10df8901a0f14fe1a23b4cc0396c2c9867d36be36f7efbe74e8fec12fd69`:
 86 tests, 11 ignored, offline, with a read-only checkout and the existing worker

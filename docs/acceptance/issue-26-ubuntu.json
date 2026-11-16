@@ -431,5 +431,12 @@
     "production_healthy": true,
     "production_image": "sha256:ed6c33083ec47b2fa16f6e1970060a9188b7df0dd49e71391b28ef61926b683e",
     "production_restarted_for_tests": false
+  },
+  "ci_toolchain_selection": {
+    "platform": "macos-15",
+    "former_failure": "Homebrew latest supplied 1.100.0 while the workflow asserted 1.99.1",
+    "compiler": "1.99.1",
+    "method": "explicit pinned rustup toolchain binary directory",
+    "runtime_build_inputs_changed": false
   }
 }

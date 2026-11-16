@@ -21,13 +21,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install latest Homebrew toolchain and verify the tested pin
+      - name: Select the pinned rustup toolchain
         if: runner.os == 'macOS'
         run: |
-          brew update
-          brew install rust
-          echo "$(brew --prefix rust)/bin" >> "$GITHUB_PATH"
-          test "$("$(brew --prefix rust)/bin/rustc" --version | cut -d' ' -f2)" = 1.99.1
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          factory_rust_bin="$(dirname "$(rustup which --toolchain 1.99.1 cargo)")"
+          echo "$factory_rust_bin" >> "$GITHUB_PATH"
+          test "$("$factory_rust_bin/rustc" --version | cut -d' ' -f2)" = 1.99.1
       - run: bash scripts/check-rust.sh
   container:
     runs-on: ubuntu-24.04
