@@ -25,6 +25,10 @@ backends remain unchanged; profile changes require separate private storage.
 
 Docker workers need Linux-compatible target tools inside their image. Native
 workers need reviewed host toolchain directories and explicit verification argv.
+Model discovery starts a protected provider process. Clients allow up to 90
+seconds per request, covering the service's 60-second catalog budget and cleanup;
+on software-emulated VMs, run acceptance journeys sequentially to avoid CPU
+contention. Health checks do not start that provider process.
 A target using Python does not turn Python into a Factory runtime dependency.
 Use the pinned provider login policy (`never`, or explicitly reviewed
 `on-request`); all escalation requests remain denied. Authenticate Codex separately

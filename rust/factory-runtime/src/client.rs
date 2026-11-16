@@ -42,7 +42,8 @@ impl Client {
         }
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(30))
+            // Catalog admission can take 60 seconds plus confirmed worker cleanup.
+            .timeout(Duration::from_secs(90))
             .build()
             .map_err(|_| Error::Config("cannot initialize HTTPS client".into()))?;
         Ok(Self {
